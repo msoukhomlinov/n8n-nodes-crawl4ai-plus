@@ -140,24 +140,36 @@ export class Crawl4aiClient {
   /**
    * Run an advanced operation (used for Content Extractor operations)
    * @param url URL to process
-   * @param options Advanced options
+   * @param options Advanced options including extraction strategy
    * @returns Crawl result
    */
   async arun(url: string, options: any): Promise<CrawlResult> {
     try {
-      const response = await this.apiClient.post('/crawl', {
-        url,
-        browser_config: this.formatBrowserConfig(options.browserConfig || {}),
-        extraction_strategy: options.extractionStrategy,
+      // Prepare the crawler config with extraction strategy
+      const crawlerConfig = {
+        ...this.formatCrawlerConfig(options.browserConfig || {}),
         cache_mode: options.cacheMode || 'enabled',
         js_code: options.jsCode,
         css_selector: options.cssSelector,
-        extra_args: options.extraArgs || {},
-      });
+        extraction_strategy: options.extractionStrategy,
+        ...options.extraArgs,
+      };
+
+      // Prepare the full request
+      const requestBody = {
+        urls: [url],
+        browser_config: this.formatBrowserConfig(options.browserConfig || {}),
+        crawler_config: {
+          type: 'CrawlerRunConfig',
+          params: crawlerConfig,
+        },
+      };
+
+      const response = await this.apiClient.post('/crawl', requestBody);
 
       // Process the response
-      if (response.data && response.data.result) {
-        return response.data.result;
+      if (response.data && Array.isArray(response.data.results) && response.data.results.length > 0) {
+        return response.data.results[0];
       }
 
       return {
@@ -180,11 +192,17 @@ export class Crawl4aiClient {
    */
   private formatBrowserConfig(config: CrawlerRunConfig): any {
     return {
-      headless: config.headless !== false,
-      java_script_enabled: config.javaScriptEnabled !== false,
-      viewport: config.viewport || { width: 1280, height: 800 },
-      timeout: config.timeout || 30000,
-      user_agent: config.userAgent,
+      type: 'BrowserConfig',
+      params: {
+        headless: config.headless !== false,
+        java_script_enabled: config.javaScriptEnabled !== false,
+        viewport: config.viewport ? {
+          type: 'dict',
+          value: config.viewport,
+        } : { type: 'dict', value: { width: 1280, height: 800 } },
+        timeout: config.timeout || 30000,
+        user_agent: config.userAgent,
+      },
     };
   }
 
@@ -193,20 +211,23 @@ export class Crawl4aiClient {
    */
   private formatCrawlerConfig(config: CrawlerRunConfig): any {
     return {
-      cache_mode: config.cacheMode || 'enabled',
-      stream: config.streamEnabled || false,
-      page_timeout: config.pageTimeout || 30000,
-      request_timeout: config.requestTimeout || 30000,
-      js_code: config.jsCode,
-      js_only: config.jsOnly || false,
-      css_selector: config.cssSelector,
-      excluded_tags: config.excludedTags || [],
-      exclude_external_links: config.excludeExternalLinks || false,
-      check_robots_txt: config.checkRobotsTxt || false,
-      word_count_threshold: config.wordCountThreshold || 0,
-      session_id: config.sessionId,
-      max_retries: config.maxRetries || 3,
-      extraction_strategy: config.extractionStrategy,
+      type: 'CrawlerRunConfig',
+      params: {
+        cache_mode: config.cacheMode || 'enabled',
+        stream: config.streamEnabled || false,
+        page_timeout: config.pageTimeout || 30000,
+        request_timeout: config.requestTimeout || 30000,
+        js_code: config.jsCode,
+        js_only: config.jsOnly || false,
+        css_selector: config.cssSelector,
+        excluded_tags: config.excludedTags || [],
+        exclude_external_links: config.excludeExternalLinks || false,
+        check_robots_txt: config.checkRobotsTxt || false,
+        word_count_threshold: config.wordCountThreshold || 0,
+        session_id: config.sessionId,
+        max_retries: config.maxRetries || 3,
+        extraction_strategy: config.extractionStrategy,
+      },
     };
   }
 

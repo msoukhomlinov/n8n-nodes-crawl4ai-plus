@@ -12,7 +12,7 @@ import {
 	getCrawl4aiClient,
 	createBrowserConfig,
 	createLlmExtractionStrategy,
-  isValidUrl // Added missing import
+	isValidUrl
 } from '../helpers/utils';
 import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiBasicCrawler/helpers/formatters';
 
@@ -204,29 +204,25 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				options: [
 					{
-						name: 'Anthropic',
+						name: 'Anthropic Claude 3 Sonnet',
 						value: 'anthropic/claude-3-sonnet',
-						description: 'Anthropic Claude 3 Sonnet',
 					},
 					{
-						name: 'Groq',
+						name: 'Groq Llama 3 70B',
 						value: 'groq/llama3-70b-8192',
-						description: 'Groq Llama 3 70B',
 					},
 					{
-						name: 'Ollama',
+						name: 'Ollama Llama 3',
 						value: 'ollama/llama3',
-						description: 'Ollama Llama 3',
+						description: 'Ollama Llama 3 (Local)',
 					},
 					{
-						name: 'OpenAI',
-						value: 'openai/gpt-4o',
-						description: 'OpenAI GPT-4o',
-					},
-					{
-						name: 'OpenAI (GPT-3.5)',
+						name: 'OpenAI GPT-3.5 Turbo',
 						value: 'openai/gpt-3.5-turbo',
-						description: 'OpenAI GPT-3.5 Turbo',
+					},
+					{
+						name: 'OpenAI GPT-4o',
+						value: 'openai/gpt-4o',
 					},
 				],
 				default: 'openai/gpt-4o',
@@ -369,10 +365,9 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
 			}
 
-      // Added URL validation as per earlier suggestion
-      if (!isValidUrl(url)) {
-        throw new NodeOperationError(this.getNode(), `Invalid URL: ${url}`, { itemIndex: i });
-      }
+			if (!isValidUrl(url)) {
+				throw new NodeOperationError(this.getNode(), `Invalid URL: ${url}`, { itemIndex: i });
+			}
 
 			if (!instruction) {
 				throw new NodeOperationError(this.getNode(), 'Extraction instructions cannot be empty.', { itemIndex: i });
@@ -407,7 +402,7 @@ export async function execute(
 			};
 
 			// Determine LLM provider
-			let provider = credentials.llmProvider || 'openai';
+			let provider = credentials.llmProvider || 'openai/gpt-4o';
 			let apiKey = credentials.apiKey;
 
 			if (llmOptions.overrideProvider === true) {
@@ -431,11 +426,11 @@ export async function execute(
 
 			// Run the extraction
 			const result = await crawler.arun(url, {
+				browserConfig,
+				extractionStrategy,
 				cacheMode: options.cacheMode || 'enabled',
 				jsCode: browserOptions.jsCode,
 				cssSelector: options.cssSelector,
-				extractionStrategy,
-				browserConfig,
 				extraArgs: {
 					temperature: llmOptions.temperature || 0,
 					maxTokens: llmOptions.maxTokens || 2000,

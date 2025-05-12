@@ -10,7 +10,8 @@ import { NodeOperationError } from 'n8n-workflow';
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
-	createBrowserConfig
+	createBrowserConfig,
+	isValidUrl
 } from '../helpers/utils';
 
 // --- UI Definition ---
@@ -211,6 +212,10 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
 			}
 
+			if (!isValidUrl(url)) {
+				throw new NodeOperationError(this.getNode(), `Invalid URL: ${url}`, { itemIndex: i });
+			}
+
 			// Check if script selector is provided when source type is 'script'
 			if (sourceType === 'script' && !scriptSelector) {
 				throw new NodeOperationError(this.getNode(), 'Script selector is required when source type is "JSON in Script Tag".', { itemIndex: i });
@@ -232,76 +237,95 @@ export async function execute(
 			// Get crawler instance
 			const crawler = await getCrawl4aiClient(this);
 
-			// Prepare extraction parameters
-			const extractionParams: IDataObject = {
-				sourceType,
-				cacheMode: options.cacheMode || 'enabled',
-				jsCode: browserOptions.jsCode,
-				browserConfig,
-			};
-
-			// Add script selector if needed
-			if (sourceType === 'script') {
-				extractionParams.scriptSelector = scriptSelector;
-			}
-
-			// Add JSON-LD type if needed
-			if (sourceType === 'jsonld') {
-				extractionParams.jsonLdType = true;
-			}
-
-			// Add headers if provided
-			if (headers) {
-				extractionParams.headers = headers;
-			}
-
 			// Create a JSON extraction strategy
 			const extractionStrategy = {
-				type: 'json',
-				source_type: sourceType,
-				script_selector: scriptSelector,
-				json_path: jsonPath,
+				type: 'JsonCssExtractionStrategy',
+				params: {
+					schema: {
+						type: 'dict',
+						value: {
+							name: 'json_extraction',
+							baseSelector: sourceType === 'jsonld' ? 'script[type="application/ld+json"]' : scriptSelector || 'body',
+							fields: [
+								{
+									name: 'content',
+									selector: sourceType === 'jsonld' ? '' : scriptSelector || 'pre',
+									type: 'text',
+								}
+							],
+						},
+					},
+				},
 			};
 
-			// Run the JSON extraction
+			// Run the extraction
 			const result = await crawler.arun(url, {
-				extractionStrategy,
+				extractionStrategy: sourceType === 'direct' ? undefined : extractionStrategy,
 				browserConfig,
 				cacheMode: options.cacheMode || 'enabled',
 				jsCode: browserOptions.jsCode,
 				headers,
 			});
 
-			// Parse JSON from the result
-			let jsonData: IDataObject | null = null;
-			try {
-				if (result.success && result.extracted_content) {
-					jsonData = JSON.parse(result.extracted_content) as IDataObject;
-
-					// Apply JSON path if provided
-					if (jsonPath && jsonData) {
-						// Handle nested path (e.g., 'data.items')
-						const pathParts = jsonPath.split('.');
-						let currentData: IDataObject | null = jsonData;
-
-						for (const part of pathParts) {
-							if (currentData && typeof currentData === 'object' && part in currentData) {
-								currentData = currentData[part] as IDataObject;
-							} else {
-								currentData = null;
-								break;
+			// Process the result based on source type
+			let jsonData: IDataObject | IDataObject[] | null = null;
+			
+			if (result.success) {
+				if (sourceType === 'direct') {
+					// For direct JSON URLs, the result might be in extracted_content or text
+					try {
+						if (result.extracted_content) {
+							jsonData = JSON.parse(result.extracted_content) as IDataObject;
+						} else if (result.text) {
+							jsonData = JSON.parse(result.text) as IDataObject;
+						}
+					} catch (error) {
+						// Fallback: try to extract JSON from text content
+						const jsonMatch = result.text?.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+						if (jsonMatch) {
+							try {
+								jsonData = JSON.parse(jsonMatch[0]) as IDataObject;
+							} catch {
+								// If all else fails, return the text
+								jsonData = { content: result.text };
 							}
 						}
-
-						jsonData = currentData as IDataObject;
+					}
+				} else {
+					// For script tags and JSON-LD, use extraction strategy result
+					if (result.extracted_content) {
+						try {
+							const extractedData = JSON.parse(result.extracted_content);
+							if (Array.isArray(extractedData) && extractedData.length > 0) {
+								// Extract the content from the first item
+								const content = extractedData[0].content;
+								// Parse the actual JSON from the script content
+								jsonData = JSON.parse(content);
+							}
+						} catch (error) {
+							// Fallback to text content
+							jsonData = { error: 'Failed to parse JSON from script tag' };
+						}
 					}
 				}
-			} catch (error) {
-				throw new NodeOperationError(
-					this.getNode(),
-					`Failed to parse JSON: ${(error as Error).message}`,
-					{ itemIndex: i }
-				);
+
+				// Apply JSON path if provided
+				if (jsonPath && jsonData) {
+					// Handle nested path (e.g., 'data.items')
+					const pathParts = jsonPath.split('.');
+					let currentData: any = jsonData;
+
+					for (const part of pathParts) {
+						if (currentData && typeof currentData === 'object' && part in currentData) {
+							currentData = currentData[part];
+						} else {
+							currentData = null;
+							break;
+						}
+					}
+
+					jsonData = currentData as IDataObject;
+				}
 			}
 
 			// Prepare output
@@ -318,15 +342,12 @@ export async function execute(
 				output.data = jsonData;
 
 				// Include full content if requested
-				if (options.includeFullContent === true && result.extracted_content) {
-					try {
-						output.fullContent = JSON.parse(result.extracted_content);
-					} catch {
-						output.fullContent = result.extracted_content;
-					}
+				if (options.includeFullContent === true) {
+					output.fullContent = result.text || result.extracted_content;
 				}
 			} else {
 				output.error = 'No JSON data found or failed to parse JSON';
+				output.success = false;
 			}
 
 			// Add the result to the output array

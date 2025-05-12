@@ -315,10 +315,8 @@ export async function execute(
       );
 
       // Apply text cleaning if needed
-      if (options.cleanText === true && extractedData && Array.isArray(extractedData.items)) {
-        const items = extractedData.items as IDataObject[];
-        const cleanedItems = items.map(item => cleanExtractedData(item));
-        formattedResult.items = cleanedItems;
+      if (options.cleanText === true && extractedData) {
+        formattedResult.data = cleanExtractedData(extractedData);
       }
 
       // Add the result to the output array

@@ -18,16 +18,21 @@ import { CssSelectorSchema, LlmSchema } from './interfaces';
  */
 export function createCssSelectorExtractionStrategy(schema: CssSelectorSchema): any {
   return {
-    type: 'css',
-    schema: {
-      name: schema.name,
-      baseSelector: schema.baseSelector,
-      fields: schema.fields.map(field => ({
-        name: field.name,
-        selector: field.selector,
-        type: field.type,
-        attribute: field.attribute,
-      })),
+    type: 'JsonCssExtractionStrategy',
+    params: {
+      schema: {
+        type: 'dict',
+        value: {
+          name: schema.name,
+          baseSelector: schema.baseSelector,
+          fields: schema.fields.map(field => ({
+            name: field.name,
+            selector: field.selector,
+            type: field.type,
+            attribute: field.attribute,
+          })),
+        },
+      },
     },
   };
 }
@@ -47,20 +52,19 @@ export function createLlmExtractionStrategy(
   apiKey?: string,
 ): any {
   return {
-    type: 'llm',
-    schema: {
-      ...schema,
-      properties: Object.entries(schema.properties).reduce((acc, [key, prop]) => {
-        acc[key] = {
-          type: prop.type,
-          description: prop.description,
-        };
-        return acc;
-      }, {} as Record<string, any>),
+    type: 'LLMExtractionStrategy',
+    params: {
+      instruction,
+      provider: provider || 'openai/gpt-4o',
+      api_token: apiKey,
+      schema: {
+        type: 'dict',
+        value: schema,
+      },
+      extraction_type: 'schema',
+      apply_chunking: false,
+      force_json_response: true,
     },
-    instruction,
-    provider,
-    api_key: apiKey,
   };
 }
 
@@ -93,13 +97,16 @@ export function cleanExtractedData(data: IDataObject): IDataObject {
 
   return cleanedData;
 }
+/**
+ * Clean text by removing extra whitespace and normalizing spaces
+ * @param value Text to clean
+ * @returns Cleaned text
+ */
 function cleanText(value: string): string {
 	if (!value) return '';
 
-	// Remove extra whitespace, including newlines and tabs
 	return value
-		.replace(/[\r\n\t]+/g, ' ')    // Replace newlines and tabs with space
+		.trim()                         // Remove leading/trailing whitespace
 		.replace(/\s+/g, ' ')          // Replace multiple spaces with single space
-		.trim();                       // Remove leading/trailing whitespace
+		.replace(/[\r\n\t]+/g, ' ')    // Replace newlines and tabs with space
 }
-
