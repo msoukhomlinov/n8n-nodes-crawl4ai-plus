@@ -1,62 +1,130 @@
-import { IExecuteFunctions, IDataObject } from 'n8n-workflow';
+import { IExecuteFunctions, IDataObject, NodeOperationError } from 'n8n-workflow';
 import { CrawlResult, Crawl4aiApiCredentials, BrowserConfig, CrawlerRunConfig } from './interfaces';
 
 /**
  * Creates a new instance of AsyncWebCrawler or connects to Docker client based on credentials
  * @param this IExecuteFunctions context
  * @param credentials Crawl4AI credentials
- * @returns mock function: we just create the mock function for this demonstration
+ * @returns A crawler instance (mock for now)
  */
 export async function createCrawlerInstance(
     this: IExecuteFunctions,
     credentials: Crawl4aiApiCredentials,
 ): Promise<any> {
-    // This is a mock function to represent the crawler instance
-    // In a real implementation, this would create an AsyncWebCrawler instance
-    // or connect to a Docker client
+    // Check if we're using Docker mode
+    if (credentials.connectionMode === 'docker') {
+        // In a real implementation, this would create a Crawl4aiDockerClient instance
+        // Here, we're just returning a mock client with the basic methods
 
-    // Mock function for demonstration purposes
-    return {
-        async arun(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
-            return {
-                url,
-                success: true,
-                title: 'Mock Crawl Result',
-                markdown: `# Mock Crawl Result\n\nThis is a mock result for ${url}`,
-                text: `Mock Crawl Result This is a mock result for ${url}`,
-                links: {
-                    internal: [],
-                    external: [],
-                },
-                media: {
-                    images: [],
-                    videos: [],
-                },
-                crawl_time: Date.now(),
-            };
-        },
-        async arun_many(urls: string[], config: CrawlerRunConfig): Promise<CrawlResult[]> {
-            return urls.map(url => ({
-                url,
-                success: true,
-                title: 'Mock Crawl Result',
-                markdown: `# Mock Crawl Result\n\nThis is a mock result for ${url}`,
-                text: `Mock Crawl Result This is a mock result for ${url}`,
-                links: {
-                    internal: [],
-                    external: [],
-                },
-                media: {
-                    images: [],
-                    videos: [],
-                },
-                crawl_time: Date.now(),
-            }));
-        },
-        async close(): Promise<void> {
-            // Clean up resources
+        // Prepare the authentication headers
+        const headers: Record<string, string> = {};
+        
+        if (credentials.authenticationType === 'token' && credentials.apiToken) {
+            // Use token authentication
+            headers['Authorization'] = `Bearer ${credentials.apiToken}`;
+        } else if (credentials.authenticationType === 'basic' && credentials.username && credentials.password) {
+            // Use basic authentication (username/password)
+            const basicAuth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+            headers['Authorization'] = `Basic ${basicAuth}`;
         }
-    };
+        
+        // Return a mock Docker client
+        return {
+            async arun(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
+                // Mock implementation - in a real scenario, this would make API calls to the Docker server
+                // using the credentials.dockerUrl and appropriate auth headers
+                
+                // Log for debugging
+                console.log(`[Mock Docker Client] Crawling ${url} with Docker server at ${credentials.dockerUrl}`);
+                console.log(`[Mock Docker Client] Auth headers: ${JSON.stringify(headers)}`);
+                
+                return {
+                    url,
+                    success: true,
+                    title: 'Mock Docker Crawl Result',
+                    markdown: `# Mock Docker Crawl Result\n\nThis is a mock result for ${url}`,
+                    text: `Mock Docker Crawl Result This is a mock result for ${url}`,
+                    links: {
+                        internal: [],
+                        external: [],
+                    },
+                    media: {
+                        images: [],
+                        videos: [],
+                    },
+                    crawl_time: Date.now(),
+                };
+            },
+            async arun_many(urls: string[], config: CrawlerRunConfig): Promise<CrawlResult[]> {
+                // Mock implementation for batch crawling
+                return urls.map(url => ({
+                    url,
+                    success: true,
+                    title: 'Mock Docker Crawl Result',
+                    markdown: `# Mock Docker Crawl Result\n\nThis is a mock result for ${url}`,
+                    text: `Mock Docker Crawl Result This is a mock result for ${url}`,
+                    links: {
+                        internal: [],
+                        external: [],
+                    },
+                    media: {
+                        images: [],
+                        videos: [],
+                    },
+                    crawl_time: Date.now(),
+                }));
+            },
+            async close(): Promise<void> {
+                // Clean up resources
+            }
+        };
+    } else {
+        // Direct Python mode
+        // In a real implementation, this would create an AsyncWebCrawler instance
+        // For now, we just return a mock crawler
+        
+        return {
+            async arun(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
+                return {
+                    url,
+                    success: true,
+                    title: 'Mock Direct Crawl Result',
+                    markdown: `# Mock Direct Crawl Result\n\nThis is a mock result for ${url}`,
+                    text: `Mock Direct Crawl Result This is a mock result for ${url}`,
+                    links: {
+                        internal: [],
+                        external: [],
+                    },
+                    media: {
+                        images: [],
+                        videos: [],
+                    },
+                    crawl_time: Date.now(),
+                };
+            },
+            async arun_many(urls: string[], config: CrawlerRunConfig): Promise<CrawlResult[]> {
+                return urls.map(url => ({
+                    url,
+                    success: true,
+                    title: 'Mock Direct Crawl Result',
+                    markdown: `# Mock Direct Crawl Result\n\nThis is a mock result for ${url}`,
+                    text: `Mock Direct Crawl Result This is a mock result for ${url}`,
+                    links: {
+                        internal: [],
+                        external: [],
+                    },
+                    media: {
+                        images: [],
+                        videos: [],
+                    },
+                    crawl_time: Date.now(),
+                }));
+            },
+            async close(): Promise<void> {
+                // Clean up resources
+            }
+        };
+    }
 }
 
 /**
@@ -108,8 +176,8 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
  * @returns Formatted result for n8n
  */
 export function formatCrawlResult(
-    result: CrawlResult,
-    includeMedia: boolean = false,
+    result: CrawlResult, 
+    includeMedia: boolean = false, 
     verboseResponse: boolean = false
 ): IDataObject {
     // Base result with essential fields

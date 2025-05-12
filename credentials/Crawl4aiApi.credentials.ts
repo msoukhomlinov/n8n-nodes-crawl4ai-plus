@@ -22,7 +22,7 @@ export class Crawl4aiApi implements ICredentialType {
 					description: 'Connect to a Crawl4AI Docker container'
 				},
 			],
-			default: 'direct',
+			default: 'docker',
 			description: 'The mode to connect to Crawl4AI'
 		},
 		// Docker Client Settings
@@ -30,8 +30,8 @@ export class Crawl4aiApi implements ICredentialType {
 			displayName: 'Docker Server URL',
 			name: 'dockerUrl',
 			type: 'string',
-			default: 'http://localhost:11235',
-			placeholder: 'http://localhost:11235',
+			default: 'http://crawl4ai:11235',
+			placeholder: 'http://crawl4ai:11235',
 			description: 'The URL of the Crawl4AI Docker server',
 			displayOptions: {
 				show: {
@@ -40,14 +40,47 @@ export class Crawl4aiApi implements ICredentialType {
 			},
 		},
 		{
-			displayName: 'Authentication',
-			name: 'authentication',
-			type: 'boolean',
-			default: false,
-			description: 'Whether authentication is required for the Docker server',
+			displayName: 'Authentication Type',
+			name: 'authenticationType',
+			type: 'options',
+			options: [
+				{
+					name: 'No Authentication',
+					value: 'none',
+					description: 'No authentication is required'
+				},
+				{
+					name: 'Token Authentication',
+					value: 'token',
+					description: 'Use an API token for authentication'
+				},
+				{
+					name: 'Username/Password Authentication',
+					value: 'basic',
+					description: 'Use username and password for authentication'
+				},
+			],
+			default: 'token',
+			description: 'The authentication method to use',
 			displayOptions: {
 				show: {
 					connectionMode: ['docker'],
+				},
+			},
+		},
+		{
+			displayName: 'API Token',
+			name: 'apiToken',
+			type: 'string',
+			typeOptions: {
+				password: true,
+			},
+			default: '',
+			description: 'The API token for Docker server authentication',
+			displayOptions: {
+				show: {
+					connectionMode: ['docker'],
+					authenticationType: ['token'],
 				},
 			},
 		},
@@ -60,7 +93,7 @@ export class Crawl4aiApi implements ICredentialType {
 			displayOptions: {
 				show: {
 					connectionMode: ['docker'],
-					authentication: [true],
+					authenticationType: ['basic'],
 				},
 			},
 		},
@@ -76,7 +109,7 @@ export class Crawl4aiApi implements ICredentialType {
 			displayOptions: {
 				show: {
 					connectionMode: ['docker'],
-					authentication: [true],
+					authenticationType: ['basic'],
 				},
 			},
 		},

@@ -25,6 +25,8 @@ export class Crawl4aiContentExtractor implements INodeType {
 		},
 		inputs: ['main'],
 		outputs: ['main'],
+		// @ts-ignore - Workaround
+		usableAsTool: true,
 		credentials: [
 			{
 				name: 'crawl4aiApi',
