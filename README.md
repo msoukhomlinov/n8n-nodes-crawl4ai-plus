@@ -1,112 +1,129 @@
-# n8n-nodes-crawl4ai
+# Crawl4AI for n8n
 
-This package provides n8n nodes to integrate with [Crawl4AI](https://github.com/unclecode/crawl4ai), an LLM-friendly web crawler and data extraction library.
+This project provides n8n integration for Crawl4AI, a powerful web crawling and data extraction tool. It consists of two main nodes:
 
-## Key Features
+1. **Crawl4AI: Basic Crawler** - For general web crawling and content extraction
+2. **Crawl4AI: Content Extractor** - For extracting structured data using CSS selectors, LLM, or JSON
 
-- **Basic Web Crawling**: Fetch content from single or multiple URLs
-- **Content Extraction**: Extract structured data using CSS selectors or LLM
-- **JSON Extraction**: Parse JSON data from APIs, script tags, or JSON-LD
-- **Flexible Configuration**: Configure browser settings, caching, and more
-- **LLM Integration**: Use AI models to understand and extract structured data
+## Features
+
+### Basic Crawler Node
+
+- **Crawl Single URL** - Extract content from a single web page
+- **Crawl Multiple URLs** - Process multiple web pages in one operation
+- **Process Raw HTML** - Extract content from raw HTML without crawling
+
+### Content Extractor Node
+
+- **CSS Selector Extractor** - Extract structured data using CSS selectors
+- **LLM Extractor** - Use AI to extract structured data from webpages
+- **JSON Extractor** - Extract and process JSON data from web pages
 
 ## Installation
 
-### Installation in n8n Desktop App / Self-Hosted
+1. Clone this repository into your n8n custom nodes directory
+2. Run `npm install` to install dependencies
+3. Restart your n8n instance
 
-1. Go to **Settings > Community Nodes**
-2. Click **Install a node from npm**
-3. Enter `n8n-nodes-crawl4ai` and click **Install**
-4. Restart n8n
+## Usage
 
-### Installation in Docker
+### Setting up credentials
 
-Add the following environment variables to your docker-compose.yml file:
+Before using the nodes, you need to set up Crawl4AI API credentials:
 
-```yaml
-N8N_CUSTOM_EXTENSIONS: "n8n-nodes-crawl4ai"
+1. Go to **Settings > Credentials > New**
+2. Select **Crawl4AI API**
+3. Configure connection settings:
+   - **Connection Mode**: Direct or Docker
+   - **Authentication**: Configure as needed
+   - **LLM Settings**: Enable and configure if needed for AI extraction
+
+### Basic Crawler Usage
+
+The Basic Crawler node allows you to crawl web pages and extract their content:
+
+1. Add the "Crawl4AI: Basic Crawler" node to your workflow
+2. Select an operation (Crawl Single URL, Crawl Multiple URLs, or Process Raw HTML)
+3. Configure the required parameters
+4. Run the workflow to extract content
+
+### Content Extractor Usage
+
+The Content Extractor node allows you to extract structured data from web pages:
+
+1. Add the "Crawl4AI: Content Extractor" node to your workflow
+2. Select an extraction method (CSS Selector, LLM, or JSON)
+3. Configure the extraction parameters
+4. Run the workflow to extract structured data
+
+## Configuration Options
+
+### Browser Options
+
+- **Headless Mode**: Run browser in headless mode
+- **Enable JavaScript**: Enable JavaScript execution
+- **Viewport Size**: Set browser viewport dimensions
+- **Timeout**: Maximum time to wait for page load
+- **User Agent**: Override browser user agent
+
+### Crawler Options
+
+- **Cache Mode**: Control caching behavior
+- **JavaScript Code**: Execute custom JS on the page
+- **CSS Selector**: Focus crawling on specific elements
+- **Excluded Tags**: Skip specific HTML tags
+- **Check Robots.txt**: Respect robots.txt rules
+- **Word Count Threshold**: Filter content by word count
+
+### LLM Extraction Options
+
+- **Extraction Instructions**: Instructions for the AI
+- **Schema Fields**: Define structured data schema
+- **LLM Provider**: Choose AI model provider
+- **Temperature**: Control randomness of AI responses
+
+## Project Structure
+
 ```
+nodes/
+  ├── Crawl4aiBasicCrawler/
+  │   ├── Crawl4aiBasicCrawler.node.ts         # Main node file
+  │   ├── crawl4ai.svg                        # Icon
+  │   ├── actions/
+  │   │   ├── operations.ts                   # Operations definition
+  │   │   ├── router.ts                       # Router handler
+  │   │   ├── crawlSingleUrl.operation.ts     # Single URL crawl operation
+  │   │   ├── crawlMultipleUrls.operation.ts  # Multiple URL crawl operation
+  │   │   └── processRawHtml.operation.ts     # Raw HTML processing operation
+  │   └── helpers/
+  │       ├── interfaces.ts                   # Interface definitions
+  │       ├── utils.ts                        # Common utilities
+  │       ├── apiClient.ts                    # API client
+  │       └── formatters.ts                   # Formatting tools
+  │
+  └── Crawl4aiContentExtractor/
+      ├── Crawl4aiContentExtractor.node.ts    # Main node file
+      ├── crawl4ai.svg                        # Icon
+      ├── actions/
+      │   ├── operations.ts                   # Operations definition
+      │   ├── router.ts                       # Router handler
+      │   ├── cssExtractor.operation.ts       # CSS selector extraction operation
+      │   ├── llmExtractor.operation.ts       # LLM extraction operation
+      │   └── jsonExtractor.operation.ts      # JSON extraction operation
+      └── helpers/
+          ├── interfaces.ts                   # Interface definitions
+          ├── utils.ts                        # Common utilities
+          ├── apiClient.ts                    # API client
+          └── formatters.ts                   # Formatting tools
 
-### Required Dependencies
-
-To use these nodes, you'll need:
-
-1. **Crawl4AI**: This nodes package requires the Crawl4AI Python library. You can install it on your server with:
-   ```bash
-   pip install crawl4ai
-   crawl4ai-setup  # Setup browser dependencies
-   ```
-
-2. **Playwright**: Crawl4AI depends on Playwright for browser automation. It will be installed automatically when you run `crawl4ai-setup`.
-
-## Nodes
-
-This package contains the following nodes:
-
-### 1. Crawl4AI: Basic Crawler
-
-Crawls websites and extracts content as text, markdown, or HTML.
-
-- **Operations**:
-  - **Crawl Single URL**: Crawl a single URL and extract its content
-  - **Crawl Multiple URLs**: Crawl multiple URLs in parallel
-  - **Process Raw HTML**: Process provided HTML content without crawling
-
-### 2. Crawl4AI: Content Extractor
-
-Extracts structured data from websites using various strategies.
-
-- **Operations**:
-  - **CSS Selector Extractor**: Extract structured content using CSS selectors
-  - **LLM Extractor**: Extract structured content using LLM models
-  - **JSON Extractor**: Extract JSON data from a webpage
-
-## Credentials
-
-This package includes the following credentials:
-
-### Crawl4AI API
-
-Configure connection settings for Crawl4AI:
-
-- **Connection Mode**: Direct Python package or Docker client
-- **LLM Provider Settings**: Configure LLM providers for AI-powered extraction
-- **Cache Settings**: Configure caching for better performance
-
-## Usage Examples
-
-### Example 1: Basic Web Crawling
-
-1. Add **Crawl4AI: Basic Crawler** node
-2. Select **Crawl Single URL** operation
-3. Enter the URL to crawl
-4. Configure browser options as needed
-5. Execute the node to get the extracted content
-
-### Example 2: Extracting Product Data with CSS Selectors
-
-1. Add **Crawl4AI: Content Extractor** node
-2. Select **CSS Selector Extractor** operation
-3. Enter the URL of a product listing page
-4. Set the base selector to target each product element
-5. Add fields for title, price, description, etc.
-6. Execute the node to get structured product data
-
-### Example 3: Extracting Data with LLM
-
-1. Add **Crawl4AI: Content Extractor** node
-2. Select **LLM Extractor** operation
-3. Enter the URL and extraction instructions
-4. Define schema fields for the data you want to extract
-5. Configure the LLM provider
-6. Execute the node to get AI-extracted data
-
-## Resources
-
-- [Crawl4AI GitHub Repository](https://github.com/unclecode/crawl4ai)
-- [Crawl4AI Documentation](https://github.com/unclecode/crawl4ai/tree/main/docs)
-- [n8n Documentation](https://docs.n8n.io/)
+credentials/
+  └── Crawl4aiApi.credentials.ts              # Credentials definition
+```
 
 ## License
 
-[MIT](LICENSE.md)
+MIT
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

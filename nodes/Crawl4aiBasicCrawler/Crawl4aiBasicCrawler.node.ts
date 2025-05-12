@@ -22,10 +22,10 @@ export class Crawl4aiBasicCrawler implements INodeType {
 		defaults: {
 			name: 'Crawl4AI: Basic Crawler',
 		},
+		// @ts-ignore
 		inputs: ['main'],
+		// @ts-ignore
 		outputs: ['main'],
-		// @ts-ignore - n8n 使用的類型定義可能未包含此屬性
-		usableAsTool: true,
 		credentials: [
 			{
 				name: 'crawl4aiApi',
@@ -33,12 +33,10 @@ export class Crawl4aiBasicCrawler implements INodeType {
 			},
 		],
 		properties: [
-			// Spread the imported operations description
 			...operationsDescription,
 		],
 	};
 
-	// Execution entry point, delegates to the router
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		return await router.call(this);
 	}

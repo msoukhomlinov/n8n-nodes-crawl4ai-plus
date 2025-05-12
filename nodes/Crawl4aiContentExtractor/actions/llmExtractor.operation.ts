@@ -9,12 +9,12 @@ import { NodeOperationError } from 'n8n-workflow';
 // Import helpers and types
 import type { Crawl4aiNodeOptions, Crawl4aiApiCredentials, LlmSchema, LlmSchemaField } from '../helpers/interfaces';
 import {
-	createCrawlerInstance,
+	getCrawl4aiClient,
 	createBrowserConfig,
 	createLlmExtractionStrategy,
-	parseExtractedJson,
-	formatExtractionResult
+  isValidUrl // Added missing import
 } from '../helpers/utils';
+import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiBasicCrawler/helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -139,13 +139,6 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
-				displayName: 'Headless Mode',
-				name: 'headless',
-				type: 'boolean',
-				default: true,
-				description: 'Whether to run browser in headless mode',
-			},
-			{
 				displayName: 'Enable JavaScript',
 				name: 'javaScriptEnabled',
 				type: 'boolean',
@@ -153,25 +146,11 @@ export const description: INodeProperties[] = [
 				description: 'Whether to enable JavaScript execution',
 			},
 			{
-				displayName: 'Viewport Width',
-				name: 'viewportWidth',
-				type: 'number',
-				default: 1280,
-				description: 'The width of the browser viewport',
-			},
-			{
-				displayName: 'Viewport Height',
-				name: 'viewportHeight',
-				type: 'number',
-				default: 800,
-				description: 'The height of the browser viewport',
-			},
-			{
-				displayName: 'Timeout (MS)',
-				name: 'timeout',
-				type: 'number',
-				default: 60000, // Longer timeout for LLM extraction
-				description: 'Maximum time to wait for the browser to load the page',
+				displayName: 'Headless Mode',
+				name: 'headless',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to run browser in headless mode',
 			},
 			{
 				displayName: 'JavaScript Code',
@@ -183,6 +162,27 @@ export const description: INodeProperties[] = [
 				default: '',
 				placeholder: 'document.querySelector("button.load-more").click();',
 				description: 'JavaScript code to execute before extraction (e.g., to click buttons, scroll)',
+			},
+			{
+				displayName: 'Timeout (MS)',
+				name: 'timeout',
+				type: 'number',
+				default: 60000, // Longer timeout for LLM extraction
+				description: 'Maximum time to wait for the browser to load the page',
+			},
+			{
+				displayName: 'Viewport Height',
+				name: 'viewportHeight',
+				type: 'number',
+				default: 800,
+				description: 'The height of the browser viewport',
+			},
+			{
+				displayName: 'Viewport Width',
+				name: 'viewportWidth',
+				type: 'number',
+				default: 1280,
+				description: 'The width of the browser viewport',
 			},
 		],
 	},
@@ -198,32 +198,6 @@ export const description: INodeProperties[] = [
 			},
 		},
 		options: [
-			{
-				displayName: 'Temperature',
-				name: 'temperature',
-				type: 'number',
-				typeOptions: {
-					minValue: 0,
-					maxValue: 1,
-					numberPrecision: 1,
-				},
-				default: 0,
-				description: 'Controls randomness: 0 for deterministic results, higher for more creativity',
-			},
-			{
-				displayName: 'Max Tokens',
-				name: 'maxTokens',
-				type: 'number',
-				default: 2000,
-				description: 'Maximum number of tokens for the LLM response',
-			},
-			{
-				displayName: 'Override LLM Provider',
-				name: 'overrideProvider',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to override the LLM provider from credentials',
-			},
 			{
 				displayName: 'LLM Provider',
 				name: 'llmProvider',
@@ -264,6 +238,20 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Max Tokens',
+				name: 'maxTokens',
+				type: 'number',
+				default: 2000,
+				description: 'Maximum number of tokens for the LLM response',
+			},
+			{
+				displayName: 'Override LLM Provider',
+				name: 'overrideProvider',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to override the LLM provider from credentials',
+			},
+			{
 				displayName: 'Provider API Key',
 				name: 'apiKey',
 				type: 'string',
@@ -277,6 +265,18 @@ export const description: INodeProperties[] = [
 						overrideProvider: [true],
 					},
 				},
+			},
+			{
+				displayName: 'Temperature',
+				name: 'temperature',
+				type: 'number',
+				typeOptions: {
+					minValue: 0,
+					maxValue: 1,
+					numberPrecision: 1,
+				},
+				default: 0,
+				description: 'Controls randomness: 0 for deterministic results, higher for more creativity',
 			},
 		],
 	},
@@ -369,6 +369,11 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
 			}
 
+      // Added URL validation as per earlier suggestion
+      if (!isValidUrl(url)) {
+        throw new NodeOperationError(this.getNode(), `Invalid URL: ${url}`, { itemIndex: i });
+      }
+
 			if (!instruction) {
 				throw new NodeOperationError(this.getNode(), 'Extraction instructions cannot be empty.', { itemIndex: i });
 			}
@@ -422,7 +427,7 @@ export async function execute(
 			);
 
 			// Get crawler instance
-			const crawler = await createCrawlerInstance.call(this, credentials);
+			const crawler = await getCrawl4aiClient(this);
 
 			// Run the extraction
 			const result = await crawler.arun(url, {
@@ -436,9 +441,6 @@ export async function execute(
 					maxTokens: llmOptions.maxTokens || 2000,
 				},
 			});
-
-			// Close crawler
-			await crawler.close();
 
 			// Parse extracted JSON
 			const extractedData = parseExtractedJson(result);

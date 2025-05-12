@@ -7,10 +7,10 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 // Import helpers and types
-import type { Crawl4aiNodeOptions, Crawl4aiApiCredentials } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
-	createCrawlerInstance,
-	createBrowserConfig,
+	getCrawl4aiClient,
+	createBrowserConfig
 } from '../helpers/utils';
 
 // --- UI Definition ---
@@ -197,9 +197,6 @@ export async function execute(
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
 
-	// Get credentials
-	const credentials = (await this.getCredentials('crawl4aiApi')) as unknown as Crawl4aiApiCredentials;
-
 	for (let i = 0; i < items.length; i++) {
 		try {
 			// Get parameters for the current item
@@ -233,7 +230,7 @@ export async function execute(
 			const browserConfig = createBrowserConfig(browserOptions);
 
 			// Get crawler instance
-			const crawler = await createCrawlerInstance.call(this, credentials);
+			const crawler = await getCrawl4aiClient(this);
 
 			// Prepare extraction parameters
 			const extractionParams: IDataObject = {
@@ -258,11 +255,22 @@ export async function execute(
 				extractionParams.headers = headers;
 			}
 
-			// Run the JSON extraction
-			const result = await crawler.arun(url, extractionParams);
+			// Create a JSON extraction strategy
+			const extractionStrategy = {
+				type: 'json',
+				source_type: sourceType,
+				script_selector: scriptSelector,
+				json_path: jsonPath,
+			};
 
-			// Close crawler
-			await crawler.close();
+			// Run the JSON extraction
+			const result = await crawler.arun(url, {
+				extractionStrategy,
+				browserConfig,
+				cacheMode: options.cacheMode || 'enabled',
+				jsCode: browserOptions.jsCode,
+				headers,
+			});
 
 			// Parse JSON from the result
 			let jsonData: IDataObject | null = null;

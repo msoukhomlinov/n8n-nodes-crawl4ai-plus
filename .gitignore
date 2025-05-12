@@ -1,8 +1,33 @@
-node_modules
-.DS_Store
-.tmp
-tmp
-dist
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+
+# Logs
+logs
+*.log
 npm-debug.log*
-yarn.lock
-.vscode/launch.json
+yarn-debug.log*
+yarn-error.log*
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.code-workspace
+.history/
+*.sublime-project
+*.sublime-workspace
+
+# npm
+.npm
+.npmrc
+.node_repl_history
+package-lock.json

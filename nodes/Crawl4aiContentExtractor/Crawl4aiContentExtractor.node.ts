@@ -22,7 +22,9 @@ export class Crawl4aiContentExtractor implements INodeType {
 		defaults: {
 			name: 'Crawl4AI: Content Extractor',
 		},
+		// @ts-ignore
 		inputs: ['main'],
+		// @ts-ignore
 		outputs: ['main'],
 		// @ts-ignore - n8n 使用的類型定義可能未包含此屬性
 		usableAsTool: true,
@@ -33,7 +35,6 @@ export class Crawl4aiContentExtractor implements INodeType {
 			},
 		],
 		properties: [
-			// Spread the imported operations description
 			...operationsDescription,
 		],
 	};
