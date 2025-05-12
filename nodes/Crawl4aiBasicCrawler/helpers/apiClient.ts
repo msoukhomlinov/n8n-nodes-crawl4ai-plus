@@ -200,7 +200,7 @@ export class Crawl4aiClient {
           type: 'dict',
           value: config.viewport,
         } : { type: 'dict', value: { width: 1280, height: 800 } },
-        timeout: config.timeout || 30000,
+        // timeout is not a valid BrowserConfig parameter - moved to crawler config
         user_agent: config.userAgent,
       },
     };
@@ -227,6 +227,8 @@ export class Crawl4aiClient {
         session_id: config.sessionId,
         max_retries: config.maxRetries || 3,
         extraction_strategy: config.extractionStrategy,
+        // Add timeout here if it was specified in the config
+        ...(config.timeout ? { timeout: config.timeout } : {}),
       },
     };
   }
