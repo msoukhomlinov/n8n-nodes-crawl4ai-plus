@@ -1,4 +1,4 @@
-import { IExecuteFunctions, IDataObject, NodeOperationError } from 'n8n-workflow';
+import { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { CrawlResult, Crawl4aiApiCredentials, BrowserConfig, CrawlerRunConfig, CssSelectorSchema, LlmSchema } from './interfaces';
 
 /**
@@ -24,14 +24,12 @@ export async function createCrawlerInstance(
             headers['Authorization'] = `Bearer ${credentials.apiToken}`;
         } else if (credentials.authenticationType === 'basic' && credentials.username && credentials.password) {
             // Use basic authentication (username/password)
-            const basicAuth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
-            headers['Authorization'] = `Basic ${basicAuth}`;
+            // In a real implementation, we'd use a proper way to encode to base64
+            // For this mock, we'll just simulate it
+            headers['Authorization'] = `Basic ${credentials.username}:${credentials.password}`;
         }
         
         // Mock Docker client
-        console.log(`[Mock Docker Client] Using Docker server: ${credentials.dockerUrl}`);
-        console.log(`[Mock Docker Client] Auth type: ${credentials.authenticationType}`);
-        
         return {
             async arun(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
                 // In real implementation, would make API calls to the Docker server

@@ -2,7 +2,6 @@ import {
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
-	INodeTypeBaseDescription,
 	INodeTypeDescription,
 } from 'n8n-workflow';
 
@@ -25,7 +24,7 @@ export class Crawl4aiContentExtractor implements INodeType {
 		},
 		inputs: ['main'],
 		outputs: ['main'],
-		// @ts-ignore - Workaround
+		// @ts-ignore - n8n 使用的類型定義可能未包含此屬性
 		usableAsTool: true,
 		credentials: [
 			{
@@ -38,10 +37,6 @@ export class Crawl4aiContentExtractor implements INodeType {
 			...operationsDescription,
 		],
 	};
-
-	constructor(baseDescription: INodeTypeBaseDescription) {
-		// Constructor remains simple
-	}
 
 	// Execution entry point, delegates to the router
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {

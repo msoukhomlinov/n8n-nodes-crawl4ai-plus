@@ -5,7 +5,8 @@ export interface Crawl4aiApiCredentials {
 	connectionMode: 'direct' | 'docker';
 	// Docker settings
 	dockerUrl?: string;
-	authentication?: boolean;
+	authenticationType?: 'none' | 'token' | 'basic';
+	apiToken?: string;
 	username?: string;
 	password?: string;
 	// LLM settings

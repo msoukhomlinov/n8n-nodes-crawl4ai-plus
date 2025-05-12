@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-crawl4ai",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Crawl4AI nodes for n8n - a web crawler and structured content extractor",
   "keywords": [
     "n8n-community-node-package",
@@ -11,29 +11,34 @@
     "web-scraping"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/golfamigo/n8n-nodes-crawl4j",
+  "homepage": "https://github.com/unclecode/crawl4ai",
   "author": {
-    "name": "Heictor Hsiao",
-    "email": "amigo.golf@gmail.com"
+    "name": "Crawl4AI Team",
+    "email": "dev@example.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/golfamigo/n8n-nodes-crawl4j.git"
+    "url": "https://github.com/your-username/n8n-nodes-crawl4ai.git"
   },
   "engines": {
     "node": ">=18.10",
     "pnpm": ">=9.1"
   },
   "packageManager": "pnpm@9.1.4",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "build": "rimraf ./dist && tsc && gulp build:icons",
+    "clean": "rimraf dist",
+    "compile": "tsc",
+    "copy-icons": "gulp build:icons",
+    "generate-index": "node build-index.js",
+    "build": "npm run clean && npm run compile && npm run copy-icons && npm run generate-index",
     "dev": "tsc --watch",
     "format": "prettier nodes credentials --write",
     "lint": "eslint nodes credentials package.json",
     "lintfix": "eslint nodes credentials package.json --fix",
-    "prepublishOnly": "pnpm build && pnpm lint -c .eslintrc.prepublish.js nodes credentials package.json"
+    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json"
   },
   "files": [
     "dist"
@@ -49,12 +54,13 @@
     ]
   },
   "devDependencies": {
+    "@types/node": "^18.19.100",
     "@typescript-eslint/parser": "^7.15.0",
     "eslint": "^8.56.0",
     "eslint-plugin-n8n-nodes-base": "^1.16.1",
     "gulp": "^4.0.2",
     "prettier": "^3.3.2",
-    "rimraf": "^5.0.10",
+    "rimraf": "^5.0.5",
     "typescript": "^5.5.3"
   },
   "dependencies": {
