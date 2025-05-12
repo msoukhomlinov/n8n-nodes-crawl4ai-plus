@@ -1,19 +1,24 @@
 {
-  "name": "n8n-nodes-<...>",
+  "name": "n8n-nodes-crawl4ai",
   "version": "0.1.0",
-  "description": "",
+  "description": "Crawl4AI nodes for n8n - a web crawler and structured content extractor",
   "keywords": [
-    "n8n-community-node-package"
+    "n8n-community-node-package",
+    "crawl4ai",
+    "web-crawler",
+    "content-extraction",
+    "llm",
+    "web-scraping"
   ],
   "license": "MIT",
-  "homepage": "",
+  "homepage": "https://github.com/golfamigo/n8n-nodes-crawl4j",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "Heictor Hsiao",
+    "email": "amigo.golf@gmail.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<...>/n8n-nodes-<...>.git"
+    "url": "https://github.com/golfamigo/n8n-nodes-crawl4j.git"
   },
   "engines": {
     "node": ">=18.10",
@@ -23,7 +28,7 @@
   "main": "index.js",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "build": "tsc && gulp build:icons",
+    "build": "rimraf ./dist && tsc && gulp build:icons",
     "dev": "tsc --watch",
     "format": "prettier nodes credentials --write",
     "lint": "eslint nodes credentials package.json",
@@ -36,12 +41,11 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/ExampleCredentialsApi.credentials.js",
-      "dist/credentials/HttpBinApi.credentials.js"
+      "dist/credentials/Crawl4aiApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/ExampleNode/ExampleNode.node.js",
-      "dist/nodes/HttpBin/HttpBin.node.js"
+      "dist/nodes/Crawl4aiBasicCrawler/Crawl4aiBasicCrawler.node.js",
+      "dist/nodes/Crawl4aiContentExtractor/Crawl4aiContentExtractor.node.js"
     ]
   },
   "devDependencies": {
@@ -50,7 +54,11 @@
     "eslint-plugin-n8n-nodes-base": "^1.16.1",
     "gulp": "^4.0.2",
     "prettier": "^3.3.2",
+    "rimraf": "^5.0.10",
     "typescript": "^5.5.3"
+  },
+  "dependencies": {
+    "json-path": "^0.1.3"
   },
   "peerDependencies": {
     "n8n-workflow": "*"

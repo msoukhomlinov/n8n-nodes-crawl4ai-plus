@@ -1,46 +1,112 @@
-![Banner image](https://user-images.githubusercontent.com/10284570/173569848-c624317f-42b1-45a6-ab09-f0ea3c247648.png)
+# n8n-nodes-crawl4ai
 
-# n8n-nodes-starter
+This package provides n8n nodes to integrate with [Crawl4AI](https://github.com/unclecode/crawl4ai), an LLM-friendly web crawler and data extraction library.
 
-This repo contains example nodes to help you get started building your own custom integrations for [n8n](n8n.io). It includes the node linter and other dependencies.
+## Key Features
 
-To make your custom node available to the community, you must create it as an npm package, and [submit it to the npm registry](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry).
+- **Basic Web Crawling**: Fetch content from single or multiple URLs
+- **Content Extraction**: Extract structured data using CSS selectors or LLM
+- **JSON Extraction**: Parse JSON data from APIs, script tags, or JSON-LD
+- **Flexible Configuration**: Configure browser settings, caching, and more
+- **LLM Integration**: Use AI models to understand and extract structured data
 
-## Prerequisites
+## Installation
 
-You need the following installed on your development machine:
+### Installation in n8n Desktop App / Self-Hosted
 
-* [git](https://git-scm.com/downloads)
-* Node.js and pnpm. Minimum version Node 18. You can find instructions on how to install both using nvm (Node Version Manager) for Linux, Mac, and WSL [here](https://github.com/nvm-sh/nvm). For Windows users, refer to Microsoft's guide to [Install NodeJS on Windows](https://docs.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-windows).
-* Install n8n with:
-  ```
-  pnpm install n8n -g
-  ```
-* Recommended: follow n8n's guide to [set up your development environment](https://docs.n8n.io/integrations/creating-nodes/build/node-development-environment/).
+1. Go to **Settings > Community Nodes**
+2. Click **Install a node from npm**
+3. Enter `n8n-nodes-crawl4ai` and click **Install**
+4. Restart n8n
 
-## Using this starter
+### Installation in Docker
 
-These are the basic steps for working with the starter. For detailed guidance on creating and publishing nodes, refer to the [documentation](https://docs.n8n.io/integrations/creating-nodes/).
+Add the following environment variables to your docker-compose.yml file:
 
-1. [Generate a new repository](https://github.com/n8n-io/n8n-nodes-starter/generate) from this template repository.
-2. Clone your new repo:
+```yaml
+N8N_CUSTOM_EXTENSIONS: "n8n-nodes-crawl4ai"
+```
+
+### Required Dependencies
+
+To use these nodes, you'll need:
+
+1. **Crawl4AI**: This nodes package requires the Crawl4AI Python library. You can install it on your server with:
+   ```bash
+   pip install crawl4ai
+   crawl4ai-setup  # Setup browser dependencies
    ```
-   git clone https://github.com/<your organization>/<your-repo-name>.git
-   ```
-3. Run `pnpm i` to install dependencies.
-4. Open the project in your editor.
-5. Browse the examples in `/nodes` and `/credentials`. Modify the examples, or replace them with your own nodes.
-6. Update the `package.json` to match your details.
-7. Run `pnpm lint` to check for errors or `pnpm lintfix` to automatically fix errors when possible.
-8. Test your node locally. Refer to [Run your node locally](https://docs.n8n.io/integrations/creating-nodes/test/run-node-locally/) for guidance.
-9. Replace this README with documentation for your node. Use the [README_TEMPLATE](README_TEMPLATE.md) to get started.
-10. Update the LICENSE file to use your details.
-11. [Publish](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry) your package to npm.
 
-## More information
+2. **Playwright**: Crawl4AI depends on Playwright for browser automation. It will be installed automatically when you run `crawl4ai-setup`.
 
-Refer to our [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
+## Nodes
+
+This package contains the following nodes:
+
+### 1. Crawl4AI: Basic Crawler
+
+Crawls websites and extracts content as text, markdown, or HTML.
+
+- **Operations**:
+  - **Crawl Single URL**: Crawl a single URL and extract its content
+  - **Crawl Multiple URLs**: Crawl multiple URLs in parallel
+  - **Process Raw HTML**: Process provided HTML content without crawling
+
+### 2. Crawl4AI: Content Extractor
+
+Extracts structured data from websites using various strategies.
+
+- **Operations**:
+  - **CSS Selector Extractor**: Extract structured content using CSS selectors
+  - **LLM Extractor**: Extract structured content using LLM models
+  - **JSON Extractor**: Extract JSON data from a webpage
+
+## Credentials
+
+This package includes the following credentials:
+
+### Crawl4AI API
+
+Configure connection settings for Crawl4AI:
+
+- **Connection Mode**: Direct Python package or Docker client
+- **LLM Provider Settings**: Configure LLM providers for AI-powered extraction
+- **Cache Settings**: Configure caching for better performance
+
+## Usage Examples
+
+### Example 1: Basic Web Crawling
+
+1. Add **Crawl4AI: Basic Crawler** node
+2. Select **Crawl Single URL** operation
+3. Enter the URL to crawl
+4. Configure browser options as needed
+5. Execute the node to get the extracted content
+
+### Example 2: Extracting Product Data with CSS Selectors
+
+1. Add **Crawl4AI: Content Extractor** node
+2. Select **CSS Selector Extractor** operation
+3. Enter the URL of a product listing page
+4. Set the base selector to target each product element
+5. Add fields for title, price, description, etc.
+6. Execute the node to get structured product data
+
+### Example 3: Extracting Data with LLM
+
+1. Add **Crawl4AI: Content Extractor** node
+2. Select **LLM Extractor** operation
+3. Enter the URL and extraction instructions
+4. Define schema fields for the data you want to extract
+5. Configure the LLM provider
+6. Execute the node to get AI-extracted data
+
+## Resources
+
+- [Crawl4AI GitHub Repository](https://github.com/unclecode/crawl4ai)
+- [Crawl4AI Documentation](https://github.com/unclecode/crawl4ai/tree/main/docs)
+- [n8n Documentation](https://docs.n8n.io/)
 
 ## License
 
-[MIT](https://github.com/n8n-io/n8n-nodes-starter/blob/master/LICENSE.md)
+[MIT](LICENSE.md)
