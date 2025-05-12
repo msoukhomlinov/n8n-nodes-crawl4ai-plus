@@ -54,9 +54,14 @@ export function createLlmExtractionStrategy(
   return {
     type: 'LLMExtractionStrategy',
     params: {
+      llm_config: {
+        type: 'LLMConfig',
+        params: {
+          provider: provider || 'openai/gpt-4o',
+          api_token: apiKey,
+        },
+      },
       instruction,
-      provider: provider || 'openai/gpt-4o',
-      api_token: apiKey,
       schema: {
         type: 'dict',
         value: schema,
@@ -75,7 +80,7 @@ export function cleanExtractedData(data: IDataObject): IDataObject {
   if (!data) return {};
 
   const cleanedData: IDataObject = {};
-
+  
   Object.entries(data).forEach(([key, value]) => {
     if (typeof value === 'string') {
       cleanedData[key] = cleanText(value);
@@ -96,17 +101,4 @@ export function cleanExtractedData(data: IDataObject): IDataObject {
   });
 
   return cleanedData;
-}
-/**
- * Clean text by removing extra whitespace and normalizing spaces
- * @param value Text to clean
- * @returns Cleaned text
- */
-function cleanText(value: string): string {
-	if (!value) return '';
-
-	return value
-		.trim()                         // Remove leading/trailing whitespace
-		.replace(/\s+/g, ' ')          // Replace multiple spaces with single space
-		.replace(/[\r\n\t]+/g, ' ')    // Replace newlines and tabs with space
 }

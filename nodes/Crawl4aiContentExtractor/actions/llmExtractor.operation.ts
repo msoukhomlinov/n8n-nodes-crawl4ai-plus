@@ -206,10 +206,12 @@ export const description: INodeProperties[] = [
 					{
 						name: 'Anthropic Claude 3 Sonnet',
 						value: 'anthropic/claude-3-sonnet',
+						description: 'Anthropic Claude 3 Sonnet',
 					},
 					{
 						name: 'Groq Llama 3 70B',
 						value: 'groq/llama3-70b-8192',
+						description: 'Groq Llama 3 70B',
 					},
 					{
 						name: 'Ollama Llama 3',
@@ -219,10 +221,12 @@ export const description: INodeProperties[] = [
 					{
 						name: 'OpenAI GPT-3.5 Turbo',
 						value: 'openai/gpt-3.5-turbo',
+						description: 'OpenAI GPT-3.5 Turbo',
 					},
 					{
 						name: 'OpenAI GPT-4o',
 						value: 'openai/gpt-4o',
+						description: 'OpenAI GPT-4o',
 					},
 				],
 				default: 'openai/gpt-4o',
@@ -424,6 +428,15 @@ export async function execute(
 			// Get crawler instance
 			const crawler = await getCrawl4aiClient(this);
 
+			// Prepare extra arguments for LLM
+			const extraArgs: any = {};
+			if (llmOptions.temperature !== undefined) {
+				extraArgs.temperature = llmOptions.temperature;
+			}
+			if (llmOptions.maxTokens !== undefined) {
+				extraArgs.max_tokens = llmOptions.maxTokens;
+			}
+
 			// Run the extraction
 			const result = await crawler.arun(url, {
 				browserConfig,
@@ -431,10 +444,7 @@ export async function execute(
 				cacheMode: options.cacheMode || 'enabled',
 				jsCode: browserOptions.jsCode,
 				cssSelector: options.cssSelector,
-				extraArgs: {
-					temperature: llmOptions.temperature || 0,
-					maxTokens: llmOptions.maxTokens || 2000,
-				},
+				extraArgs,
 			});
 
 			// Parse extracted JSON

@@ -1,4 +1,5 @@
-import axios, { AxiosInstance } from 'axios';
+import { IExecuteFunctions } from 'n8n-workflow';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Crawl4aiApiCredentials, CrawlerRunConfig, CrawlResult } from './interfaces';
 
 /**
@@ -17,8 +18,8 @@ export class Crawl4aiClient {
    * Create and configure an Axios instance for API communication
    */
   private createApiClient(): AxiosInstance {
-    const baseURL = this.credentials.connectionMode === 'docker'
-      ? this.credentials.dockerUrl
+    const baseURL = this.credentials.connectionMode === 'docker' 
+      ? this.credentials.dockerUrl 
       : 'http://localhost:11235'; // Default fallback for direct mode
 
     const client = axios.create({
@@ -35,6 +36,36 @@ export class Crawl4aiClient {
         client.defaults.headers.common['Authorization'] = `Basic ${auth}`;
       }
     }
+
+    // Add request/response interceptors for debugging
+    client.interceptors.request.use(
+      (config) => {
+        console.log('Crawl4AI Request:', {
+          url: config.url,
+          method: config.method,
+          data: config.data,
+        });
+        return config;
+      },
+      (error) => {
+        console.error('Request error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    client.interceptors.response.use(
+      (response) => {
+        console.log('Crawl4AI Response:', {
+          status: response.status,
+          data: response.data,
+        });
+        return response;
+      },
+      (error) => {
+        console.error('Response error:', error.response?.data || error.message);
+        return Promise.reject(error);
+      }
+    );
 
     return client;
   }
@@ -145,15 +176,22 @@ export class Crawl4aiClient {
    */
   async arun(url: string, options: any): Promise<CrawlResult> {
     try {
-      // Prepare the crawler config with extraction strategy
-      const crawlerConfig = {
-        ...this.formatCrawlerConfig(options.browserConfig || {}),
+      // Prepare the crawler config
+      const crawlerConfig: any = {
         cache_mode: options.cacheMode || 'enabled',
         js_code: options.jsCode,
         css_selector: options.cssSelector,
-        extraction_strategy: options.extractionStrategy,
-        ...options.extraArgs,
       };
+
+      // Add extraction strategy if provided
+      if (options.extractionStrategy) {
+        crawlerConfig.extraction_strategy = options.extractionStrategy;
+      }
+
+      // Add extra arguments if provided
+      if (options.extraArgs) {
+        Object.assign(crawlerConfig, options.extraArgs);
+      }
 
       // Prepare the full request
       const requestBody = {
@@ -164,6 +202,8 @@ export class Crawl4aiClient {
           params: crawlerConfig,
         },
       };
+
+      console.log('Full request body:', JSON.stringify(requestBody, null, 2));
 
       const response = await this.apiClient.post('/crawl', requestBody);
 
@@ -177,12 +217,13 @@ export class Crawl4aiClient {
         success: false,
         error_message: 'No result returned from Crawl4AI API',
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error during Crawl4AI API call:', error);
+      console.error('Error response:', error.response?.data);
       return {
         url,
         success: false,
-        error_message: error instanceof Error ? error.message : 'Unknown error occurred',
+        error_message: error.response?.data?.detail || error.message || 'Unknown error occurred',
       };
     }
   }
@@ -200,36 +241,40 @@ export class Crawl4aiClient {
           type: 'dict',
           value: config.viewport,
         } : { type: 'dict', value: { width: 1280, height: 800 } },
-        // timeout is not a valid BrowserConfig parameter - moved to crawler config
+        timeout: config.timeout || 30000,
         user_agent: config.userAgent,
       },
     };
   }
 
   /**
-   * Format crawler config for the API
+   * Format crawler config for the API (for basic operations)
    */
   private formatCrawlerConfig(config: CrawlerRunConfig): any {
+    const params: any = {
+      cache_mode: config.cacheMode || 'enabled',
+      stream: config.streamEnabled || false,
+      page_timeout: config.pageTimeout || 30000,
+      request_timeout: config.requestTimeout || 30000,
+      js_code: config.jsCode,
+      js_only: config.jsOnly || false,
+      css_selector: config.cssSelector,
+      excluded_tags: config.excludedTags || [],
+      exclude_external_links: config.excludeExternalLinks || false,
+      check_robots_txt: config.checkRobotsTxt || false,
+      word_count_threshold: config.wordCountThreshold || 0,
+      session_id: config.sessionId,
+      max_retries: config.maxRetries || 3,
+    };
+
+    // Add extraction strategy if present
+    if (config.extractionStrategy) {
+      params.extraction_strategy = config.extractionStrategy;
+    }
+
     return {
       type: 'CrawlerRunConfig',
-      params: {
-        cache_mode: config.cacheMode || 'enabled',
-        stream: config.streamEnabled || false,
-        page_timeout: config.pageTimeout || 30000,
-        request_timeout: config.requestTimeout || 30000,
-        js_code: config.jsCode,
-        js_only: config.jsOnly || false,
-        css_selector: config.cssSelector,
-        excluded_tags: config.excludedTags || [],
-        exclude_external_links: config.excludeExternalLinks || false,
-        check_robots_txt: config.checkRobotsTxt || false,
-        word_count_threshold: config.wordCountThreshold || 0,
-        session_id: config.sessionId,
-        max_retries: config.maxRetries || 3,
-        extraction_strategy: config.extractionStrategy,
-        // Add timeout here if it was specified in the config
-        ...(config.timeout ? { timeout: config.timeout } : {}),
-      },
+      params,
     };
   }
 
