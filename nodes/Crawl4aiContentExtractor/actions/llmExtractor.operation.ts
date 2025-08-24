@@ -50,6 +50,30 @@ export const description: INodeProperties[] = [
 		},
 	},
 	{
+		displayName: 'Schema Input Mode',
+		name: 'schemaMode',
+		type: 'options',
+		options: [
+			{
+				name: 'Simple Fields',
+				value: 'simple',
+				description: 'Define schema using individual field inputs',
+			},
+			{
+				name: 'Advanced JSON',
+				value: 'advanced',
+				description: 'Define schema using JSON editor',
+			},
+		],
+		default: 'simple',
+		description: 'Choose how to define the extraction schema',
+		displayOptions: {
+			show: {
+				operation: ['llmExtractor'],
+			},
+		},
+	},
+	{
 		displayName: 'Schema Fields',
 		name: 'schemaFields',
 		placeholder: 'Add Schema Field',
@@ -62,6 +86,7 @@ export const description: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				operation: ['llmExtractor'],
+				schemaMode: ['simple'],
 			},
 		},
 		options: [
@@ -125,6 +150,35 @@ export const description: INodeProperties[] = [
 				],
 			},
 		],
+	},
+	{
+		displayName: 'JSON Schema',
+		name: 'jsonSchema',
+		type: 'json',
+		default: {
+			"type": "object",
+			"properties": {
+				"title": {
+					"type": "string",
+					"description": "Main page title"
+				},
+				"description": {
+					"type": "string", 
+					"description": "Page description or summary"
+				}
+			},
+			"required": ["title"]
+		},
+		description: 'JSON schema defining the structure of data to extract',
+		displayOptions: {
+			show: {
+				operation: ['llmExtractor'],
+				schemaMode: ['advanced'],
+			},
+		},
+		typeOptions: {
+			rows: 10,
+		},
 	},
 	{
 		displayName: 'Browser Options',
@@ -356,7 +410,9 @@ export async function execute(
 			// Get parameters for the current item
 			const url = this.getNodeParameter('url', i, '') as string;
 			const instruction = this.getNodeParameter('instruction', i, '') as string;
+			const schemaMode = this.getNodeParameter('schemaMode', i, 'simple') as string;
 			const schemaFieldsValues = this.getNodeParameter('schemaFields.fieldsValues', i, []) as IDataObject[];
+			const jsonSchema = this.getNodeParameter('jsonSchema', i, {}) as IDataObject;
 			const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
 			const llmOptions = this.getNodeParameter('llmOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
@@ -373,33 +429,56 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'Extraction instructions cannot be empty.', { itemIndex: i });
 			}
 
-			if (!schemaFieldsValues || schemaFieldsValues.length === 0) {
-				throw new NodeOperationError(this.getNode(), 'At least one schema field must be defined.', { itemIndex: i });
+			// Validate schema based on mode
+			if (schemaMode === 'simple') {
+				if (!schemaFieldsValues || schemaFieldsValues.length === 0) {
+					throw new NodeOperationError(this.getNode(), 'At least one schema field must be defined.', { itemIndex: i });
+				}
+			} else if (schemaMode === 'advanced') {
+				if (!jsonSchema || Object.keys(jsonSchema).length === 0) {
+					throw new NodeOperationError(this.getNode(), 'JSON schema cannot be empty.', { itemIndex: i });
+				}
 			}
 
-			// Prepare LLM schema
-			const schemaProperties: Record<string, LlmSchemaField> = {};
-			const requiredFields: string[] = [];
+			// Prepare LLM schema based on mode
+			let schema: LlmSchema;
 
-			schemaFieldsValues.forEach(field => {
-				const fieldName = field.name as string;
-				schemaProperties[fieldName] = {
-					name: fieldName,
-					type: field.fieldType as string,
-					description: field.description as string || undefined,
+			if (schemaMode === 'simple') {
+				// Build schema from individual fields (current logic)
+				const schemaProperties: Record<string, LlmSchemaField> = {};
+				const requiredFields: string[] = [];
+
+				schemaFieldsValues.forEach(field => {
+					const fieldName = field.name as string;
+					schemaProperties[fieldName] = {
+						name: fieldName,
+						type: field.fieldType as string,
+						description: field.description as string || undefined,
+					};
+
+					if (field.required === true) {
+						requiredFields.push(fieldName);
+					}
+				});
+
+				schema = {
+					title: 'ExtractedData',
+					type: 'object',
+					properties: schemaProperties,
+					required: requiredFields.length > 0 ? requiredFields : undefined,
 				};
-
-				if (field.required === true) {
-					requiredFields.push(fieldName);
+			} else {
+				// Use JSON schema directly (advanced mode)
+				schema = jsonSchema as unknown as LlmSchema;
+				
+				// Ensure basic structure is present
+				if (!schema.type) {
+					schema.type = 'object';
 				}
-			});
-
-			const schema: LlmSchema = {
-				title: 'ExtractedData',
-				type: 'object',
-				properties: schemaProperties,
-				required: requiredFields.length > 0 ? requiredFields : undefined,
-			};
+				if (!schema.title) {
+					schema.title = 'ExtractedData';
+				}
+			}
 
 			// Determine LLM provider
 			let provider: string;
