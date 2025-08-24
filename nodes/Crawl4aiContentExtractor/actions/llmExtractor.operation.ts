@@ -401,9 +401,169 @@ export const description: INodeProperties[] = [
 				placeholder: 'article.content',
 				description: 'CSS selector to focus extraction on a specific part of the page (leave empty for full page)',
 			},
+			{
+				displayName: 'Array Handling',
+				name: 'arrayHandling',
+				type: 'options',
+				options: [
+					{
+						name: 'Keep As Object (Default)',
+						value: 'none',
+						description: 'Maintain current behavior - arrays become indexed properties',
+					},
+					{
+						name: 'Split Top-Level Arrays',
+						value: 'topLevel',
+						description: 'Create separate items only for arrays at root level',
+					},
+					{
+						name: 'Split All Object Arrays',
+						value: 'allObjects',
+						description: 'Split any array containing objects, preserve primitive arrays',
+					},
+					{
+						name: 'Smart Split',
+						value: 'smart',
+						description: 'Automatically detect main content arrays and split intelligently',
+					},
+				],
+				default: 'none',
+				description: 'How to handle arrays in the extracted data',
+			},
 		],
 	},
 ];
+
+// --- Array Handling Helper Functions ---
+
+/**
+ * Detect if a value is an array of objects (vs array of primitives)
+ */
+// function isObjectArray(value: any): boolean {
+// 	return Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null;
+// }
+
+/**
+ * Detect if a value is an array of primitives
+ */
+// function isPrimitiveArray(value: any): boolean {
+// 	return Array.isArray(value) && value.length > 0 && typeof value[0] !== 'object';
+// }
+
+/**
+ * Get numeric keys from an object (indicates flattened arrays)
+ */
+function getNumericKeys(obj: IDataObject): string[] {
+	return Object.keys(obj).filter(key => /^\d+$/.test(key)).sort((a, b) => parseInt(a) - parseInt(b));
+}
+
+/**
+ * Get non-numeric keys (metadata) from an object
+ */
+function getMetadataKeys(obj: IDataObject): string[] {
+	return Object.keys(obj).filter(key => !/^\d+$/.test(key));
+}
+
+/**
+ * Detect main content array using heuristics
+ */
+function detectMainArray(obj: IDataObject): string | null {
+	const numericKeys = getNumericKeys(obj);
+	if (numericKeys.length === 0) return null;
+
+	// If all numeric keys are objects, this is likely the main content
+	const firstItem = obj[numericKeys[0]];
+	if (typeof firstItem === 'object' && firstItem !== null) {
+		// Check complexity - objects with multiple properties are likely main content
+		const keyCount = Object.keys(firstItem).length;
+		if (keyCount >= 2) {
+			return 'numeric'; // Indicates numeric keys contain main content
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Process data according to array handling strategy
+ */
+function processArrayHandling(
+	data: IDataObject,
+	strategy: string,
+	baseMetadata: IDataObject
+): IDataObject[] {
+	if (strategy === 'none') {
+		return [data];
+	}
+
+	const numericKeys = getNumericKeys(data);
+	const metadata = getMetadataKeys(data);
+	const baseData: IDataObject = {};
+
+	// Preserve metadata
+	metadata.forEach(key => {
+		baseData[key] = data[key];
+	});
+
+	// Add additional metadata
+	Object.entries(baseMetadata).forEach(([key, value]) => {
+		baseData[key] = value;
+	});
+
+	if (numericKeys.length === 0) {
+		// No arrays detected, return as single item
+		return [data];
+	}
+
+	switch (strategy) {
+		case 'topLevel':
+			// Split all top-level numeric keys
+			return numericKeys.map(key => {
+				const itemData = data[key];
+				if (typeof itemData === 'object' && itemData !== null) {
+					return {
+						...baseData,
+						...itemData
+					};
+				}
+				return {
+					...baseData,
+					value: itemData
+				};
+			});
+
+		case 'allObjects':
+			// Only split if items are objects
+			const firstItem = data[numericKeys[0]];
+			if (typeof firstItem === 'object' && firstItem !== null) {
+				return numericKeys.map(key => {
+					const itemData = data[key];
+					return {
+						...baseData,
+						...(typeof itemData === 'object' && itemData !== null ? itemData : { value: itemData })
+					};
+				});
+			}
+			return [data]; // Keep as single item if not objects
+
+		case 'smart':
+			// Use heuristics to determine if this should be split
+			const mainArray = detectMainArray(data);
+			if (mainArray === 'numeric') {
+				return numericKeys.map(key => {
+					const itemData = data[key];
+					return {
+						...baseData,
+						...(typeof itemData === 'object' && itemData !== null ? itemData : { value: itemData })
+					};
+				});
+			}
+			return [data]; // Keep as single item
+
+		default:
+			return [data];
+	}
+}
 
 // --- Execution Logic ---
 export async function execute(
@@ -436,6 +596,7 @@ export async function execute(
 			const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
 			const llmOptions = this.getNodeParameter('llmOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+			const arrayHandling = options.arrayHandling as string || 'none';
 
 			if (!url) {
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
@@ -579,10 +740,19 @@ export async function execute(
 				options.includeFullText as boolean
 			);
 
-			// Add the result to the output array
-			allResults.push({
-				json: formattedResult,
-				pairedItem: { item: i },
+			// Apply array handling strategy
+			const processedResults = processArrayHandling(
+				formattedResult,
+				arrayHandling,
+				{}
+			);
+
+			// Add processed results to output array
+			processedResults.forEach(processedResult => {
+				allResults.push({
+					json: processedResult,
+					pairedItem: { item: i },
+				});
 			});
 
 		} catch (error) {

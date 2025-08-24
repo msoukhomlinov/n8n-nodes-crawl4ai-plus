@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-crawl4ai-fork",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "n8n nodes for Crawl4AI v0.7.4+ web crawler and data extraction (maintained fork)",
   "keywords": [
     "n8n",
