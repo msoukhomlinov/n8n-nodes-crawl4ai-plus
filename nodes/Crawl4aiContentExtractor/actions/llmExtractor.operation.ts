@@ -154,22 +154,41 @@ export const description: INodeProperties[] = [
 	{
 		displayName: 'JSON Schema',
 		name: 'jsonSchema',
-		type: 'json',
-		default: {
-			"type": "object",
-			"properties": {
-				"title": {
-					"type": "string",
-					"description": "Main page title"
-				},
-				"description": {
-					"type": "string", 
-					"description": "Page description or summary"
-				}
-			},
-			"required": ["title"]
-		},
-		description: 'JSON schema defining the structure of data to extract',
+		type: 'string',
+		default: `{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Main page title"
+    },
+    "description": {
+      "type": "string", 
+      "description": "Page description or summary"
+    }
+  },
+  "required": ["title"]
+}`,
+		placeholder: `{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Main page title"
+    },
+    "price": {
+      "type": "number",
+      "description": "Product price"
+    },
+    "features": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of product features"
+    }
+  },
+  "required": ["title", "price"]
+}`,
+		description: 'JSON schema defining the structure of data to extract. Must be valid JSON format.',
 		displayOptions: {
 			show: {
 				operation: ['llmExtractor'],
@@ -177,7 +196,8 @@ export const description: INodeProperties[] = [
 			},
 		},
 		typeOptions: {
-			rows: 10,
+			rows: 12,
+			alwaysOpenEditWindow: false,
 		},
 	},
 	{
@@ -435,7 +455,7 @@ export async function execute(
 					throw new NodeOperationError(this.getNode(), 'At least one schema field must be defined.', { itemIndex: i });
 				}
 			} else if (schemaMode === 'advanced') {
-				if (!jsonSchema || Object.keys(jsonSchema).length === 0) {
+				if (!jsonSchema || (jsonSchema as unknown as string).trim() === '') {
 					throw new NodeOperationError(this.getNode(), 'JSON schema cannot be empty.', { itemIndex: i });
 				}
 			}
@@ -469,17 +489,18 @@ export async function execute(
 				};
 			} else {
 				// Use JSON schema directly (advanced mode)
-				let parsedSchema: any;
+				// jsonSchema is always a string now (from textarea)
+				const jsonSchemaString = jsonSchema as unknown as string;
 				
-				// Handle both string and object inputs
-				if (typeof jsonSchema === 'string') {
-					try {
-						parsedSchema = JSON.parse(jsonSchema);
-					} catch (error) {
-						throw new NodeOperationError(this.getNode(), `Invalid JSON schema: ${(error as Error).message}`, { itemIndex: i });
-					}
-				} else {
-					parsedSchema = jsonSchema;
+				if (!jsonSchemaString || jsonSchemaString.trim() === '') {
+					throw new NodeOperationError(this.getNode(), 'JSON schema cannot be empty in advanced mode.', { itemIndex: i });
+				}
+				
+				let parsedSchema: any;
+				try {
+					parsedSchema = JSON.parse(jsonSchemaString.trim());
+				} catch (error) {
+					throw new NodeOperationError(this.getNode(), `Invalid JSON schema: ${(error as Error).message}`, { itemIndex: i });
 				}
 				
 				// Validate that parsedSchema is an object
