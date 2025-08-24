@@ -469,7 +469,25 @@ export async function execute(
 				};
 			} else {
 				// Use JSON schema directly (advanced mode)
-				schema = jsonSchema as unknown as LlmSchema;
+				let parsedSchema: any;
+				
+				// Handle both string and object inputs
+				if (typeof jsonSchema === 'string') {
+					try {
+						parsedSchema = JSON.parse(jsonSchema);
+					} catch (error) {
+						throw new NodeOperationError(this.getNode(), `Invalid JSON schema: ${(error as Error).message}`, { itemIndex: i });
+					}
+				} else {
+					parsedSchema = jsonSchema;
+				}
+				
+				// Validate that parsedSchema is an object
+				if (!parsedSchema || typeof parsedSchema !== 'object') {
+					throw new NodeOperationError(this.getNode(), 'JSON schema must be a valid object', { itemIndex: i });
+				}
+				
+				schema = parsedSchema as LlmSchema;
 				
 				// Ensure basic structure is present
 				if (!schema.type) {
