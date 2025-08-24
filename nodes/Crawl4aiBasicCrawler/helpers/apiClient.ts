@@ -1,5 +1,4 @@
-import { IExecuteFunctions } from 'n8n-workflow';
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { Crawl4aiApiCredentials, CrawlerRunConfig, CrawlResult } from './interfaces';
 
 /**

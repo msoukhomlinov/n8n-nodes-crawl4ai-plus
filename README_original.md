@@ -1,6 +1,4 @@
-# Crawl4AI for n8n (Maintained Fork)
-
-> **Note:** This is a maintained fork of the original [n8n-nodes-crawl4ai](https://github.com/golfamigo/n8n-nodes-crawl4j) project by Heictor Hsiao. The original author is no longer maintaining the project, so this fork continues development and bug fixes. All original credits remain with the original author.
+# Crawl4AI for n8n
 
 This project provides n8n integration for Crawl4AI, a powerful web crawling and data extraction tool. It consists of two main nodes:
 

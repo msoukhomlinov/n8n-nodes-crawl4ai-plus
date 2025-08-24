@@ -1,7 +1,7 @@
 {
-  "name": "n8n-nodes-crawl4ai-fork",
-  "version": "1.8.1",
-  "description": "n8n nodes for Crawl4AI v0.7.4+ web crawler and data extraction (maintained fork)",
+  "name": "n8n-nodes-crawl4ai",
+  "version": "0.2.0",
+  "description": "n8n nodes for Crawl4AI v0.7.4+ web crawler and data extraction",
   "keywords": [
     "n8n",
     "n8n-community-node-package",
@@ -11,23 +11,18 @@
     "scraping"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/qmatiaslopez/n8n-nodes-crawl4j",
+  "homepage": "https://github.com/golfamigo/n8n-nodes-crawl4j",
   "author": {
     "name": "Heictor Hsiao",
     "email": "amigo.golf@gmail.com"
   },
-  "maintainers": [
-    {
-      "name": "Matias Lopez",
-      "email": "hola@mlopez.me"
-    }
-  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/qmatiaslopez/n8n-nodes-crawl4j.git"
+    "url": "https://github.com/golfamigo/n8n-nodes-crawl4j.git"
   },
   "main": "index.js",
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
     "build": "rimraf ./dist && tsc && gulp build:icons",
     "dev": "tsc --watch",
     "format": "prettier --write \"nodes/**/*.ts\" \"credentials/**/*.ts\"",

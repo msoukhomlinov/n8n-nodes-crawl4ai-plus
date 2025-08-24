@@ -9,6 +9,7 @@ export {
 } from '../../Crawl4aiBasicCrawler/helpers/utils';
 
 import { IDataObject } from 'n8n-workflow';
+import { cleanText } from '../../Crawl4aiBasicCrawler/helpers/utils';
 import { CssSelectorSchema, LlmSchema } from './interfaces';
 
 /**
