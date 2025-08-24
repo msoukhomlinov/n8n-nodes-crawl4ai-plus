@@ -87,6 +87,13 @@ export const description: INodeProperties[] = [
         default: 1280,
         description: 'The width of the browser viewport',
       },
+      {
+        displayName: 'Enable Stealth Mode',
+        name: 'enableStealth',
+        type: 'boolean',
+        default: false,
+        description: 'Enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+      },
     ],
   },
   {

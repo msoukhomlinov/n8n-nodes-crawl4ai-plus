@@ -263,7 +263,7 @@ export class Crawl4aiClient {
         light_mode: false,
         extra_args: [],
         host: "localhost",
-        enable_stealth: false,
+        enable_stealth: (config as any).enable_stealth || false,
       },
     };
   }
