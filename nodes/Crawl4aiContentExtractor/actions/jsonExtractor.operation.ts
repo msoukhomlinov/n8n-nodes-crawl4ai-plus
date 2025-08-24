@@ -99,13 +99,6 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
-				displayName: 'Headless Mode',
-				name: 'headless',
-				type: 'boolean',
-				default: true,
-				description: 'Whether to run browser in headless mode',
-			},
-			{
 				displayName: 'Enable JavaScript',
 				name: 'javaScriptEnabled',
 				type: 'boolean',
@@ -113,11 +106,18 @@ export const description: INodeProperties[] = [
 				description: 'Whether to enable JavaScript execution',
 			},
 			{
-				displayName: 'Timeout (MS)',
-				name: 'timeout',
-				type: 'number',
-				default: 30000,
-				description: 'Maximum time to wait for the browser to load the page',
+				displayName: 'Enable Stealth Mode',
+				name: 'enableStealth',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+			},
+			{
+				displayName: 'Headless Mode',
+				name: 'headless',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to run browser in headless mode',
 			},
 			{
 				displayName: 'JavaScript Code',
@@ -129,6 +129,13 @@ export const description: INodeProperties[] = [
 				default: '',
 				placeholder: 'window.scrollTo(0, document.body.scrollHeight);',
 				description: 'JavaScript code to execute before extraction',
+			},
+			{
+				displayName: 'Timeout (MS)',
+				name: 'timeout',
+				type: 'number',
+				default: 30000,
+				description: 'Maximum time to wait for the browser to load the page',
 			},
 		],
 	},

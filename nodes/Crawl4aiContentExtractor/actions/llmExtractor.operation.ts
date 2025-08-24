@@ -220,6 +220,13 @@ export const description: INodeProperties[] = [
 				description: 'Whether to enable JavaScript execution',
 			},
 			{
+				displayName: 'Enable Stealth Mode',
+				name: 'enableStealth',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+			},
+			{
 				displayName: 'Headless Mode',
 				name: 'headless',
 				type: 'boolean',
