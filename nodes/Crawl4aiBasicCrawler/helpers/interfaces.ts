@@ -30,42 +30,139 @@ export interface Crawl4aiNodeOptions extends IDataObject {
 
 // Browser configuration interface
 export interface BrowserConfig {
+  browser_type?: string;
   headless?: boolean;
-  javaScriptEnabled?: boolean;
+  browser_mode?: string;
+  use_managed_browser?: boolean;
+  cdp_url?: string;
+  debugging_port?: number;
+  use_persistent_context?: boolean;
+  user_data_dir?: string;
+  chrome_channel?: string;
+  channel?: string;
+  proxy?: string;
+  viewport_width?: number;
+  viewport_height?: number;
   viewport?: {
     width: number;
     height: number;
   };
-  timeout?: number;
-  userAgent?: string;
+  accept_downloads?: boolean;
+  downloads_path?: string;
+  storage_state?: string | object;
+  ignore_https_errors?: boolean;
+  java_script_enabled?: boolean;
+  javaScriptEnabled?: boolean; // Backward compatibility
+  cookies?: Array<object>;
+  headers?: object;
+  user_agent?: string;
+  userAgent?: string; // Backward compatibility
+  user_agent_mode?: string;
+  user_agent_generator_config?: object;
+  text_mode?: boolean;
+  light_mode?: boolean;
+  extra_args?: Array<string>;
+  host?: string;
+  enable_stealth?: boolean;
 }
 
 // Crawler run configuration interface
 export interface CrawlerRunConfig {
+  // Cache and Performance
   cacheMode?: 'enabled' | 'bypass' | 'only';
   streamEnabled?: boolean;
+  
+  // Timing and Timeouts
   pageTimeout?: number;
   requestTimeout?: number;
+  timeout?: number; // Legacy support
+  waitUntil?: string;
+  waitFor?: string;
+  waitForTimeout?: number;
+  waitForImages?: boolean;
+  delayBeforeReturnHtml?: number;
+  
+  // JavaScript and Page Interaction
   jsCode?: string | string[];
   jsOnly?: boolean;
+  ignoreBodyVisibility?: boolean;
+  scanFullPage?: boolean;
+  scrollDelay?: number;
+  maxScrollSteps?: number;
+  processIframes?: boolean;
+  removeOverlayElements?: boolean;
+  simulateUser?: boolean;
+  overrideNavigator?: boolean;
+  magic?: boolean;
+  adjustViewportToContent?: boolean;
+  
+  // Content Selection and Filtering
   cssSelector?: string;
+  targetElements?: string[];
   excludedTags?: string[];
-  excludeExternalLinks?: boolean;
-  checkRobotsTxt?: boolean;
+  excludedSelector?: string;
+  keepDataAttributes?: boolean;
+  keepAttrs?: string[];
+  removeForms?: boolean;
+  onlyText?: boolean;
   wordCountThreshold?: number;
+  
+  // Links and External Resources
+  excludeExternalLinks?: boolean;
+  excludeInternalLinks?: boolean;
+  excludeSocialMediaLinks?: boolean;
+  excludeDomains?: string[];
+  scoreLinks?: boolean;
+  
+  // Media and Screenshots
+  screenshot?: boolean;
+  screenshotWaitFor?: number;
+  screenshotHeightThreshold?: number;
+  pdf?: boolean;
+  imageDescriptionMinWordThreshold?: number;
+  imageScoreThreshold?: number;
+  excludeExternalImages?: boolean;
+  excludeAllImages?: boolean;
+  tableScoreThreshold?: number;
+  
+  // Network and Connection
+  checkRobotsTxt?: boolean;
+  userAgent?: string;
+  userAgentMode?: string;
+  userAgentGeneratorConfig?: object;
+  method?: string;
+  
+  // Session and Context
   sessionId?: string;
+  sharedData?: object;
   maxRetries?: number;
-  // Additional options
+  
+  // Browser Configuration (for backward compatibility)
   viewport?: {
     width: number;
     height: number;
   };
   headless?: boolean;
   javaScriptEnabled?: boolean;
-  timeout?: number;
-  userAgent?: string;
-  // Extraction strategy
+  
+  // Logging and Debug
+  verbose?: boolean;
+  logConsole?: boolean;
+  captureNetworkRequests?: boolean;
+  captureConsoleMessages?: boolean;
+  
+  // Extraction and Processing
   extractionStrategy?: any;
+  chunkingStrategy?: any;
+  markdownGenerator?: any;
+  scrapingStrategy?: any;
+  proxyConfig?: object;
+  
+  // Advanced Features
+  linkPreviewConfig?: object;
+  virtualScrollConfig?: object;
+  deepCrawlStrategy?: object;
+  experimental?: object;
 }
 
 // Crawl result interface

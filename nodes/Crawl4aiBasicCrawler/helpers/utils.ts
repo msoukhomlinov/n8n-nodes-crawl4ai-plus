@@ -25,16 +25,38 @@ export async function getCrawl4aiClient(
  * @returns Browser configuration for Crawl4AI
  */
 export function createBrowserConfig(options: IDataObject): BrowserConfig {
-  return {
+  const config: BrowserConfig = {
+    browser_type: options.browserType ? String(options.browserType) : 'chromium',
     headless: options.headless !== false,
-    javaScriptEnabled: options.javaScriptEnabled === true,
-    viewport: {
-      width: options.viewportWidth ? Number(options.viewportWidth) : 1280,
-      height: options.viewportHeight ? Number(options.viewportHeight) : 800,
-    },
-    timeout: options.timeout ? Number(options.timeout) : 30000,
-    userAgent: options.userAgent ? String(options.userAgent) : undefined,
+    browser_mode: options.browserMode ? String(options.browserMode) : 'dedicated',
+    use_managed_browser: options.useManagedBrowser === true,
+    debugging_port: options.debuggingPort ? Number(options.debuggingPort) : 9222,
+    chrome_channel: options.chromeChannel ? String(options.chromeChannel) : 'chromium',
+    channel: options.channel ? String(options.channel) : 'chromium',
+    viewport_width: options.viewportWidth ? Number(options.viewportWidth) : 1080,
+    viewport_height: options.viewportHeight ? Number(options.viewportHeight) : 600,
+    java_script_enabled: options.javaScriptEnabled !== false,
+    user_agent: options.userAgent ? String(options.userAgent) : "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/116.0.0.0 Safari/537.36",
+    ignore_https_errors: options.ignoreHttpsErrors !== false,
+    cookies: options.cookies ? Array.isArray(options.cookies) ? options.cookies : [] : [],
+    headers: options.headers ? (typeof options.headers === 'object' ? options.headers : {}) : {},
+    text_mode: options.textMode === true,
+    light_mode: options.lightMode === true,
+    extra_args: options.extraArgs ? Array.isArray(options.extraArgs) ? options.extraArgs : [] : [],
+    enable_stealth: options.enableStealth === true,
   };
+
+  // Add viewport object for backward compatibility
+  config.viewport = {
+    width: config.viewport_width || 1080,
+    height: config.viewport_height || 600,
+  };
+
+  // Add backward compatibility properties
+  config.javaScriptEnabled = config.java_script_enabled;
+  config.userAgent = config.user_agent;
+
+  return config;
 }
 
 /**

@@ -235,14 +235,36 @@ export class Crawl4aiClient {
     return {
       type: 'BrowserConfig',
       params: {
+        browser_type: 'chromium',
         headless: config.headless !== false,
+        browser_mode: 'dedicated',
+        use_managed_browser: false,
+        cdp_url: null,
+        debugging_port: 9222,
+        use_persistent_context: false,
+        user_data_dir: null,
+        chrome_channel: 'chromium',
+        channel: 'chromium',
+        proxy: null,
+        viewport_width: config.viewport?.width || 1080,
+        viewport_height: config.viewport?.height || 600,
+        accept_downloads: false,
+        downloads_path: null,
+        storage_state: null,
+        ignore_https_errors: true,
         java_script_enabled: config.javaScriptEnabled !== false,
-        viewport: config.viewport ? {
-          type: 'dict',
-          value: config.viewport,
-        } : { type: 'dict', value: { width: 1280, height: 800 } },
-        timeout: config.timeout || 30000,
-        user_agent: config.userAgent,
+        sleep_on_close: false,
+        verbose: true,
+        cookies: [],
+        headers: {},
+        user_agent: config.userAgent || "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/116.0.0.0 Safari/537.36",
+        user_agent_mode: "",
+        user_agent_generator_config: {},
+        text_mode: false,
+        light_mode: false,
+        extra_args: [],
+        host: "localhost",
+        enable_stealth: false,
       },
     };
   }
@@ -254,8 +276,8 @@ export class Crawl4aiClient {
     const params: any = {
       cache_mode: config.cacheMode || 'enabled',
       stream: config.streamEnabled || false,
-      page_timeout: config.pageTimeout || 30000,
-      request_timeout: config.requestTimeout || 30000,
+      page_timeout: config.pageTimeout || config.timeout || 30000, // Support both pageTimeout and legacy timeout
+      wait_until: 'domcontentloaded',
       js_code: config.jsCode,
       js_only: config.jsOnly || false,
       css_selector: config.cssSelector,
@@ -264,7 +286,12 @@ export class Crawl4aiClient {
       check_robots_txt: config.checkRobotsTxt || false,
       word_count_threshold: config.wordCountThreshold || 0,
       session_id: config.sessionId,
-      max_retries: config.maxRetries || 3,
+      only_text: false,
+      scan_full_page: false,
+      remove_overlay_elements: false,
+      simulate_user: false,
+      override_navigator: false,
+      magic: false,
     };
 
     // Add extraction strategy if present
