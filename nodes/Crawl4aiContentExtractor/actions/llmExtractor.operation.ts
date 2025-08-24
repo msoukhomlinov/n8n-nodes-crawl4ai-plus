@@ -363,45 +363,6 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
-				displayName: 'Cache Mode',
-				name: 'cacheMode',
-				type: 'options',
-				options: [
-					{
-						name: 'Enabled (Read/Write)',
-						value: 'enabled',
-						description: 'Use cache if available, save new results to cache',
-					},
-					{
-						name: 'Bypass (Force Fresh)',
-						value: 'bypass',
-						description: 'Ignore cache, always fetch fresh content',
-					},
-					{
-						name: 'Only (Read Only)',
-						value: 'only',
-						description: 'Only use cache, do not make new requests',
-					},
-				],
-				default: 'enabled',
-				description: 'How to use the cache when crawling',
-			},
-			{
-				displayName: 'Include Original Text',
-				name: 'includeFullText',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to include the original webpage text in output',
-			},
-			{
-				displayName: 'CSS Selector',
-				name: 'cssSelector',
-				type: 'string',
-				default: '',
-				placeholder: 'article.content',
-				description: 'CSS selector to focus extraction on a specific part of the page (leave empty for full page)',
-			},
-			{
 				displayName: 'Array Handling',
 				name: 'arrayHandling',
 				type: 'options',
@@ -429,6 +390,57 @@ export const description: INodeProperties[] = [
 				],
 				default: 'none',
 				description: 'How to handle arrays in the extracted data',
+			},
+			{
+				displayName: 'Cache Mode',
+				name: 'cacheMode',
+				type: 'options',
+				options: [
+					{
+						name: 'Enabled (Read/Write)',
+						value: 'enabled',
+						description: 'Use cache if available, save new results to cache',
+					},
+					{
+						name: 'Bypass (Force Fresh)',
+						value: 'bypass',
+						description: 'Ignore cache, always fetch fresh content',
+					},
+					{
+						name: 'Only (Read Only)',
+						value: 'only',
+						description: 'Only use cache, do not make new requests',
+					},
+				],
+				default: 'enabled',
+				description: 'How to use the cache when crawling',
+			},
+			{
+				displayName: 'CSS Selector',
+				name: 'cssSelector',
+				type: 'string',
+				default: '',
+				placeholder: 'article.content',
+				description: 'CSS selector to focus extraction on a specific part of the page (leave empty for full page)',
+			},
+			{
+				displayName: 'Include Metadata in Split Items',
+				name: 'includeMetadataInSplitItems',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to include URL, success, and other metadata in each split item (reduces redundancy when disabled)',
+				displayOptions: {
+					show: {
+						arrayHandling: ['topLevel', 'allObjects', 'smart'],
+					},
+				},
+			},
+			{
+				displayName: 'Include Original Text',
+				name: 'includeFullText',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to include the original webpage text in output',
 			},
 		],
 	},
@@ -490,25 +502,30 @@ function detectMainArray(obj: IDataObject): string | null {
 function processArrayHandling(
 	data: IDataObject,
 	strategy: string,
-	baseMetadata: IDataObject
+	baseMetadata: IDataObject,
+	includeMetadata: boolean = true
 ): IDataObject[] {
 	if (strategy === 'none') {
 		return [data];
 	}
 
 	const numericKeys = getNumericKeys(data);
-	const metadata = getMetadataKeys(data);
 	const baseData: IDataObject = {};
 
-	// Preserve metadata
-	metadata.forEach(key => {
-		baseData[key] = data[key];
-	});
+	// Only include metadata if requested
+	if (includeMetadata) {
+		const metadata = getMetadataKeys(data);
+		
+		// Preserve metadata
+		metadata.forEach(key => {
+			baseData[key] = data[key];
+		});
 
-	// Add additional metadata
-	Object.entries(baseMetadata).forEach(([key, value]) => {
-		baseData[key] = value;
-	});
+		// Add additional metadata
+		Object.entries(baseMetadata).forEach(([key, value]) => {
+			baseData[key] = value;
+		});
+	}
 
 	if (numericKeys.length === 0) {
 		// No arrays detected, return as single item
@@ -597,6 +614,7 @@ export async function execute(
 			const llmOptions = this.getNodeParameter('llmOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 			const arrayHandling = options.arrayHandling as string || 'none';
+			const includeMetadataInSplitItems = options.includeMetadataInSplitItems as boolean || false;
 
 			if (!url) {
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
@@ -744,7 +762,8 @@ export async function execute(
 			const processedResults = processArrayHandling(
 				formattedResult,
 				arrayHandling,
-				{}
+				{}, // baseMetadata (empty for now)
+				includeMetadataInSplitItems
 			);
 
 			// Add processed results to output array
