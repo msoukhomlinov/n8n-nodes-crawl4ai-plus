@@ -22,9 +22,7 @@ export class Crawl4aiBasicCrawler implements INodeType {
 		defaults: {
 			name: 'Crawl4AI: Basic Crawler',
 		},
-		// @ts-ignore
 		inputs: ['main'],
-		// @ts-ignore
 		outputs: ['main'],
 		credentials: [
 			{

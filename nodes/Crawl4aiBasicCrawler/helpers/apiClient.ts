@@ -17,8 +17,8 @@ export class Crawl4aiClient {
    * Create and configure an Axios instance for API communication
    */
   private createApiClient(): AxiosInstance {
-    const baseURL = this.credentials.connectionMode === 'docker' 
-      ? this.credentials.dockerUrl 
+    const baseURL = this.credentials.connectionMode === 'docker'
+      ? this.credentials.dockerUrl
       : 'http://localhost:11235'; // Default fallback for direct mode
 
     const client = axios.create({
@@ -31,40 +31,13 @@ export class Crawl4aiClient {
       if (this.credentials.authenticationType === 'token' && this.credentials.apiToken) {
         client.defaults.headers.common['Authorization'] = `Bearer ${this.credentials.apiToken}`;
       } else if (this.credentials.authenticationType === 'basic' && this.credentials.username && this.credentials.password) {
-        const auth = Buffer.from(`${this.credentials.username}:${this.credentials.password}`).toString('base64');
-        client.defaults.headers.common['Authorization'] = `Basic ${auth}`;
+        // Use axios built-in auth config for Basic authentication
+        client.defaults.auth = {
+          username: this.credentials.username,
+          password: this.credentials.password
+        };
       }
     }
-
-    // Add request/response interceptors for debugging
-    client.interceptors.request.use(
-      (config) => {
-        console.log('Crawl4AI Request:', {
-          url: config.url,
-          method: config.method,
-          data: config.data,
-        });
-        return config;
-      },
-      (error) => {
-        console.error('Request error:', error);
-        return Promise.reject(error);
-      }
-    );
-
-    client.interceptors.response.use(
-      (response) => {
-        console.log('Crawl4AI Response:', {
-          status: response.status,
-          data: response.data,
-        });
-        return response;
-      },
-      (error) => {
-        console.error('Response error:', error.response?.data || error.message);
-        return Promise.reject(error);
-      }
-    );
 
     return client;
   }
@@ -91,7 +64,6 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API',
       };
     } catch (error) {
-      console.error('Error during Crawl4AI API call:', error);
       return {
         url,
         success: false,
@@ -122,7 +94,6 @@ export class Crawl4aiClient {
         error_message: 'No results returned from Crawl4AI API',
       }));
     } catch (error) {
-      console.error('Error during Crawl4AI API call:', error);
       return urls.map(url => ({
         url,
         success: false,
@@ -137,7 +108,8 @@ export class Crawl4aiClient {
   async processRawHtml(html: string, baseUrl: string, config: CrawlerRunConfig): Promise<CrawlResult> {
     try {
       // For raw HTML, we need to use a special URL format that tells Crawl4AI to process raw content
-      const rawUrl = `raw://${html}`;
+      // Properly encode the HTML content to prevent injection vulnerabilities
+      const rawUrl = `raw://${encodeURIComponent(html)}`;
       const response = await this.apiClient.post('/crawl', {
         urls: [rawUrl],
         browser_config: this.formatBrowserConfig(config),
@@ -158,7 +130,6 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API',
       };
     } catch (error) {
-      console.error('Error during Crawl4AI API call:', error);
       return {
         url: baseUrl,
         success: false,
@@ -202,8 +173,6 @@ export class Crawl4aiClient {
         },
       };
 
-      console.log('Full request body:', JSON.stringify(requestBody, null, 2));
-
       const response = await this.apiClient.post('/crawl', requestBody);
 
       // Process the response
@@ -217,8 +186,6 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API',
       };
     } catch (error: any) {
-      console.error('Error during Crawl4AI API call:', error);
-      console.error('Error response:', error.response?.data);
       return {
         url,
         success: false,
