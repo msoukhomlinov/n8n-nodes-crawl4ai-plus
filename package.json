@@ -1,30 +1,32 @@
 {
-  "name": "n8n-nodes-crawl4ai-fork",
+  "name": "n8n-nodes-crawl4ai-plus",
   "version": "1.8.8",
-  "description": "n8n nodes for Crawl4AI v0.7.4+ web crawler and data extraction (maintained fork)",
+  "description": "n8n nodes for Crawl4AI v0.7.4+ web crawler and data extraction with enhanced features",
   "keywords": [
     "n8n",
     "n8n-community-node-package",
     "crawl4ai",
     "web-crawler",
     "data-extraction",
-    "scraping"
+    "scraping",
+    "regex-extraction",
+    "llm-extraction"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/qmatiaslopez/n8n-nodes-crawl4j",
+  "homepage": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus",
   "author": {
     "name": "Heictor Hsiao",
     "email": "amigo.golf@gmail.com"
   },
   "maintainers": [
     {
-      "name": "Matias Lopez",
-      "email": "hola@mlopez.me"
+      "name": "Max Soukhomlinov",
+      "email": "maxs@intellectit.com.au"
     }
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/qmatiaslopez/n8n-nodes-crawl4j.git"
+    "url": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus.git"
   },
   "main": "index.js",
   "scripts": {

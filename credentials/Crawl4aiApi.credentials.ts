@@ -189,8 +189,22 @@ export class Crawl4aiApi implements ICredentialType {
 			name: 'customProvider',
 			type: 'string',
 			default: '',
-			placeholder: 'provider/model',
-			description: 'The custom provider in format "provider/model"',
+			placeholder: 'custom/llama-3-70b or provider/model',
+			description: 'The custom provider in format "provider/model". Use "custom/" prefix for external LiteLLM proxies or custom endpoints (e.g., custom/llama-3-70b)',
+			displayOptions: {
+				show: {
+					enableLlm: [true],
+					llmProvider: ['other'],
+				},
+			},
+		},
+		{
+			displayName: 'Custom Base URL',
+			name: 'customBaseUrl',
+			type: 'string',
+			default: '',
+			placeholder: 'https://litellm-proxy.company.com/v1',
+			description: 'The base URL for your custom LLM provider, external LiteLLM proxy server, or custom inference endpoint. Required for external providers.',
 			displayOptions: {
 				show: {
 					enableLlm: [true],
@@ -206,7 +220,7 @@ export class Crawl4aiApi implements ICredentialType {
 				password: true,
 			},
 			default: '',
-			description: 'The API key for the custom provider',
+			description: 'The API key for the custom provider or LiteLLM proxy server',
 			displayOptions: {
 				show: {
 					enableLlm: [true],

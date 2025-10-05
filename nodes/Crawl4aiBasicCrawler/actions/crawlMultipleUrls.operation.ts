@@ -114,22 +114,32 @@ export const description: INodeProperties[] = [
         type: 'options',
         options: [
           {
+            name: 'Bypass (Skip Cache)',
+            value: 'BYPASS',
+            description: 'Skip cache for this operation, fetch fresh content',
+          },
+          {
+            name: 'Disabled (No Cache)',
+            value: 'DISABLED',
+            description: 'No caching at all',
+          },
+          {
             name: 'Enabled (Read/Write)',
-            value: 'enabled',
+            value: 'ENABLED',
             description: 'Use cache if available, save new results to cache',
           },
           {
-            name: 'Bypass (Force Fresh)',
-            value: 'bypass',
-            description: 'Ignore cache, always fetch fresh content',
+            name: 'Read Only',
+            value: 'READ_ONLY',
+            description: 'Only read from cache, do not write new results',
           },
           {
-            name: 'Only (Read Only)',
-            value: 'only',
-            description: 'Only use cache, do not make new requests',
+            name: 'Write Only',
+            value: 'WRITE_ONLY',
+            description: 'Only write to cache, do not read existing cache',
           },
         ],
-        default: 'enabled',
+        default: 'ENABLED',
         description: 'How to use the cache when crawling',
       },
       {
@@ -189,6 +199,14 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: false,
         description: 'Whether to stream results as they become available',
+      },
+      {
+        displayName: 'Wait For',
+        name: 'waitFor',
+        type: 'string',
+        default: '',
+        placeholder: '.loading-complete',
+        description: 'CSS selector or JavaScript expression to wait for before extracting content (essential for dynamic/SPA pages)',
       },
       {
         displayName: 'Word Count Threshold',

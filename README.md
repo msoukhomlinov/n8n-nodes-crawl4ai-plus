@@ -1,6 +1,31 @@
-# Crawl4AI for n8n (Maintained Fork)
+# Crawl4AI Plus for n8n
 
-> **Note:** This is a maintained fork of the original [n8n-nodes-crawl4ai](https://github.com/golfamigo/n8n-nodes-crawl4j) project by Heictor Hsiao. The original author is no longer maintaining the project, so this fork continues development and bug fixes. All original credits remain with the original author.
+> **Enhanced fork** with comprehensive Crawl4AI v0.7.x support, including regex extraction, multi-browser support, and 22+ LLM providers.
+
+## Project History & Attribution
+
+This is a maintained fork with enhanced features for Crawl4AI 0.7.x.
+
+### Fork Chain
+- **Original author**: [Heictor Hsiao](https://github.com/golfamigo) - [golfamigo/n8n-nodes-crawl4j](https://github.com/golfamigo/n8n-nodes-crawl4j)
+- **First maintainer**: [Matias Lopez](https://github.com/qmatiaslopez) - [qmatiaslopez/n8n-nodes-crawl4j](https://github.com/qmatiaslopez/n8n-nodes-crawl4j)
+- **Current maintainer**: [Max Soukhomlinov](https://github.com/msoukhomlinov) - [msoukhomlinov/n8n-nodes-crawl4ai-plus](https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus)
+
+All credit for the original implementation goes to **Heictor Hsiao** and **Matias Lopez**.
+
+## What's New in Plus
+
+This enhanced fork includes Priority 1 features for Crawl4AI 0.7.x:
+
+- ✅ **Regex Extraction** - NEW! 21 built-in patterns (email, phone, URL, credit cards, etc.)
+- ✅ **Multi-Browser Support** - Chromium, Firefox, and Webkit
+- ✅ **Enhanced Cache Modes** - 5 modes (ENABLED, DISABLED, READ_ONLY, WRITE_ONLY, BYPASS)
+- ✅ **22+ LLM Providers** - OpenAI, Anthropic, Google, DeepSeek, Groq, Ollama, and more
+- ✅ **Dynamic Content** - wait_for parameter for JavaScript-heavy sites
+- ✅ **External LiteLLM Proxy** - Connect to custom LLM endpoints
+- ✅ **Better Error Handling** - Exposed status codes and detailed error messages
+
+---
 
 This project provides n8n integration for Crawl4AI, a powerful web crawling and data extraction tool. It consists of two main nodes:
 
@@ -20,6 +45,7 @@ This project provides n8n integration for Crawl4AI, a powerful web crawling and 
 - **CSS Selector Extractor** - Extract structured data using CSS selectors
 - **LLM Extractor** - Use AI to extract structured data from webpages
 - **JSON Extractor** - Extract and process JSON data from web pages
+- **Regex Extractor** - Extract data using 21 built-in patterns or custom regex (NEW!)
 
 ## Installation
 

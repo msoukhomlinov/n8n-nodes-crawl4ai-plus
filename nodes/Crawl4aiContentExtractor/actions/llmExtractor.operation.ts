@@ -163,7 +163,7 @@ export const description: INodeProperties[] = [
       "description": "Main page title"
     },
     "description": {
-      "type": "string", 
+      "type": "string",
       "description": "Page description or summary"
     }
   },
@@ -212,6 +212,30 @@ export const description: INodeProperties[] = [
 			},
 		},
 		options: [
+			{
+				displayName: 'Browser Type',
+				name: 'browserType',
+				type: 'options',
+				options: [
+					{
+						name: 'Chromium',
+						value: 'chromium',
+						description: 'Use Chromium browser (default, most compatible)',
+					},
+					{
+						name: 'Firefox',
+						value: 'firefox',
+						description: 'Use Firefox browser',
+					},
+					{
+						name: 'Webkit',
+						value: 'webkit',
+						description: 'Use Webkit browser (Safari engine)',
+					},
+				],
+				default: 'chromium',
+				description: 'Which browser engine to use for crawling',
+			},
 			{
 				displayName: 'Enable JavaScript',
 				name: 'javaScriptEnabled',
@@ -285,12 +309,71 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				options: [
 					{
-						name: 'Anthropic Claude 3 Sonnet',
-						value: 'anthropic/claude-3-sonnet',
+						name: 'Anthropic Claude 3 Haiku',
+						value: 'anthropic/claude-3-haiku-20240307',
+						description: 'Claude 3 Haiku (Fast)',
 					},
+					{
+						name: 'Anthropic Claude 3 Opus',
+						value: 'anthropic/claude-3-opus-20240229',
+						description: 'Claude 3 Opus (Most Capable)',
+					},
+				{
+					name: 'Anthropic Claude 3 Sonnet',
+					value: 'anthropic/claude-3-sonnet-20240229',
+				},
+				{
+					name: 'Anthropic Claude 3.5 Sonnet',
+					value: 'anthropic/claude-3-5-sonnet-20241022',
+				},
+					{
+						name: 'Anthropic Claude 3.7 Sonnet',
+						value: 'anthropic/claude-3-7-sonnet-20250219',
+						description: 'Claude 3.7 Sonnet (Latest, Best)',
+					},
+					{
+						name: 'DeepSeek Chat',
+						value: 'deepseek/deepseek-chat',
+						description: 'DeepSeek Chat (Affordable)',
+					},
+					{
+						name: 'DeepSeek Coder',
+						value: 'deepseek/deepseek-coder',
+						description: 'DeepSeek Coder (Code-Focused)',
+					},
+					{
+						name: 'Google Gemini 1.5 Flash',
+						value: 'gemini/gemini-1.5-flash',
+						description: 'Gemini 1.5 Flash (Fast)',
+					},
+					{
+						name: 'Google Gemini 1.5 Pro',
+						value: 'gemini/gemini-1.5-pro',
+						description: 'Gemini 1.5 Pro (Large Context)',
+					},
+				{
+					name: 'Google Gemini Pro',
+					value: 'gemini/gemini-pro',
+				},
 					{
 						name: 'Groq Llama 3 70B',
 						value: 'groq/llama3-70b-8192',
+						description: 'Groq Llama 3 70B (Fast)',
+					},
+					{
+						name: 'Groq Llama 3.1 70B',
+						value: 'groq/llama-3.1-70b-versatile',
+						description: 'Groq Llama 3.1 70B (Fast)',
+					},
+					{
+						name: 'Groq Llama 3.3 70B',
+						value: 'groq/llama-3.3-70b-versatile',
+						description: 'Groq Llama 3.3 70B (Fast)',
+					},
+					{
+						name: 'Groq Mixtral 8x7B',
+						value: 'groq/mixtral-8x7b-32768',
+						description: 'Groq Mixtral 8x7B (Fast)',
 					},
 					{
 						name: 'Ollama Llama 3',
@@ -298,16 +381,42 @@ export const description: INodeProperties[] = [
 						description: 'Ollama Llama 3 (Local)',
 					},
 					{
+						name: 'Ollama Llama 3.3',
+						value: 'ollama/llama3.3',
+						description: 'Ollama Llama 3.3 (Local)',
+					},
+					{
+						name: 'Ollama Mistral',
+						value: 'ollama/mistral',
+						description: 'Ollama Mistral (Local)',
+					},
+					{
+						name: 'Ollama Qwen 2.5',
+						value: 'ollama/qwen2.5',
+						description: 'Ollama Qwen 2.5 (Local)',
+					},
+					{
 						name: 'OpenAI GPT-3.5 Turbo',
 						value: 'openai/gpt-3.5-turbo',
+						description: 'OpenAI GPT-3.5 Turbo (Fast)',
 					},
+				{
+					name: 'OpenAI GPT-4 Turbo',
+					value: 'openai/gpt-4-turbo',
+				},
 					{
 						name: 'OpenAI GPT-4o',
 						value: 'openai/gpt-4o',
+						description: 'OpenAI GPT-4o (Recommended)',
+					},
+					{
+						name: 'OpenAI GPT-4o Mini',
+						value: 'openai/gpt-4o-mini',
+						description: 'OpenAI GPT-4o Mini (Fast & Affordable)',
 					},
 				],
-				default: 'openai/gpt-4o',
-				description: 'LLM provider to use for extraction',
+				default: 'openai/gpt-4o-mini',
+				description: 'LLM provider to use for extraction. Supports 100+ models via LiteLLM.',
 				displayOptions: {
 					show: {
 						overrideProvider: [true],
@@ -404,22 +513,32 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				options: [
 					{
+						name: 'Bypass (Skip Cache)',
+						value: 'BYPASS',
+						description: 'Skip cache for this operation, fetch fresh content',
+					},
+					{
+						name: 'Disabled (No Cache)',
+						value: 'DISABLED',
+						description: 'No caching at all',
+					},
+					{
 						name: 'Enabled (Read/Write)',
-						value: 'enabled',
+						value: 'ENABLED',
 						description: 'Use cache if available, save new results to cache',
 					},
 					{
-						name: 'Bypass (Force Fresh)',
-						value: 'bypass',
-						description: 'Ignore cache, always fetch fresh content',
+						name: 'Read Only',
+						value: 'READ_ONLY',
+						description: 'Only read from cache, do not write new results',
 					},
 					{
-						name: 'Only (Read Only)',
-						value: 'only',
-						description: 'Only use cache, do not make new requests',
+						name: 'Write Only',
+						value: 'WRITE_ONLY',
+						description: 'Only write to cache, do not read existing cache',
 					},
 				],
-				default: 'enabled',
+				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
 			},
 			{
@@ -522,7 +641,7 @@ function processArrayHandling(
 	// Only include metadata if requested
 	if (includeMetadata) {
 		const metadata = getMetadataKeys(data);
-		
+
 		// Preserve metadata
 		metadata.forEach(key => {
 			baseData[key] = data[key];
@@ -677,25 +796,25 @@ export async function execute(
 				// Use JSON schema directly (advanced mode)
 				// jsonSchema is always a string now (from textarea)
 				const jsonSchemaString = jsonSchema as unknown as string;
-				
+
 				if (!jsonSchemaString || jsonSchemaString.trim() === '') {
 					throw new NodeOperationError(this.getNode(), 'JSON schema cannot be empty in advanced mode.', { itemIndex: i });
 				}
-				
+
 				let parsedSchema: any;
 				try {
 					parsedSchema = JSON.parse(jsonSchemaString.trim());
 				} catch (error) {
 					throw new NodeOperationError(this.getNode(), `Invalid JSON schema: ${(error as Error).message}`, { itemIndex: i });
 				}
-				
+
 				// Validate that parsedSchema is an object
 				if (!parsedSchema || typeof parsedSchema !== 'object') {
 					throw new NodeOperationError(this.getNode(), 'JSON schema must be a valid object', { itemIndex: i });
 				}
-				
+
 				schema = parsedSchema as LlmSchema;
-				
+
 				// Ensure basic structure is present
 				if (!schema.type) {
 					schema.type = 'object';
@@ -708,18 +827,22 @@ export async function execute(
 			// Determine LLM provider
 			let provider: string;
 			let apiKey: string;
-			
+			let baseUrl: string | undefined;
+
 			if (credentials.llmProvider === 'other') {
 				provider = credentials.customProvider || 'openai/gpt-4o';
 				apiKey = credentials.customApiKey || '';
+				baseUrl = credentials.customBaseUrl || undefined;
 			} else {
 				provider = credentials.llmProvider || 'openai/gpt-4o';
 				apiKey = credentials.apiKey || '';
+				baseUrl = undefined;
 			}
 
 			if (llmOptions.overrideProvider === true) {
 				provider = llmOptions.llmProvider as string || provider;
 				apiKey = llmOptions.apiKey as string || apiKey;
+				// Note: When overriding provider in the node, base URL from credentials is still used
 			}
 
 			// Create browser config
@@ -730,7 +853,8 @@ export async function execute(
 				schema,
 				instruction,
 				provider,
-				apiKey
+				apiKey,
+				baseUrl
 			);
 
 			// Get crawler instance

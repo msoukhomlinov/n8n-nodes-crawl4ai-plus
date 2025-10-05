@@ -9,14 +9,15 @@ import { CrawlResult } from './interfaces';
  * @returns Formatted result for n8n
  */
 export function formatCrawlResult(
-  result: CrawlResult, 
-  includeMedia: boolean = false, 
+  result: CrawlResult,
+  includeMedia: boolean = false,
   verboseResponse: boolean = false
 ): IDataObject {
   // Base result with essential fields
   const formattedResult: IDataObject = {
     url: result.url,
     success: result.success,
+    statusCode: result.statusCode || result.status_code || null,
     title: result.title || '',
     content: result.markdown || '',
     text: result.text || '',
@@ -58,7 +59,6 @@ export function formatCrawlResult(
   if (verboseResponse) {
     formattedResult.html = result.html || '';
     formattedResult.cleanedHtml = result.cleaned_html || '';
-    formattedResult.statusCode = result.statusCode;
     formattedResult.crawlTime = result.crawl_time;
     formattedResult.metadata = result.metadata || {};
   }
@@ -99,6 +99,7 @@ export function formatExtractionResult(
   const formattedResult: IDataObject = {
     url: result.url,
     success: result.success,
+    statusCode: result.statusCode || result.status_code || null,
   };
 
   // Add error message if failed

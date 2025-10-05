@@ -138,15 +138,39 @@ export const description: INodeProperties[] = [
       show: {
         operation: ['cssExtractor'],
       },
-    },
-    options: [
-      {
-        displayName: 'Enable JavaScript',
-        name: 'javaScriptEnabled',
-        type: 'boolean',
-        default: true,
-        description: 'Whether to enable JavaScript execution',
-      },
+		},
+		options: [
+			{
+				displayName: 'Browser Type',
+				name: 'browserType',
+				type: 'options',
+				options: [
+					{
+						name: 'Chromium',
+						value: 'chromium',
+						description: 'Use Chromium browser (default, most compatible)',
+					},
+					{
+						name: 'Firefox',
+						value: 'firefox',
+						description: 'Use Firefox browser',
+					},
+					{
+						name: 'Webkit',
+						value: 'webkit',
+						description: 'Use Webkit browser (Safari engine)',
+					},
+				],
+				default: 'chromium',
+				description: 'Which browser engine to use for crawling',
+			},
+			{
+				displayName: 'Enable JavaScript',
+				name: 'javaScriptEnabled',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to enable JavaScript execution',
+			},
       {
         displayName: 'Enable Stealth Mode',
         name: 'enableStealth',
@@ -213,22 +237,32 @@ export const description: INodeProperties[] = [
         type: 'options',
         options: [
           {
+            name: 'Bypass (Skip Cache)',
+            value: 'BYPASS',
+            description: 'Skip cache for this operation, fetch fresh content',
+          },
+          {
+            name: 'Disabled (No Cache)',
+            value: 'DISABLED',
+            description: 'No caching at all',
+          },
+          {
             name: 'Enabled (Read/Write)',
-            value: 'enabled',
+            value: 'ENABLED',
             description: 'Use cache if available, save new results to cache',
           },
           {
-            name: 'Bypass (Force Fresh)',
-            value: 'bypass',
-            description: 'Ignore cache, always fetch fresh content',
+            name: 'Read Only',
+            value: 'READ_ONLY',
+            description: 'Only read from cache, do not write new results',
           },
           {
-            name: 'Only (Read Only)',
-            value: 'only',
-            description: 'Only use cache, do not make new requests',
+            name: 'Write Only',
+            value: 'WRITE_ONLY',
+            description: 'Only write to cache, do not read existing cache',
           },
         ],
-        default: 'enabled',
+        default: 'ENABLED',
         description: 'How to use the cache when crawling',
       },
       {

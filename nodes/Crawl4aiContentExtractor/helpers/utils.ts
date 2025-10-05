@@ -44,6 +44,7 @@ export function createCssSelectorExtractionStrategy(schema: CssSelectorSchema): 
  * @param instruction Instructions for LLM extraction
  * @param provider LLM provider name
  * @param apiKey API key for LLM provider
+ * @param baseUrl Custom base URL for LLM provider (optional, for external LiteLLM proxies or custom endpoints)
  * @returns Extraction strategy for LLM
  */
 export function createLlmExtractionStrategy(
@@ -51,16 +52,24 @@ export function createLlmExtractionStrategy(
   instruction: string,
   provider: string,
   apiKey?: string,
+  baseUrl?: string,
 ): any {
+  const llmConfigParams: any = {
+    provider: provider || 'openai/gpt-4o',
+    api_token: apiKey,
+  };
+
+  // Add custom base URL if provided (for external LiteLLM proxies or custom endpoints)
+  if (baseUrl && baseUrl.trim() !== '') {
+    llmConfigParams.api_base = baseUrl;
+  }
+
   return {
     type: 'LLMExtractionStrategy',
     params: {
       llm_config: {
         type: 'LLMConfig',
-        params: {
-          provider: provider || 'openai/gpt-4o',
-          api_token: apiKey,
-        },
+        params: llmConfigParams,
       },
       instruction,
       schema: {
@@ -81,7 +90,7 @@ export function cleanExtractedData(data: IDataObject): IDataObject {
   if (!data) return {};
 
   const cleanedData: IDataObject = {};
-  
+
   Object.entries(data).forEach(([key, value]) => {
     if (typeof value === 'string') {
       cleanedData[key] = cleanText(value);

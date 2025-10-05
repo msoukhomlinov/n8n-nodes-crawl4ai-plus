@@ -5,6 +5,7 @@ import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import * as cssExtractor from './cssExtractor.operation';
 import * as llmExtractor from './llmExtractor.operation';
 import * as jsonExtractor from './jsonExtractor.operation';
+import * as regexExtractor from './regexExtractor.operation';
 
 // Type definition for the execute function of an operation
 type OperationExecuteFunction = (
@@ -19,6 +20,7 @@ export const operations: { [key: string]: OperationExecuteFunction } = {
   cssExtractor: cssExtractor.execute,
   llmExtractor: llmExtractor.execute,
   jsonExtractor: jsonExtractor.execute,
+  regexExtractor: regexExtractor.execute,
 };
 
 // Aggregate UI property descriptions from all operations
@@ -47,6 +49,12 @@ export const description: INodeProperties[] = [
         description: 'Extract JSON data from a webpage',
         action: 'Extract JSON data',
       },
+      {
+        name: 'Regex Extractor',
+        value: 'regexExtractor',
+        description: 'Extract data using regex patterns (NEW in 0.7.x)',
+        action: 'Extract with regex',
+      },
     ],
     default: 'cssExtractor',
   },
@@ -55,4 +63,5 @@ export const description: INodeProperties[] = [
   ...cssExtractor.description,
   ...llmExtractor.description,
   ...jsonExtractor.description,
+  ...regexExtractor.description,
 ];

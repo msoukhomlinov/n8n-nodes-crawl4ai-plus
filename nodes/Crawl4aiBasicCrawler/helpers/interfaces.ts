@@ -15,6 +15,7 @@ export interface Crawl4aiApiCredentials {
   apiKey?: string;
   ollamaUrl?: string;
   customProvider?: string;
+  customBaseUrl?: string;
   customApiKey?: string;
   // Cache settings
   cacheDir?: string;
@@ -71,7 +72,7 @@ export interface CrawlerRunConfig {
   // Cache and Performance
   cacheMode?: 'enabled' | 'bypass' | 'only';
   streamEnabled?: boolean;
-  
+
   // Timing and Timeouts
   pageTimeout?: number;
   requestTimeout?: number;
@@ -81,7 +82,7 @@ export interface CrawlerRunConfig {
   waitForTimeout?: number;
   waitForImages?: boolean;
   delayBeforeReturnHtml?: number;
-  
+
   // JavaScript and Page Interaction
   jsCode?: string | string[];
   jsOnly?: boolean;
@@ -95,7 +96,7 @@ export interface CrawlerRunConfig {
   overrideNavigator?: boolean;
   magic?: boolean;
   adjustViewportToContent?: boolean;
-  
+
   // Content Selection and Filtering
   cssSelector?: string;
   targetElements?: string[];
@@ -106,14 +107,14 @@ export interface CrawlerRunConfig {
   removeForms?: boolean;
   onlyText?: boolean;
   wordCountThreshold?: number;
-  
+
   // Links and External Resources
   excludeExternalLinks?: boolean;
   excludeInternalLinks?: boolean;
   excludeSocialMediaLinks?: boolean;
   excludeDomains?: string[];
   scoreLinks?: boolean;
-  
+
   // Media and Screenshots
   screenshot?: boolean;
   screenshotWaitFor?: number;
@@ -124,19 +125,19 @@ export interface CrawlerRunConfig {
   excludeExternalImages?: boolean;
   excludeAllImages?: boolean;
   tableScoreThreshold?: number;
-  
+
   // Network and Connection
   checkRobotsTxt?: boolean;
   userAgent?: string;
   userAgentMode?: string;
   userAgentGeneratorConfig?: object;
   method?: string;
-  
+
   // Session and Context
   sessionId?: string;
   sharedData?: object;
   maxRetries?: number;
-  
+
   // Browser Configuration (for backward compatibility)
   viewport?: {
     width: number;
@@ -144,20 +145,20 @@ export interface CrawlerRunConfig {
   };
   headless?: boolean;
   javaScriptEnabled?: boolean;
-  
+
   // Logging and Debug
   verbose?: boolean;
   logConsole?: boolean;
   captureNetworkRequests?: boolean;
   captureConsoleMessages?: boolean;
-  
+
   // Extraction and Processing
   extractionStrategy?: any;
   chunkingStrategy?: any;
   markdownGenerator?: any;
   scrapingStrategy?: any;
   proxyConfig?: object;
-  
+
   // Advanced Features
   linkPreviewConfig?: object;
   virtualScrollConfig?: object;
@@ -170,6 +171,7 @@ export interface CrawlResult {
   url: string;
   success: boolean;
   statusCode?: number;
+  status_code?: number; // API might return status_code (snake_case)
   title?: string;
   markdown?: string;
   html?: string;

@@ -148,7 +148,7 @@ export class Crawl4aiClient {
     try {
       // Prepare the crawler config
       const crawlerConfig: any = {
-        cache_mode: options.cacheMode || 'enabled',
+        cache_mode: options.cacheMode || 'ENABLED',
         js_code: options.jsCode,
         css_selector: options.cssSelector,
       };
@@ -201,7 +201,7 @@ export class Crawl4aiClient {
     return {
       type: 'BrowserConfig',
       params: {
-        browser_type: 'chromium',
+        browser_type: (config as any).browserType || 'chromium',
         headless: config.headless !== false,
         browser_mode: 'dedicated',
         use_managed_browser: false,
@@ -240,10 +240,11 @@ export class Crawl4aiClient {
    */
   private formatCrawlerConfig(config: CrawlerRunConfig): any {
     const params: any = {
-      cache_mode: config.cacheMode || 'enabled',
+      cache_mode: config.cacheMode || 'ENABLED',
       stream: config.streamEnabled || false,
       page_timeout: config.pageTimeout || config.timeout || 30000, // Support both pageTimeout and legacy timeout
       wait_until: 'domcontentloaded',
+      wait_for: (config as any).waitFor || null,
       js_code: config.jsCode,
       js_only: config.jsOnly || false,
       css_selector: config.cssSelector,
