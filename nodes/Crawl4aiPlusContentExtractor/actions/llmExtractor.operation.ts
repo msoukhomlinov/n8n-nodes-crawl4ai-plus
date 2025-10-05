@@ -14,7 +14,7 @@ import {
 	createLlmExtractionStrategy,
 	isValidUrl
 } from '../helpers/utils';
-import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiBasicCrawler/helpers/formatters';
+import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -717,7 +717,7 @@ export async function execute(
 	const allResults: INodeExecutionData[] = [];
 
 	// Get credentials
-	const credentials = (await this.getCredentials('crawl4aiApi')) as unknown as Crawl4aiApiCredentials;
+	const credentials = (await this.getCredentials('crawl4aiPlusApi')) as unknown as Crawl4aiApiCredentials;
 
 	// Check if LLM features are enabled in credentials
 	if (!credentials.enableLlm) {

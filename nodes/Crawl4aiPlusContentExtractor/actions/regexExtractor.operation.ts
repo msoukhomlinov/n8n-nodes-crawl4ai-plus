@@ -13,7 +13,7 @@ import {
 	createBrowserConfig,
 	isValidUrl
 } from '../helpers/utils';
-import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiBasicCrawler/helpers/formatters';
+import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [

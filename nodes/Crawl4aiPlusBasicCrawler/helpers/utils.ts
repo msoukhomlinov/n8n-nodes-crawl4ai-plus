@@ -9,12 +9,12 @@ export async function getCrawl4aiClient(
   executeFunctions: IExecuteFunctions,
 ): Promise<any> {
   // Get credentials
-  const credentials = await executeFunctions.getCredentials('crawl4aiApi') as unknown as Crawl4aiApiCredentials;
-  
+  const credentials = await executeFunctions.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
+
   if (!credentials) {
     throw new Error('Crawl4AI credentials are not configured!');
   }
-  
+
   // Create and return client instance
   return createCrawlerInstance(credentials);
 }

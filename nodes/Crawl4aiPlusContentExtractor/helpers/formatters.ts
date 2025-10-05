@@ -3,4 +3,4 @@ export {
   formatCrawlResult,
   parseExtractedJson,
   formatExtractionResult
-} from '../../Crawl4aiBasicCrawler/helpers/formatters';
+} from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';

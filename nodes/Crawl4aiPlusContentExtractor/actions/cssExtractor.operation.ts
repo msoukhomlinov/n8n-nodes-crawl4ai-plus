@@ -18,7 +18,7 @@ import {
 import {
   parseExtractedJson,
   formatExtractionResult
-} from '../../Crawl4aiBasicCrawler/helpers/formatters';
+} from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [

@@ -11,4 +11,4 @@ export {
   CssSelectorSchema,
   LlmSchemaField,
   LlmSchema
-} from '../../Crawl4aiBasicCrawler/helpers/interfaces';
+} from '../../Crawl4aiPlusBasicCrawler/helpers/interfaces';

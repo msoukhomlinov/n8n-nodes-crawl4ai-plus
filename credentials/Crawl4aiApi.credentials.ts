@@ -1,9 +1,9 @@
 import { ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class Crawl4aiApi implements ICredentialType {
-	name = 'crawl4aiApi';
-	displayName = 'Crawl4AI API';
-	documentationUrl = 'https://github.com/unclecode/crawl4ai';
+	name = 'crawl4aiPlusApi';
+	displayName = 'Crawl4AI Plus API';
+	documentationUrl = 'https://github.com/msoukhomlinov/n8n-nodes-crawl4ai';
 	properties: INodeProperties[] = [
 		// Connection Mode
 		{

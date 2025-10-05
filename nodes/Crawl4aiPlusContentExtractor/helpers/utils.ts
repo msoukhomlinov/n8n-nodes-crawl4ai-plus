@@ -6,10 +6,10 @@ export {
   safeJsonParse,
   cleanText,
   isValidUrl
-} from '../../Crawl4aiBasicCrawler/helpers/utils';
+} from '../../Crawl4aiPlusBasicCrawler/helpers/utils';
 
 import { IDataObject } from 'n8n-workflow';
-import { cleanText } from '../../Crawl4aiBasicCrawler/helpers/utils';
+import { cleanText } from '../../Crawl4aiPlusBasicCrawler/helpers/utils';
 import { CssSelectorSchema, LlmSchema } from './interfaces';
 
 /**
