@@ -23,7 +23,7 @@ export class Crawl4aiClient {
 
     const client = axios.create({
       baseURL,
-      timeout: 60000, // 60 seconds default timeout
+      timeout: 120000, // 120 seconds default timeout (increased from 60s)
     });
 
     // Add authentication headers if needed
@@ -43,6 +43,18 @@ export class Crawl4aiClient {
   }
 
   /**
+   * Get appropriate timeout based on config
+   */
+  private getTimeout(config: CrawlerRunConfig): number {
+    // Use 5 minutes for deep crawl operations
+    if (config.deepCrawlStrategy) {
+      return 300000; // 5 minutes
+    }
+    // Use default 2 minutes for regular operations
+    return 120000;
+  }
+
+  /**
    * Crawl a single URL
    */
   async crawlUrl(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
@@ -51,6 +63,8 @@ export class Crawl4aiClient {
         urls: [url],
         browser_config: this.formatBrowserConfig(config),
         crawler_config: this.formatCrawlerConfig(config),
+      }, {
+        timeout: this.getTimeout(config),
       });
 
       // Process the response
@@ -81,6 +95,8 @@ export class Crawl4aiClient {
         urls,
         browser_config: this.formatBrowserConfig(config),
         crawler_config: this.formatCrawlerConfig(config),
+      }, {
+        timeout: this.getTimeout(config),
       });
 
       // Process the response
@@ -107,6 +123,17 @@ export class Crawl4aiClient {
    */
   async processRawHtml(html: string, baseUrl: string, config: CrawlerRunConfig): Promise<CrawlResult> {
     try {
+      // Validate HTML size (max 5MB to prevent memory issues)
+      const htmlSizeBytes = new TextEncoder().encode(html).length;
+      const MAX_HTML_SIZE = 5 * 1024 * 1024; // 5MB
+      if (htmlSizeBytes > MAX_HTML_SIZE) {
+        return {
+          url: baseUrl,
+          success: false,
+          error_message: `HTML content too large (${(htmlSizeBytes / 1024 / 1024).toFixed(2)}MB). Maximum allowed: 5MB`,
+        };
+      }
+
       // For raw HTML, we need to use a special URL format that tells Crawl4AI to process raw content
       // Properly encode the HTML content to prevent injection vulnerabilities
       const rawUrl = `raw://${encodeURIComponent(html)}`;
@@ -117,6 +144,8 @@ export class Crawl4aiClient {
           ...this.formatCrawlerConfig(config),
           base_url: baseUrl,
         },
+      }, {
+        timeout: this.getTimeout(config),
       });
 
       // Process the response
@@ -146,21 +175,22 @@ export class Crawl4aiClient {
    */
   async arun(url: string, options: any): Promise<CrawlResult> {
     try {
-      // Prepare the crawler config
-      const crawlerConfig: any = {
+      // Prepare the crawler config, only adding values if they exist
+      const crawlerParams: any = {
         cache_mode: options.cacheMode || 'ENABLED',
-        js_code: options.jsCode,
-        css_selector: options.cssSelector,
       };
 
-      // Add extraction strategy if provided
-      if (options.extractionStrategy) {
-        crawlerConfig.extraction_strategy = options.extractionStrategy;
+      if (options.jsCode) {
+        crawlerParams.js_code = options.jsCode;
       }
-
-      // Add extra arguments if provided
+      if (options.cssSelector) {
+        crawlerParams.css_selector = options.cssSelector;
+      }
+      if (options.extractionStrategy) {
+        crawlerParams.extraction_strategy = options.extractionStrategy;
+      }
       if (options.extraArgs) {
-        Object.assign(crawlerConfig, options.extraArgs);
+        Object.assign(crawlerParams, options.extraArgs);
       }
 
       // Prepare the full request
@@ -169,11 +199,13 @@ export class Crawl4aiClient {
         browser_config: this.formatBrowserConfig(options.browserConfig || {}),
         crawler_config: {
           type: 'CrawlerRunConfig',
-          params: crawlerConfig,
+          params: crawlerParams,
         },
       };
 
-      const response = await this.apiClient.post('/crawl', requestBody);
+      const response = await this.apiClient.post('/crawl', requestBody, {
+        timeout: 120000, // 2 minutes for extraction operations
+      });
 
       // Process the response
       if (response.data && Array.isArray(response.data.results) && response.data.results.length > 0) {
@@ -196,80 +228,176 @@ export class Crawl4aiClient {
 
   /**
    * Format browser config for the API
+   * Use flat dict for simple params, NO type/params wrapper needed
    */
   private formatBrowserConfig(config: CrawlerRunConfig): any {
-    return {
-      type: 'BrowserConfig',
-      params: {
-        browser_type: (config as any).browserType || 'chromium',
-        headless: config.headless !== false,
-        browser_mode: 'dedicated',
-        use_managed_browser: false,
-        cdp_url: null,
-        debugging_port: 9222,
-        use_persistent_context: false,
-        user_data_dir: null,
-        chrome_channel: 'chromium',
-        channel: 'chromium',
-        proxy: null,
-        viewport_width: config.viewport?.width || 1080,
-        viewport_height: config.viewport?.height || 600,
-        accept_downloads: false,
-        downloads_path: null,
-        storage_state: null,
-        ignore_https_errors: true,
-        java_script_enabled: config.javaScriptEnabled !== false,
-        sleep_on_close: false,
-        verbose: true,
-        cookies: [],
-        headers: {},
-        user_agent: config.userAgent || "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/116.0.0.0 Safari/537.36",
-        user_agent_mode: "",
-        user_agent_generator_config: {},
-        text_mode: false,
-        light_mode: false,
-        extra_args: [],
-        host: "localhost",
-        enable_stealth: (config as any).enable_stealth || false,
-      },
-    };
+    const params: any = {};
+
+    const cfg = config as any;
+
+    if (cfg.browserType) {
+      params.browser_type = cfg.browserType;
+    }
+
+    if (cfg.browserMode) {
+      params.browser_mode = cfg.browserMode;
+    }
+
+    if (cfg.useManagedBrowser) {
+      params.use_managed_browser = true;
+    }
+
+    if (cfg.debuggingPort !== undefined) {
+      params.debugging_port = cfg.debuggingPort;
+    }
+
+    if (cfg.chromeChannel) {
+      params.chrome_channel = cfg.chromeChannel;
+    }
+
+    if (cfg.channel) {
+      params.channel = cfg.channel;
+    }
+
+    if (config.headless !== undefined) {
+      params.headless = config.headless;
+    }
+
+    if (config.viewport && (config.viewport.width !== undefined || config.viewport.height !== undefined)) {
+      params.viewport = {
+        type: 'dict',
+        value: {
+          ...(config.viewport.width !== undefined ? { width: config.viewport.width } : {}),
+          ...(config.viewport.height !== undefined ? { height: config.viewport.height } : {}),
+        },
+      };
+    }
+
+    if (cfg.java_script_enabled !== undefined) {
+      params.java_script_enabled = cfg.java_script_enabled;
+    }
+
+    if (cfg.user_agent) {
+      params.user_agent = cfg.user_agent;
+    }
+
+    if (cfg.ignore_https_errors !== undefined) {
+      params.ignore_https_errors = cfg.ignore_https_errors;
+    }
+
+    if (cfg.text_mode === true) {
+      params.text_mode = true;
+    }
+
+    if (cfg.light_mode === true) {
+      params.light_mode = true;
+    }
+
+    if (cfg.enable_stealth === true) {
+      params.enable_stealth = true;
+    }
+
+    // Return flat dict (API accepts both formats)
+    return Object.keys(params).length > 0 ? params : {};
   }
 
   /**
-   * Format crawler config for the API (for basic operations)
+   * Format crawler config for the API
+   * Use flat dict for simple params, type/params ONLY for extraction strategies
    */
   private formatCrawlerConfig(config: CrawlerRunConfig): any {
-    const params: any = {
-      cache_mode: config.cacheMode || 'ENABLED',
-      stream: config.streamEnabled || false,
-      page_timeout: config.pageTimeout || config.timeout || 30000, // Support both pageTimeout and legacy timeout
-      wait_until: 'domcontentloaded',
-      wait_for: (config as any).waitFor || null,
-      js_code: config.jsCode,
-      js_only: config.jsOnly || false,
-      css_selector: config.cssSelector,
-      excluded_tags: config.excludedTags || [],
-      exclude_external_links: config.excludeExternalLinks || false,
-      check_robots_txt: config.checkRobotsTxt || false,
-      word_count_threshold: config.wordCountThreshold || 0,
-      session_id: config.sessionId,
-      only_text: false,
-      scan_full_page: false,
-      remove_overlay_elements: false,
-      simulate_user: false,
-      override_navigator: false,
-      magic: false,
-    };
+    const params: any = {};
 
-    // Add extraction strategy if present
-    if (config.extractionStrategy) {
-      params.extraction_strategy = config.extractionStrategy;
+    if (config.cacheMode) {
+      params.cache_mode = config.cacheMode;
     }
 
-    return {
-      type: 'CrawlerRunConfig',
-      params,
-    };
+    if (config.streamEnabled) {
+      params.stream = true;
+    }
+
+    if (config.pageTimeout !== undefined) {
+      params.page_timeout = config.pageTimeout;
+    }
+
+    if (config.waitUntil) {
+      params.wait_until = config.waitUntil;
+    }
+
+    if (config.waitFor) {
+      params.wait_for = config.waitFor;
+    }
+
+    if (config.jsCode) {
+      params.js_code = config.jsCode;
+    }
+
+    if (config.jsOnly) {
+      params.js_only = true;
+    }
+
+    if (config.cssSelector) {
+      params.css_selector = config.cssSelector;
+    }
+
+    if (config.deepCrawlStrategy) {
+      params.deep_crawl_strategy = config.deepCrawlStrategy;
+    }
+
+    if (config.excludedTags && config.excludedTags.length > 0) {
+      params.excluded_tags = config.excludedTags;
+    }
+
+    if (config.excludeExternalLinks) {
+      params.exclude_external_links = true;
+    }
+
+    if (config.checkRobotsTxt) {
+      params.check_robots_txt = true;
+    }
+
+    if (config.wordCountThreshold !== undefined) {
+      params.word_count_threshold = config.wordCountThreshold;
+    }
+
+    if (config.sessionId) {
+      params.session_id = config.sessionId;
+    }
+
+    if (config.maxRetries !== undefined) {
+      params.max_retries = config.maxRetries;
+    }
+
+    // Use type/params wrapper ONLY if extraction strategy OR table extraction is present
+    if (config.extractionStrategy || config.deepCrawlStrategy || config.tableExtraction) {
+      return {
+        type: 'CrawlerRunConfig',
+        params: {
+          ...params,
+          ...(config.extractionStrategy ? { extraction_strategy: config.extractionStrategy } : {}),
+          ...(config.deepCrawlStrategy ? { deep_crawl_strategy: config.deepCrawlStrategy } : {}),
+          ...(config.tableExtraction ? { table_extraction: config.tableExtraction } : {}),
+        },
+      };
+    }
+
+    // Return flat dict for simple params (API accepts both formats)
+    return Object.keys(params).length > 0 ? params : {};
+  }
+
+  /**
+   * Generate regex pattern using LLM
+   */
+  async generateRegexPattern(payload: any): Promise<any> {
+    try {
+      const response = await this.apiClient.post('/generate_pattern', payload);
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(`Pattern generation failed: ${error.response.data?.error || error.response.statusText}`);
+      }
+      throw new Error(`Pattern generation request failed: ${error.message}`);
+    }
   }
 
   /**

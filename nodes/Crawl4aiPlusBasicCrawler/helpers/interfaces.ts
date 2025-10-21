@@ -12,8 +12,10 @@ export interface Crawl4aiApiCredentials {
   // LLM settings
   enableLlm?: boolean;
   llmProvider?: string;
+  llmModel?: string;
   apiKey?: string;
   ollamaUrl?: string;
+  ollamaModel?: string;
   customProvider?: string;
   customBaseUrl?: string;
   customApiKey?: string;
@@ -26,7 +28,7 @@ export interface Crawl4aiNodeOptions extends IDataObject {
   bypassCache?: boolean;
   includeMedia?: boolean;
   verboseResponse?: boolean;
-  cacheMode?: 'enabled' | 'bypass' | 'only';
+  cacheMode?: 'ENABLED' | 'BYPASS' | 'DISABLED' | 'READ_ONLY' | 'WRITE_ONLY';
 }
 
 // Browser configuration interface
@@ -53,11 +55,9 @@ export interface BrowserConfig {
   storage_state?: string | object;
   ignore_https_errors?: boolean;
   java_script_enabled?: boolean;
-  javaScriptEnabled?: boolean; // Backward compatibility
   cookies?: Array<object>;
   headers?: object;
   user_agent?: string;
-  userAgent?: string; // Backward compatibility
   user_agent_mode?: string;
   user_agent_generator_config?: object;
   text_mode?: boolean;
@@ -70,13 +70,12 @@ export interface BrowserConfig {
 // Crawler run configuration interface
 export interface CrawlerRunConfig {
   // Cache and Performance
-  cacheMode?: 'enabled' | 'bypass' | 'only';
+  cacheMode?: 'ENABLED' | 'BYPASS' | 'DISABLED' | 'READ_ONLY' | 'WRITE_ONLY';
   streamEnabled?: boolean;
 
   // Timing and Timeouts
   pageTimeout?: number;
   requestTimeout?: number;
-  timeout?: number; // Legacy support
   waitUntil?: string;
   waitFor?: string;
   waitForTimeout?: number;
@@ -120,6 +119,7 @@ export interface CrawlerRunConfig {
   screenshotWaitFor?: number;
   screenshotHeightThreshold?: number;
   pdf?: boolean;
+  fetchSslCertificate?: boolean;
   imageDescriptionMinWordThreshold?: number;
   imageScoreThreshold?: number;
   excludeExternalImages?: boolean;
@@ -128,7 +128,6 @@ export interface CrawlerRunConfig {
 
   // Network and Connection
   checkRobotsTxt?: boolean;
-  userAgent?: string;
   userAgentMode?: string;
   userAgentGeneratorConfig?: object;
   method?: string;
@@ -138,13 +137,12 @@ export interface CrawlerRunConfig {
   sharedData?: object;
   maxRetries?: number;
 
-  // Browser Configuration (for backward compatibility)
+  // Browser Configuration passthrough (convenience for API client)
   viewport?: {
     width: number;
     height: number;
   };
   headless?: boolean;
-  javaScriptEnabled?: boolean;
 
   // Logging and Debug
   verbose?: boolean;
@@ -158,11 +156,12 @@ export interface CrawlerRunConfig {
   markdownGenerator?: any;
   scrapingStrategy?: any;
   proxyConfig?: object;
+  tableExtraction?: any;
 
   // Advanced Features
   linkPreviewConfig?: object;
   virtualScrollConfig?: object;
-  deepCrawlStrategy?: object;
+  deepCrawlStrategy?: Record<string, any>;
   experimental?: object;
 }
 
@@ -170,10 +169,15 @@ export interface CrawlerRunConfig {
 export interface CrawlResult {
   url: string;
   success: boolean;
-  statusCode?: number;
-  status_code?: number; // API might return status_code (snake_case)
+  status_code?: number;
   title?: string;
-  markdown?: string;
+  markdown?: string | {
+    raw_markdown?: string;
+    fit_markdown?: string;
+    markdown_with_citations?: string;
+    references_markdown?: string;
+    fit_html?: string;
+  };
   html?: string;
   cleaned_html?: string;
   text?: string;
@@ -184,11 +188,29 @@ export interface CrawlResult {
   media?: {
     images: Media[];
     videos: Media[];
+    audios?: Media[];
   };
+  screenshot?: string; // Base64 encoded
+  pdf?: string | Buffer; // Base64 encoded or binary
+  ssl_certificate?: SslCertificate;
   extracted_content?: string;
+  tables?: TableResult[];
   error_message?: string;
   crawl_time?: number;
   metadata?: Record<string, any>;
+}
+
+// SSL Certificate interface
+export interface SslCertificate {
+  issuer?: Record<string, string>;
+  subject?: Record<string, string>;
+  valid_from?: string;
+  valid_until?: string;
+  valid_to?: string;
+  fingerprint?: string;
+  fingerprint256?: string;
+  serialNumber?: string;
+  raw?: string;
 }
 
 // Link interface
@@ -204,6 +226,20 @@ export interface Media {
   alt?: string;
   title?: string;
   type?: string;
+}
+
+// Table result interface
+export interface TableResult {
+  headers: string[];
+  rows: string[][];
+  caption?: string;
+  metadata?: {
+    rowCount: number;
+    columnCount: number;
+    hasRowspan?: boolean;
+    hasColspan?: boolean;
+    [key: string]: any;
+  };
 }
 
 // CSS Selector Schema Field (for Content Extractor)

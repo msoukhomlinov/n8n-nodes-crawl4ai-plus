@@ -14,7 +14,7 @@ export class Crawl4aiPlusContentExtractor implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Crawl4AI Plus: Content Extractor',
 		name: 'crawl4aiPlusContentExtractor',
-		icon: 'file:crawl4ai.svg',
+		icon: 'file:crawl4aiplus.svg',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"]}}',

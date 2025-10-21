@@ -120,11 +120,11 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'javaScriptEnabled',
+				name: 'java_script_enabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -135,6 +135,32 @@ export const description: INodeProperties[] = [
 				type: 'boolean',
 				default: false,
 				description: 'Whether to enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+			},
+			{
+				displayName: 'Extra Browser Arguments',
+				name: 'extraArgs',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				description: 'Additional command-line arguments to pass to the browser (advanced users only)',
+				options: [
+					{
+						name: 'args',
+						displayName: 'Arguments',
+						values: [
+							{
+								displayName: 'Argument',
+								name: 'value',
+								type: 'string',
+								default: '',
+								placeholder: '--disable-blink-features=AutomationControlled',
+								description: 'Browser command-line argument (e.g., --disable-blink-features=AutomationControlled)',
+							},
+						],
+					},
+				],
 			},
 			{
 				displayName: 'Headless Mode',
@@ -246,8 +272,19 @@ export async function execute(
 			const jsonPath = this.getNodeParameter('jsonPath', i, '') as string;
 			const sourceType = this.getNodeParameter('sourceType', i, 'direct') as string;
 			const scriptSelector = this.getNodeParameter('scriptSelector', i, '') as string;
-			const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+			let browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+
+			// Transform extraArgs from fixedCollection format to array
+			if (browserOptions.extraArgs && typeof browserOptions.extraArgs === 'object') {
+				const extraArgsCollection = browserOptions.extraArgs as any;
+				if (extraArgsCollection.args && Array.isArray(extraArgsCollection.args)) {
+					browserOptions = {
+						...browserOptions,
+						extraArgs: extraArgsCollection.args.map((arg: any) => arg.value).filter((v: string) => v)
+					};
+				}
+			}
 
 			if (!url) {
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });

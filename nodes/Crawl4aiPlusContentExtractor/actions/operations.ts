@@ -2,9 +2,10 @@ import type { INodeProperties, IExecuteFunctions, INodeExecutionData } from 'n8n
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 
 // Import definitions for each operation
+import * as cosineExtractor from './cosineExtractor.operation';
 import * as cssExtractor from './cssExtractor.operation';
-import * as llmExtractor from './llmExtractor.operation';
 import * as jsonExtractor from './jsonExtractor.operation';
+import * as llmExtractor from './llmExtractor.operation';
 import * as regexExtractor from './regexExtractor.operation';
 
 // Type definition for the execute function of an operation
@@ -17,9 +18,10 @@ type OperationExecuteFunction = (
 // Export an object containing the execute function for each operation
 // This allows the router to dynamically call the correct execute function
 export const operations: { [key: string]: OperationExecuteFunction } = {
+  cosineExtractor: cosineExtractor.execute,
   cssExtractor: cssExtractor.execute,
-  llmExtractor: llmExtractor.execute,
   jsonExtractor: jsonExtractor.execute,
+  llmExtractor: llmExtractor.execute,
   regexExtractor: regexExtractor.execute,
 };
 
@@ -32,22 +34,28 @@ export const description: INodeProperties[] = [
     noDataExpression: true,
     options: [
       {
+        name: 'Cosine Similarity Extractor',
+        value: 'cosineExtractor',
+        description: 'Extract content using semantic similarity clustering (requires transformers)',
+        action: 'Extract with semantic clustering',
+      },
+      {
         name: 'CSS Selector Extractor',
         value: 'cssExtractor',
         description: 'Extract structured content using CSS selectors',
         action: 'Extract with CSS selectors',
       },
       {
-        name: 'LLM Extractor',
-        value: 'llmExtractor',
-        description: 'Extract structured content using LLM models',
-        action: 'Extract with LLM',
-      },
-      {
         name: 'JSON Extractor',
         value: 'jsonExtractor',
         description: 'Extract JSON data from a webpage',
         action: 'Extract JSON data',
+      },
+      {
+        name: 'LLM Extractor',
+        value: 'llmExtractor',
+        description: 'Extract structured content using LLM models',
+        action: 'Extract with LLM',
       },
       {
         name: 'Regex Extractor',
@@ -60,8 +68,9 @@ export const description: INodeProperties[] = [
   },
 
   // Spread descriptions from each operation file
+  ...cosineExtractor.description,
   ...cssExtractor.description,
-  ...llmExtractor.description,
   ...jsonExtractor.description,
+  ...llmExtractor.description,
   ...regexExtractor.description,
 ];

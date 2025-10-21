@@ -46,9 +46,14 @@ export const description: INodeProperties[] = [
 				value: 'custom',
 				description: 'Define your own regex patterns',
 			},
+			{
+				name: 'LLM Generated Pattern',
+				value: 'llm',
+				description: 'Let LLM generate a regex pattern from natural language description',
+			},
 		],
 		default: 'builtin',
-		description: 'Choose between built-in or custom regex patterns',
+		description: 'Choose between built-in, custom, or LLM-generated regex patterns',
 		displayOptions: {
 			show: {
 				operation: ['regexExtractor'],
@@ -218,6 +223,54 @@ export const description: INodeProperties[] = [
 		],
 	},
 	{
+		displayName: 'Pattern Label',
+		name: 'llmLabel',
+		type: 'string',
+		required: true,
+		default: '',
+		placeholder: 'price',
+		description: 'Label for the generated pattern (e.g., "price", "email", "product_id")',
+		displayOptions: {
+			show: {
+				operation: ['regexExtractor'],
+				patternType: ['llm'],
+			},
+		},
+	},
+	{
+		displayName: 'Pattern Query',
+		name: 'llmQuery',
+		type: 'string',
+		typeOptions: {
+			rows: 3,
+		},
+		required: true,
+		default: '',
+		placeholder: 'Prices in US dollars (e.g., $1,299.00 or $200)',
+		description: 'Natural language description of what you want to extract. Be specific with examples.',
+		displayOptions: {
+			show: {
+				operation: ['regexExtractor'],
+				patternType: ['llm'],
+			},
+		},
+	},
+	{
+		displayName: 'Sample URL',
+		name: 'llmSampleUrl',
+		type: 'string',
+		required: true,
+		default: '',
+		placeholder: 'https://example.com/sample-page',
+		description: 'URL of a sample page containing the data you want to extract (used to train the LLM)',
+		displayOptions: {
+			show: {
+				operation: ['regexExtractor'],
+				patternType: ['llm'],
+			},
+		},
+	},
+	{
 		displayName: 'Browser Options',
 		name: 'browserOptions',
 		type: 'collection',
@@ -251,11 +304,11 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'javaScriptEnabled',
+				name: 'java_script_enabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -266,6 +319,32 @@ export const description: INodeProperties[] = [
 				type: 'boolean',
 				default: false,
 				description: 'Whether to enable stealth mode to bypass basic bot detection',
+			},
+			{
+				displayName: 'Extra Browser Arguments',
+				name: 'extraArgs',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				description: 'Additional command-line arguments to pass to the browser (advanced users only)',
+				options: [
+					{
+						name: 'args',
+						displayName: 'Arguments',
+						values: [
+							{
+								displayName: 'Argument',
+								name: 'value',
+								type: 'string',
+								default: '',
+								placeholder: '--disable-blink-features=AutomationControlled',
+								description: 'Browser command-line argument (e.g., --disable-blink-features=AutomationControlled)',
+							},
+						],
+					},
+				],
 			},
 			{
 				displayName: 'Headless Mode',
@@ -386,8 +465,19 @@ export async function execute(
 			// Get parameters for the current item
 			const url = this.getNodeParameter('url', i, '') as string;
 			const patternType = this.getNodeParameter('patternType', i, 'builtin') as string;
-			const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+			let browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+
+			// Transform extraArgs from fixedCollection format to array
+			if (browserOptions.extraArgs && typeof browserOptions.extraArgs === 'object') {
+				const extraArgsCollection = browserOptions.extraArgs as any;
+				if (extraArgsCollection.args && Array.isArray(extraArgsCollection.args)) {
+					browserOptions = {
+						...browserOptions,
+						extraArgs: extraArgsCollection.args.map((arg: any) => arg.value).filter((v: string) => v)
+					};
+				}
+			}
 
 			if (!url) {
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
@@ -410,6 +500,121 @@ export async function execute(
 				}
 				// Combine patterns with bitwise OR syntax for API
 				extractionStrategy.params.patterns = builtinPatterns;
+			} else if (patternType === 'llm') {
+				// LLM-generated pattern
+				const llmLabel = this.getNodeParameter('llmLabel', i, '') as string;
+				const llmQuery = this.getNodeParameter('llmQuery', i, '') as string;
+				const llmSampleUrl = this.getNodeParameter('llmSampleUrl', i, '') as string;
+
+				if (!llmLabel) {
+					throw new NodeOperationError(this.getNode(), 'Pattern label is required for LLM pattern generation.', { itemIndex: i });
+				}
+
+				if (!llmQuery) {
+					throw new NodeOperationError(this.getNode(), 'Pattern query is required for LLM pattern generation.', { itemIndex: i });
+				}
+
+				if (!llmSampleUrl || !isValidUrl(llmSampleUrl)) {
+					throw new NodeOperationError(this.getNode(), 'Valid sample URL is required for LLM pattern generation.', { itemIndex: i });
+				}
+
+				// Get LLM credentials
+				const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
+
+				if (!credentials.enableLlm) {
+					throw new NodeOperationError(
+						this.getNode(),
+						'LLM features must be enabled in Crawl4AI credentials to use LLM pattern generation.',
+						{ itemIndex: i }
+					);
+				}
+
+				// Build LLM provider config
+				let provider = 'openai/gpt-4o';
+				let apiKey = '';
+
+				if (credentials.llmProvider === 'openai') {
+					const model = credentials.llmModel || 'gpt-4o-mini';
+					provider = `openai/${model}`;
+					apiKey = credentials.apiKey || '';
+				} else if (credentials.llmProvider === 'anthropic') {
+					const model = credentials.llmModel || 'claude-3-haiku-20240307';
+					provider = `anthropic/${model}`;
+					apiKey = credentials.apiKey || '';
+				} else if (credentials.llmProvider === 'groq') {
+					const model = credentials.llmModel || 'llama3-70b-8192';
+					provider = `groq/${model}`;
+					apiKey = credentials.apiKey || '';
+				} else if (credentials.llmProvider === 'ollama') {
+					const model = credentials.ollamaModel || 'llama3';
+					provider = `ollama/${model}`;
+				} else if (credentials.llmProvider === 'other') {
+					provider = credentials.customProvider || 'custom/model';
+					apiKey = credentials.customApiKey || '';
+				}
+
+				if (!apiKey && credentials.llmProvider !== 'ollama') {
+					throw new NodeOperationError(
+						this.getNode(),
+						`API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`,
+						{ itemIndex: i }
+					);
+				}
+
+				// First, crawl the sample URL to get HTML
+				const crawler = await getCrawl4aiClient(this);
+				const sampleBrowserConfig = createBrowserConfig(browserOptions);
+				const sampleConfig: any = {
+					...sampleBrowserConfig,
+					cache_mode: 'BYPASS', // Always fetch fresh sample
+				};
+
+				const sampleResult = await crawler.crawlUrl(llmSampleUrl, sampleConfig);
+
+				if (!sampleResult.success) {
+					throw new NodeOperationError(
+						this.getNode(),
+						`Failed to crawl sample URL: ${sampleResult.error_message || 'Unknown error'}`,
+						{ itemIndex: i }
+					);
+				}
+
+				// Use fit_html or cleaned_html for pattern generation
+				const sampleHtml = (typeof sampleResult.markdown === 'object' && (sampleResult.markdown as any).fit_html)
+					? (sampleResult.markdown as any).fit_html
+					: sampleResult.cleaned_html || sampleResult.html || '';
+
+				if (!sampleHtml) {
+					throw new NodeOperationError(
+						this.getNode(),
+						'Failed to extract HTML from sample URL',
+						{ itemIndex: i }
+					);
+				}
+
+				// Call pattern generation endpoint
+				// The API expects: POST /generate_pattern with { label, html, query, llm_config }
+				const patternGenPayload: any = {
+					label: llmLabel,
+					html: sampleHtml,
+					query: llmQuery,
+					llm_config: {
+						type: 'LLMConfig',
+						params: {
+							provider,
+							api_token: apiKey,
+							...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
+								{ api_base: credentials.customBaseUrl } : {}),
+							...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
+								{ api_base: credentials.ollamaUrl } : {})
+						}
+					}
+				};
+
+				const generatedPattern = await crawler.generateRegexPattern(patternGenPayload);
+
+				// Use the generated pattern as a custom pattern
+				extractionStrategy.params.custom = generatedPattern;
 			} else {
 				// Custom patterns
 				const customPatternsValues = this.getNodeParameter('customPatterns.patternValues', i, []) as IDataObject[];

@@ -88,7 +88,7 @@ The Content Extractor node allows you to extract structured data from web pages:
 nodes/
   ├── Crawl4aiBasicCrawler/
   │   ├── Crawl4aiBasicCrawler.node.ts         # Main node file
-  │   ├── crawl4ai.svg                        # Icon
+  │   ├── crawl4aiplus.svg                        # Icon
   │   ├── actions/
   │   │   ├── operations.ts                   # Operations definition
   │   │   ├── router.ts                       # Router handler
@@ -103,7 +103,7 @@ nodes/
   │
   └── Crawl4aiContentExtractor/
       ├── Crawl4aiContentExtractor.node.ts    # Main node file
-      ├── crawl4ai.svg                        # Icon
+      ├── crawl4aiplus.svg                        # Icon
       ├── actions/
       │   ├── operations.ts                   # Operations definition
       │   ├── router.ts                       # Router handler

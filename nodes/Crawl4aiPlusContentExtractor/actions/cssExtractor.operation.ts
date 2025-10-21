@@ -162,11 +162,11 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'javaScriptEnabled',
+				name: 'java_script_enabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -177,6 +177,32 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: false,
         description: 'Whether to enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+      },
+      {
+        displayName: 'Extra Browser Arguments',
+        name: 'extraArgs',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        default: {},
+        description: 'Additional command-line arguments to pass to the browser (advanced users only)',
+        options: [
+          {
+            name: 'args',
+            displayName: 'Arguments',
+            values: [
+              {
+                displayName: 'Argument',
+                name: 'value',
+                type: 'string',
+                default: '',
+                placeholder: '--disable-blink-features=AutomationControlled',
+                description: 'Browser command-line argument (e.g., --disable-blink-features=AutomationControlled)',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'Headless Mode',
@@ -216,6 +242,71 @@ export const description: INodeProperties[] = [
         type: 'number',
         default: 1280,
         description: 'The width of the browser viewport',
+      },
+    ],
+  },
+  {
+    displayName: 'Session & Authentication',
+    name: 'sessionOptions',
+    type: 'collection',
+    placeholder: 'Add Option',
+    default: {},
+    displayOptions: {
+      show: {
+        operation: ['cssExtractor'],
+      },
+    },
+    options: [
+      {
+        displayName: 'Cookies',
+        name: 'cookies',
+        type: 'json',
+        default: '',
+        placeholder: '[{"name": "session_id", "value": "abc123", "domain": ".example.com", "path": "/"}]',
+        description: 'Array of cookie objects to inject. Alternative to storage state for simple cookie-based auth.',
+      },
+      {
+        displayName: 'Storage State (JSON)',
+        name: 'storageState',
+        type: 'string',
+        typeOptions: {
+          rows: 6,
+        },
+        default: '',
+        placeholder: '{"cookies": [...], "origins": [...]}',
+        description: 'Browser storage state as JSON (cookies, localStorage, sessionStorage). Captures authenticated session state. Works in all n8n environments.',
+      },
+      {
+        displayName: 'Use Managed Browser',
+        name: 'useManagedBrowser',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to use managed browser mode (required for persistent contexts). Advanced option.',
+        displayOptions: {
+          show: {
+            usePersistentContext: [true],
+          },
+        },
+      },
+      {
+        displayName: 'Use Persistent Browser Context',
+        name: 'usePersistentContext',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to use a persistent browser context (requires user data directory). Only use in self-hosted environments with persistent storage.',
+      },
+      {
+        displayName: 'User Data Directory',
+        name: 'userDataDir',
+        type: 'string',
+        default: '',
+        placeholder: '/data/browser-profiles/profile1',
+        description: 'Path to browser profile directory for persistent sessions. Advanced: Only works in self-hosted n8n with persistent volumes. Use Storage State for cloud deployments.',
+        displayOptions: {
+          show: {
+            usePersistentContext: [true],
+          },
+        },
       },
     ],
   },
@@ -298,7 +389,19 @@ export async function execute(
       const baseSelector = this.getNodeParameter('baseSelector', i, '') as string;
       const fieldsValues = this.getNodeParameter('fields.fieldsValues', i, []) as IDataObject[];
       const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+      const sessionOptions = this.getNodeParameter('sessionOptions', i, {}) as IDataObject;
       const options = this.getNodeParameter('options', i, {}) as IDataObject;
+
+      // Merge session options into browser options for unified config
+      let mergedBrowserOptions = { ...browserOptions, ...sessionOptions };
+
+      // Transform extraArgs from fixedCollection format to array
+      if (browserOptions.extraArgs && typeof browserOptions.extraArgs === 'object') {
+        const extraArgsCollection = browserOptions.extraArgs as any;
+        if (extraArgsCollection.args && Array.isArray(extraArgsCollection.args)) {
+          mergedBrowserOptions.extraArgs = extraArgsCollection.args.map((arg: any) => arg.value).filter((v: string) => v);
+        }
+      }
 
       if (!url) {
         throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
@@ -329,7 +432,7 @@ export async function execute(
       };
 
       // Create browser config
-      const browserConfig = createBrowserConfig(browserOptions);
+      const browserConfig = createBrowserConfig(mergedBrowserOptions);
 
       // Create extraction strategy
       const extractionStrategy = createCssSelectorExtractionStrategy(schema);

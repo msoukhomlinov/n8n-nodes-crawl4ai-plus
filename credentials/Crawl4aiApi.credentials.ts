@@ -143,7 +143,7 @@ export class Crawl4aiApi implements ICredentialType {
 					value: 'anthropic',
 				},
 				{
-					name: 'Other',
+					name: 'LiteLLM / Custom',
 					value: 'other',
 				},
 			],
@@ -152,6 +152,34 @@ export class Crawl4aiApi implements ICredentialType {
 			displayOptions: {
 				show: {
 					enableLlm: [true],
+				},
+			},
+		},
+		{
+			displayName: 'LLM Model ID',
+			name: 'llmModel',
+			type: 'string',
+			default: 'gpt-4o',
+			placeholder: 'gpt-4o-mini',
+			description: 'Model identifier for the selected provider (e.g. gpt-4o-mini, claude-3-haiku, llama3-70b).',
+			displayOptions: {
+				show: {
+					enableLlm: [true],
+					llmProvider: ['openai', 'groq', 'anthropic'],
+				},
+			},
+		},
+		{
+			displayName: 'Ollama Model ID',
+			name: 'ollamaModel',
+			type: 'string',
+			default: 'llama3',
+			placeholder: 'llama3.2',
+			description: 'Model name served by your Ollama instance.',
+			displayOptions: {
+				show: {
+					enableLlm: [true],
+					llmProvider: ['ollama'],
 				},
 			},
 		},

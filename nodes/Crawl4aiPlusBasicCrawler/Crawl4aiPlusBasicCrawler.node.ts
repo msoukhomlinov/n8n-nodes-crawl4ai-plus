@@ -14,7 +14,7 @@ export class Crawl4aiPlusBasicCrawler implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Crawl4AI Plus: Basic Crawler',
 		name: 'crawl4aiPlusBasicCrawler',
-		icon: 'file:crawl4ai.svg',
+		icon: 'file:crawl4aiplus.svg',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"]}}',

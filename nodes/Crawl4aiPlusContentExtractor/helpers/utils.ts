@@ -45,6 +45,7 @@ export function createCssSelectorExtractionStrategy(schema: CssSelectorSchema): 
  * @param provider LLM provider name
  * @param apiKey API key for LLM provider
  * @param baseUrl Custom base URL for LLM provider (optional, for external LiteLLM proxies or custom endpoints)
+ * @param inputFormat Input format for extraction (markdown, html, fit_markdown)
  * @returns Extraction strategy for LLM
  */
 export function createLlmExtractionStrategy(
@@ -53,6 +54,7 @@ export function createLlmExtractionStrategy(
   provider: string,
   apiKey?: string,
   baseUrl?: string,
+  inputFormat?: 'markdown' | 'html' | 'fit_markdown',
 ): any {
   const llmConfigParams: any = {
     provider: provider || 'openai/gpt-4o',
@@ -64,22 +66,78 @@ export function createLlmExtractionStrategy(
     llmConfigParams.api_base = baseUrl;
   }
 
+  const strategyParams: any = {
+    llm_config: {
+      type: 'LLMConfig',
+      params: llmConfigParams,
+    },
+    instruction,
+    schema: {
+      type: 'dict',
+      value: schema,
+    },
+    extraction_type: 'schema',
+    apply_chunking: false,
+    force_json_response: true,
+  };
+
+  // Add input_format if specified (API uses default 'markdown' if omitted)
+  if (inputFormat && inputFormat !== 'markdown') {
+    strategyParams.input_format = inputFormat;
+  }
+
   return {
     type: 'LLMExtractionStrategy',
-    params: {
-      llm_config: {
-        type: 'LLMConfig',
-        params: llmConfigParams,
-      },
-      instruction,
-      schema: {
-        type: 'dict',
-        value: schema,
-      },
-      extraction_type: 'schema',
-      apply_chunking: false,
-      force_json_response: true,
-    },
+    params: strategyParams,
+  };
+}
+
+/**
+ * Create a Cosine extraction strategy for semantic similarity clustering
+ * @param semanticFilter Keywords or topic for content filtering
+ * @param options Clustering configuration options
+ * @returns Extraction strategy for Cosine similarity
+ */
+export function createCosineExtractionStrategy(
+  semanticFilter: string,
+  options: IDataObject = {},
+): any {
+  const strategyParams: any = {
+    semantic_filter: semanticFilter,
+  };
+
+  // Add optional parameters if provided
+  if (options.wordCountThreshold !== undefined) {
+    strategyParams.word_count_threshold = Number(options.wordCountThreshold);
+  }
+
+  if (options.simThreshold !== undefined) {
+    strategyParams.sim_threshold = Number(options.simThreshold);
+  }
+
+  if (options.maxDist !== undefined) {
+    strategyParams.max_dist = Number(options.maxDist);
+  }
+
+  if (options.linkageMethod !== undefined && options.linkageMethod !== '') {
+    strategyParams.linkage_method = String(options.linkageMethod);
+  }
+
+  if (options.topK !== undefined) {
+    strategyParams.top_k = Number(options.topK);
+  }
+
+  if (options.modelName !== undefined && options.modelName !== '') {
+    strategyParams.model_name = String(options.modelName);
+  }
+
+  if (options.verbose === true) {
+    strategyParams.verbose = true;
+  }
+
+  return {
+    type: 'CosineStrategy',
+    params: strategyParams,
   };
 }
 

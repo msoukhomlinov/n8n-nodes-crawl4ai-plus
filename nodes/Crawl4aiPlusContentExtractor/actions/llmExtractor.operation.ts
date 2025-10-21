@@ -234,11 +234,11 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'javaScriptEnabled',
+				name: 'java_script_enabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -249,6 +249,32 @@ export const description: INodeProperties[] = [
 				type: 'boolean',
 				default: false,
 				description: 'Whether to enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+			},
+			{
+				displayName: 'Extra Browser Arguments',
+				name: 'extraArgs',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				description: 'Additional command-line arguments to pass to the browser (advanced users only)',
+				options: [
+					{
+						name: 'args',
+						displayName: 'Arguments',
+						values: [
+							{
+								displayName: 'Argument',
+								name: 'value',
+								type: 'string',
+								default: '',
+								placeholder: '--disable-blink-features=AutomationControlled',
+								description: 'Browser command-line argument (e.g., --disable-blink-features=AutomationControlled)',
+							},
+						],
+					},
+				],
 			},
 			{
 				displayName: 'Headless Mode',
@@ -283,20 +309,88 @@ export const description: INodeProperties[] = [
 				description: 'The height of the browser viewport',
 			},
 			{
-				displayName: 'Viewport Width',
-				name: 'viewportWidth',
-				type: 'number',
-				default: 1280,
-				description: 'The width of the browser viewport',
-			},
-		],
+			displayName: 'Viewport Width',
+			name: 'viewportWidth',
+			type: 'number',
+			default: 1280,
+			description: 'The width of the browser viewport',
+		},
+	],
+},
+{
+	displayName: 'Session & Authentication',
+	name: 'sessionOptions',
+	type: 'collection',
+	placeholder: 'Add Option',
+	default: {},
+	displayOptions: {
+		show: {
+			operation: ['llmExtractor'],
+		},
 	},
-	{
+	options: [
+		{
+			displayName: 'Cookies',
+			name: 'cookies',
+			type: 'json',
+			default: '',
+			placeholder: '[{"name": "session_id", "value": "abc123", "domain": ".example.com", "path": "/"}]',
+			description: 'Array of cookie objects to inject. Alternative to storage state for simple cookie-based auth.',
+		},
+		{
+			displayName: 'Storage State (JSON)',
+			name: 'storageState',
+			type: 'string',
+			typeOptions: {
+				rows: 6,
+			},
+			default: '',
+			placeholder: '{"cookies": [...], "origins": [...]}',
+			description: 'Browser storage state as JSON (cookies, localStorage, sessionStorage). Captures authenticated session state. Works in all n8n environments.',
+		},
+		{
+			displayName: 'Use Managed Browser',
+			name: 'useManagedBrowser',
+			type: 'boolean',
+			default: false,
+			description: 'Whether to use managed browser mode (required for persistent contexts). Advanced option.',
+			displayOptions: {
+				show: {
+					usePersistentContext: [true],
+				},
+			},
+		},
+		{
+			displayName: 'Use Persistent Browser Context',
+			name: 'usePersistentContext',
+			type: 'boolean',
+			default: false,
+			description: 'Whether to use a persistent browser context (requires user data directory). Only use in self-hosted environments with persistent storage.',
+		},
+		{
+			displayName: 'User Data Directory',
+			name: 'userDataDir',
+			type: 'string',
+			default: '',
+			placeholder: '/data/browser-profiles/profile1',
+			description: 'Path to browser profile directory for persistent sessions. Advanced: Only works in self-hosted n8n with persistent volumes. Use Storage State for cloud deployments.',
+			displayOptions: {
+				show: {
+					usePersistentContext: [true],
+				},
+			},
+		},
+	],
+},
+{
 		displayName: 'LLM Options',
 		name: 'llmOptions',
 		type: 'collection',
 		placeholder: 'Add Option',
-		default: {},
+		default: {
+			maxTokens: 2000,
+			temperature: 0,
+		},
 		displayOptions: {
 			show: {
 				operation: ['llmExtractor'],
@@ -304,124 +398,28 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
-				displayName: 'LLM Provider',
-				name: 'llmProvider',
+				displayName: 'Input Format',
+				name: 'inputFormat',
 				type: 'options',
 				options: [
 					{
-						name: 'Anthropic Claude 3 Haiku',
-						value: 'anthropic/claude-3-haiku-20240307',
-						description: 'Claude 3 Haiku (Fast)',
+						name: 'Markdown (Default)',
+						value: 'markdown',
+						description: 'Extract from raw markdown - Fast, text-focused, good for most cases',
 					},
 					{
-						name: 'Anthropic Claude 3 Opus',
-						value: 'anthropic/claude-3-opus-20240229',
-						description: 'Claude 3 Opus (Most Capable)',
-					},
-				{
-					name: 'Anthropic Claude 3 Sonnet',
-					value: 'anthropic/claude-3-sonnet-20240229',
-				},
-				{
-					name: 'Anthropic Claude 3.5 Sonnet',
-					value: 'anthropic/claude-3-5-sonnet-20241022',
-				},
-					{
-						name: 'Anthropic Claude 3.7 Sonnet',
-						value: 'anthropic/claude-3-7-sonnet-20250219',
-						description: 'Claude 3.7 Sonnet (Latest, Best)',
+						name: 'HTML',
+						value: 'html',
+						description: 'Extract from HTML - Preserves DOM structure, best for structured data extraction',
 					},
 					{
-						name: 'DeepSeek Chat',
-						value: 'deepseek/deepseek-chat',
-						description: 'DeepSeek Chat (Affordable)',
-					},
-					{
-						name: 'DeepSeek Coder',
-						value: 'deepseek/deepseek-coder',
-						description: 'DeepSeek Coder (Code-Focused)',
-					},
-					{
-						name: 'Google Gemini 1.5 Flash',
-						value: 'gemini/gemini-1.5-flash',
-						description: 'Gemini 1.5 Flash (Fast)',
-					},
-					{
-						name: 'Google Gemini 1.5 Pro',
-						value: 'gemini/gemini-1.5-pro',
-						description: 'Gemini 1.5 Pro (Large Context)',
-					},
-				{
-					name: 'Google Gemini Pro',
-					value: 'gemini/gemini-pro',
-				},
-					{
-						name: 'Groq Llama 3 70B',
-						value: 'groq/llama3-70b-8192',
-						description: 'Groq Llama 3 70B (Fast)',
-					},
-					{
-						name: 'Groq Llama 3.1 70B',
-						value: 'groq/llama-3.1-70b-versatile',
-						description: 'Groq Llama 3.1 70B (Fast)',
-					},
-					{
-						name: 'Groq Llama 3.3 70B',
-						value: 'groq/llama-3.3-70b-versatile',
-						description: 'Groq Llama 3.3 70B (Fast)',
-					},
-					{
-						name: 'Groq Mixtral 8x7B',
-						value: 'groq/mixtral-8x7b-32768',
-						description: 'Groq Mixtral 8x7B (Fast)',
-					},
-					{
-						name: 'Ollama Llama 3',
-						value: 'ollama/llama3',
-						description: 'Ollama Llama 3 (Local)',
-					},
-					{
-						name: 'Ollama Llama 3.3',
-						value: 'ollama/llama3.3',
-						description: 'Ollama Llama 3.3 (Local)',
-					},
-					{
-						name: 'Ollama Mistral',
-						value: 'ollama/mistral',
-						description: 'Ollama Mistral (Local)',
-					},
-					{
-						name: 'Ollama Qwen 2.5',
-						value: 'ollama/qwen2.5',
-						description: 'Ollama Qwen 2.5 (Local)',
-					},
-					{
-						name: 'OpenAI GPT-3.5 Turbo',
-						value: 'openai/gpt-3.5-turbo',
-						description: 'OpenAI GPT-3.5 Turbo (Fast)',
-					},
-				{
-					name: 'OpenAI GPT-4 Turbo',
-					value: 'openai/gpt-4-turbo',
-				},
-					{
-						name: 'OpenAI GPT-4o',
-						value: 'openai/gpt-4o',
-						description: 'OpenAI GPT-4o (Recommended)',
-					},
-					{
-						name: 'OpenAI GPT-4o Mini',
-						value: 'openai/gpt-4o-mini',
-						description: 'OpenAI GPT-4o Mini (Fast & Affordable)',
+						name: 'Fit Markdown (Cleaned)',
+						value: 'fit_markdown',
+						description: 'Extract from cleaned markdown - Requires content filter, reduces noise and token cost',
 					},
 				],
-				default: 'openai/gpt-4o-mini',
-				description: 'LLM provider to use for extraction. Supports 100+ models via LiteLLM.',
-				displayOptions: {
-					show: {
-						overrideProvider: [true],
-					},
-				},
+				default: 'markdown',
+				description: 'Format of content passed to the LLM. HTML uses more tokens but preserves structure. Fit markdown requires a content filter to be configured.',
 			},
 			{
 				displayName: 'Max Tokens',
@@ -429,28 +427,6 @@ export const description: INodeProperties[] = [
 				type: 'number',
 				default: 2000,
 				description: 'Maximum number of tokens for the LLM response',
-			},
-			{
-				displayName: 'Override LLM Provider',
-				name: 'overrideProvider',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to override the LLM provider from credentials',
-			},
-			{
-				displayName: 'Provider API Key',
-				name: 'apiKey',
-				type: 'string',
-				typeOptions: {
-					password: true,
-				},
-				default: '',
-				description: 'API key for the LLM provider (leave empty to use API key from credentials)',
-				displayOptions: {
-					show: {
-						overrideProvider: [true],
-					},
-				},
 			},
 			{
 				displayName: 'Temperature',
@@ -736,11 +712,23 @@ export async function execute(
 			const schemaMode = this.getNodeParameter('schemaMode', i, 'simple') as string;
 			const schemaFieldsValues = this.getNodeParameter('schemaFields.fieldsValues', i, []) as IDataObject[];
 			const jsonSchema = this.getNodeParameter('jsonSchema', i, {}) as IDataObject;
-			const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
-			const llmOptions = this.getNodeParameter('llmOptions', i, {}) as IDataObject;
-			const options = this.getNodeParameter('options', i, {}) as IDataObject;
-			const arrayHandling = options.arrayHandling as string || 'none';
-			const includeMetadataInSplitItems = options.includeMetadataInSplitItems as boolean || false;
+		const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+		const sessionOptions = this.getNodeParameter('sessionOptions', i, {}) as IDataObject;
+		const llmOptions = this.getNodeParameter('llmOptions', i, {}) as IDataObject;
+		const options = this.getNodeParameter('options', i, {}) as IDataObject;
+		const arrayHandling = options.arrayHandling as string || 'none';
+		const includeMetadataInSplitItems = options.includeMetadataInSplitItems as boolean || false;
+
+		// Merge session options into browser options for unified config
+		let mergedBrowserOptions = { ...browserOptions, ...sessionOptions };
+
+		// Transform extraArgs from fixedCollection format to array
+		if (browserOptions.extraArgs && typeof browserOptions.extraArgs === 'object') {
+			const extraArgsCollection = browserOptions.extraArgs as any;
+			if (extraArgsCollection.args && Array.isArray(extraArgsCollection.args)) {
+				mergedBrowserOptions.extraArgs = extraArgsCollection.args.map((arg: any) => arg.value).filter((v: string) => v);
+			}
+		}
 
 			if (!url) {
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
@@ -825,49 +813,80 @@ export async function execute(
 			}
 
 			// Determine LLM provider
-			let provider: string;
-			let apiKey: string;
+			const useCustomProvider = credentials.llmProvider === 'other';
+			let provider: string | undefined;
+			let apiKey: string | undefined;
 			let baseUrl: string | undefined;
 
-			if (credentials.llmProvider === 'other') {
-				provider = credentials.customProvider || 'openai/gpt-4o';
-				apiKey = credentials.customApiKey || '';
-				baseUrl = credentials.customBaseUrl || undefined;
+			if (useCustomProvider) {
+				provider = credentials.customProvider?.trim();
+				apiKey = credentials.customApiKey?.trim();
+				baseUrl = credentials.customBaseUrl?.trim() || undefined;
+				if (!provider) {
+					throw new NodeOperationError(this.getNode(), 'Custom provider must be set in credentials when using "LiteLLM / Custom" provider.', { itemIndex: i });
+				}
+				if (!apiKey) {
+					throw new NodeOperationError(this.getNode(), 'Custom provider API key must be provided in credentials when using "LiteLLM / Custom" provider.', { itemIndex: i });
+				}
 			} else {
-				provider = credentials.llmProvider || 'openai/gpt-4o';
-				apiKey = credentials.apiKey || '';
-				baseUrl = undefined;
+				switch (credentials.llmProvider) {
+					case 'ollama': {
+						const ollamaModel = credentials.ollamaModel?.trim() || 'llama3';
+						provider = `ollama/${ollamaModel}`;
+						apiKey = undefined; // Ollama typically runs locally without API keys
+						baseUrl = credentials.ollamaUrl?.trim() || 'http://localhost:11434';
+						break;
+					}
+					case 'openai':
+					case 'groq':
+					case 'anthropic': {
+						const providerDefaults: Record<string, string> = {
+							openai: 'gpt-4o',
+							groq: 'llama-3.1-70b-versatile',
+							anthropic: 'claude-3-5-sonnet-20241022',
+						};
+						const modelId = credentials.llmModel?.trim() || providerDefaults[credentials.llmProvider] || 'gpt-4o';
+						provider = `${credentials.llmProvider}/${modelId}`;
+						apiKey = credentials.apiKey?.trim();
+						baseUrl = undefined;
+						if (!apiKey) {
+							throw new NodeOperationError(this.getNode(), `API key must be provided in credentials for ${credentials.llmProvider} LLM provider.`, { itemIndex: i });
+						}
+						break;
+					}
+					default: {
+						throw new NodeOperationError(this.getNode(), 'Unsupported LLM provider configured in credentials. Please choose OpenAI, Groq, Anthropic, Ollama, or Other.', { itemIndex: i });
+					}
+				}
 			}
 
-			if (llmOptions.overrideProvider === true) {
-				provider = llmOptions.llmProvider as string || provider;
-				apiKey = llmOptions.apiKey as string || apiKey;
-				// Note: When overriding provider in the node, base URL from credentials is still used
-			}
+		// Create browser config
+		const browserConfig = createBrowserConfig(mergedBrowserOptions);
 
-			// Create browser config
-			const browserConfig = createBrowserConfig(browserOptions);
+		// Get input format from LLM options
+		const inputFormat = llmOptions.inputFormat as 'markdown' | 'html' | 'fit_markdown' | undefined;
 
-			// Create LLM extraction strategy
-			const extractionStrategy = createLlmExtractionStrategy(
-				schema,
-				instruction,
-				provider,
-				apiKey,
-				baseUrl
-			);
+		// Create LLM extraction strategy
+		const extractionStrategy = createLlmExtractionStrategy(
+			schema,
+			instruction,
+			provider,
+			apiKey,
+			baseUrl,
+			inputFormat
+		);
 
-			// Get crawler instance
-			const crawler = await getCrawl4aiClient(this);
+		// Get crawler instance
+		const crawler = await getCrawl4aiClient(this);
 
-			// Prepare extra arguments for LLM
-			const extraArgs: any = {};
-			if (llmOptions.temperature !== undefined) {
-				extraArgs.temperature = llmOptions.temperature;
-			}
-			if (llmOptions.maxTokens !== undefined) {
-				extraArgs.max_tokens = llmOptions.maxTokens;
-			}
+		// Prepare extra arguments for LLM
+		const extraArgs: any = {};
+		if (llmOptions.temperature !== undefined) {
+			extraArgs.temperature = llmOptions.temperature;
+		}
+		if (llmOptions.maxTokens !== undefined) {
+			extraArgs.max_tokens = llmOptions.maxTokens;
+		}
 
 			// Run the extraction
 			const result = await crawler.arun(url, {

@@ -26,7 +26,7 @@ export const description: INodeProperties[] = [
     required: true,
     default: '',
     placeholder: '<html><body><h1>Example</h1><p>Content</p></body></html>',
-    description: 'The raw HTML content to process',
+    description: 'The raw HTML content to process. Maximum size: 5MB. Warning: Only process HTML from trusted sources.',
     displayOptions: {
       show: {
         operation: ['processRawHtml'],
