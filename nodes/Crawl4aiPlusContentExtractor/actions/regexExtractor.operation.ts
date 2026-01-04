@@ -52,9 +52,19 @@ export const description: INodeProperties[] = [
 				value: 'llm',
 				description: 'Let LLM generate a regex pattern from natural language description',
 			},
+			{
+				name: 'Preset: Contact Info',
+				value: 'preset_contact',
+				description: 'Extract emails, phone numbers, and social media handles',
+			},
+			{
+				name: 'Preset: Financial Data',
+				value: 'preset_financial',
+				description: 'Extract currencies, credit cards, IBANs, and percentages',
+			},
 		],
 		default: 'builtin',
-		description: 'Choose between built-in, custom, or LLM-generated regex patterns',
+		description: 'Choose between presets, built-in patterns, custom, or LLM-generated regex patterns',
 		displayOptions: {
 			show: {
 				operation: ['regexExtractor'],
@@ -501,6 +511,24 @@ export async function execute(
 				}
 				// Combine patterns with bitwise OR syntax for API
 				extractionStrategy.params.patterns = builtinPatterns;
+			} else if (patternType === 'preset_contact') {
+				// Contact Info preset: emails, phone numbers, social handles
+				extractionStrategy.params.patterns = [
+					'Email',
+					'PhoneUS',
+					'PhoneIntl',
+					'TwitterHandle',
+					'Url', // Often contains social links
+				];
+			} else if (patternType === 'preset_financial') {
+				// Financial Data preset: currencies, credit cards, IBANs, percentages
+				extractionStrategy.params.patterns = [
+					'Currency',
+					'CreditCard',
+					'Iban',
+					'Percentage',
+					'Number',
+				];
 			} else if (patternType === 'llm') {
 				// LLM-generated pattern
 				const llmLabel = this.getNodeParameter('llmLabel', i, '') as string;

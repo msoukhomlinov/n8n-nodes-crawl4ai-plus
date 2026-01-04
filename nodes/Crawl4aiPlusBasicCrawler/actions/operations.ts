@@ -5,6 +5,7 @@ import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import * as crawlSingleUrl from './crawlSingleUrl.operation';
 import * as crawlMultipleUrls from './crawlMultipleUrls.operation';
 import * as processRawHtml from './processRawHtml.operation';
+import * as discoverLinks from './discoverLinks.operation';
 
 // Type definition for the execute function of an operation
 type OperationExecuteFunction = (
@@ -19,6 +20,7 @@ export const operations: { [key: string]: OperationExecuteFunction } = {
   crawlSingleUrl: crawlSingleUrl.execute,
   crawlMultipleUrls: crawlMultipleUrls.execute,
   processRawHtml: processRawHtml.execute,
+  discoverLinks: discoverLinks.execute,
 };
 
 // Aggregate UI property descriptions from all operations
@@ -47,6 +49,12 @@ export const description: INodeProperties[] = [
         description: 'Process provided HTML content without crawling',
         action: 'Process raw html',
       },
+      {
+        name: 'Discover Links',
+        value: 'discoverLinks',
+        description: 'Extract and filter all links from a page',
+        action: 'Discover links from URL',
+      },
     ],
     default: 'crawlSingleUrl',
   },
@@ -55,4 +63,5 @@ export const description: INodeProperties[] = [
   ...crawlSingleUrl.description,
   ...crawlMultipleUrls.description,
   ...processRawHtml.description,
+  ...discoverLinks.description,
 ];

@@ -439,3 +439,178 @@ export function isValidUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * LLM config result from buildLlmConfig
+ */
+export interface LlmConfigResult {
+  provider: string;
+  apiKey: string;
+  baseUrl?: string;
+  llmConfig: any;
+}
+
+/**
+ * Build LLM configuration from credentials
+ * Centralises the duplicated LLM config building logic
+ * @param credentials Crawl4AI credentials object
+ * @returns LLM config result with provider, apiKey, and formatted llmConfig
+ */
+export function buildLlmConfig(credentials: any): LlmConfigResult {
+  let provider = 'openai/gpt-4o';
+  let apiKey = '';
+  let baseUrl: string | undefined;
+
+  if (credentials.llmProvider === 'openai') {
+    const model = credentials.llmModel || 'gpt-4o';
+    provider = `openai/${model}`;
+    apiKey = credentials.apiKey || '';
+  } else if (credentials.llmProvider === 'anthropic') {
+    const model = credentials.llmModel || 'claude-3-haiku-20240307';
+    provider = `anthropic/${model}`;
+    apiKey = credentials.apiKey || '';
+  } else if (credentials.llmProvider === 'groq') {
+    const model = credentials.llmModel || 'llama3-70b-8192';
+    provider = `groq/${model}`;
+    apiKey = credentials.apiKey || '';
+  } else if (credentials.llmProvider === 'ollama') {
+    const model = credentials.ollamaModel || 'llama3';
+    provider = `ollama/${model}`;
+    baseUrl = credentials.ollamaUrl || 'http://localhost:11434';
+    // Ollama doesn't require API key
+  } else if (credentials.llmProvider === 'other') {
+    provider = credentials.customProvider || 'custom/model';
+    apiKey = credentials.customApiKey || '';
+    baseUrl = credentials.customBaseUrl || undefined;
+  }
+
+  // Build the llmConfig object for API requests
+  const llmConfig: any = {
+    type: 'LLMConfig',
+    params: {
+      provider,
+      ...(apiKey ? { api_token: apiKey } : {}),
+      ...(baseUrl ? { api_base: baseUrl } : {}),
+    }
+  };
+
+  return {
+    provider,
+    apiKey,
+    baseUrl,
+    llmConfig,
+  };
+}
+
+/**
+ * Validate LLM credentials and throw appropriate error if invalid
+ * @param credentials Crawl4AI credentials object
+ * @param context Context string for error message (e.g., "LLM extraction", "content filtering")
+ * @throws Error if LLM is not enabled or API key is missing
+ */
+export function validateLlmCredentials(credentials: any, context: string = 'LLM features'): void {
+  if (!credentials.enableLlm) {
+    throw new Error(
+      `LLM features must be enabled in Crawl4AI credentials to use ${context}.`
+    );
+  }
+
+  // Validate API key for non-Ollama providers
+  if (credentials.llmProvider !== 'ollama') {
+    let apiKey = '';
+    if (credentials.llmProvider === 'other') {
+      apiKey = credentials.customApiKey || '';
+    } else {
+      apiKey = credentials.apiKey || '';
+    }
+
+    if (!apiKey) {
+      throw new Error(
+        `API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`
+      );
+    }
+  }
+}
+
+/**
+ * Create LLM extraction strategy configuration
+ * @param schema JSON schema for extraction
+ * @param instruction Extraction instruction for the LLM
+ * @param provider LLM provider string (e.g., "openai/gpt-4o")
+ * @param apiKey API key for the provider
+ * @param baseUrl Optional base URL for the API
+ * @param inputFormat Optional input format ('markdown', 'html', 'fit_markdown')
+ * @returns LLM extraction strategy configuration object
+ */
+export function createLlmExtractionStrategy(
+  schema: any,
+  instruction: string,
+  provider?: string,
+  apiKey?: string,
+  baseUrl?: string,
+  inputFormat?: 'markdown' | 'html' | 'fit_markdown'
+): any {
+  return {
+    type: 'LLMExtractionStrategy',
+    params: {
+      llm_config: {
+        type: 'LLMConfig',
+        params: {
+          provider: provider || 'openai/gpt-4o',
+          ...(apiKey ? { api_token: apiKey } : {}),
+          ...(baseUrl ? { api_base: baseUrl } : {}),
+        }
+      },
+      schema: { type: 'dict', value: schema },
+      instruction,
+      extraction_type: 'schema',
+      ...(inputFormat ? { input_format: inputFormat } : {}),
+    },
+  };
+}
+
+/**
+ * Create CSS selector extraction strategy configuration
+ * @param schema CSS selector schema with baseSelector and fields
+ * @returns CSS extraction strategy configuration object
+ */
+export function createCssSelectorExtractionStrategy(schema: any): any {
+  return {
+    type: 'JsonCssExtractionStrategy',
+    params: {
+      schema: {
+        type: 'dict',
+        value: {
+          name: schema.name || 'ExtractedData',
+          baseSelector: schema.baseSelector,
+          fields: schema.fields,
+        },
+      },
+    },
+  };
+}
+
+/**
+ * Clean extracted data by normalizing whitespace in string values
+ * @param data Extracted data object or array
+ * @returns Cleaned data with normalized whitespace
+ */
+export function cleanExtractedData(data: any): any {
+  if (typeof data === 'string') {
+    return cleanText(data);
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(item => cleanExtractedData(item));
+  }
+
+  if (typeof data === 'object' && data !== null) {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      cleaned[key] = cleanExtractedData(value);
+    }
+    return cleaned;
+  }
+
+  return data;
+}

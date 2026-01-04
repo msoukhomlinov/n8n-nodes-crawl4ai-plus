@@ -19,7 +19,7 @@ This version includes comprehensive Crawl4AI 0.7.4+ support with major improveme
 
 ### 🚀 Major Features
 - ✅ **Recursive Deep Crawling** - Keyword-driven recursive crawling with BestFirst/BFS/DFS strategies
-- ✅ **6 Extraction Strategies** - CSS, LLM, JSON, Regex, Cosine Similarity, and Table extraction
+- ✅ **6 Extraction Strategies** - CSS, LLM, JSON, Regex, Cosine Similarity, and SEO Metadata extraction
 - ✅ **LLM Pattern Generation** - Natural language to regex pattern conversion
 - ✅ **Table Extraction** - LLM-based and default table extraction for complex structures
 - ✅ **Session Management** - Browser storage state, cookies, and persistent contexts
@@ -49,7 +49,12 @@ This project provides n8n integration for Crawl4AI, a powerful web crawling and 
 - **Crawl Multiple URLs** - Process multiple web pages or use recursive discovery mode
   - **Recursive Discovery** - Keyword-driven deep crawling with configurable depth and filters
   - **Multiple Strategies** - BestFirst (recommended), BFS, or DFS crawling strategies
+  - **Extraction Options** - Apply CSS or LLM extraction to each discovered page (shallow crawl with extraction)
 - **Process Raw HTML** - Extract content from raw HTML without crawling
+- **Discover Links** - Extract and filter all links from a page
+  - **Link Types** - Filter by internal or external links
+  - **Pattern Filters** - Include/exclude URLs by pattern matching
+  - **Output Formats** - Grouped or split output for workflow flexibility
 
 ### Content Extractor Node
 
@@ -59,8 +64,15 @@ This project provides n8n integration for Crawl4AI, a powerful web crawling and 
   - **Schema Modes** - Simple fields or advanced JSON schema
 - **JSON Extractor** - Extract and process JSON data from web pages (direct, script tags, or JSON-LD)
 - **Regex Extractor** - Extract data using 21 built-in patterns, custom regex, or LLM-generated patterns
+  - **Quick Presets** - Contact Info and Financial Data presets for common extraction tasks
 - **Cosine Similarity Extractor** - Semantic similarity-based content extraction with clustering (requires `all` Docker image)
-- **Table Extractor** - Extract tables using LLM-based or default heuristics
+- **SEO Metadata Extractor** - Extract SEO metadata including:
+  - **Basic Meta Tags** - Title, description, keywords, canonical URL
+  - **Open Graph Tags** - OG title, description, image, type
+  - **Twitter Cards** - Twitter card metadata
+  - **JSON-LD** - Schema.org structured data
+
+> **Note**: Table extraction is available in the **Basic Crawler** node via the Table Extraction options (LLM-based or default heuristics).
 
 ## Installation
 
@@ -102,9 +114,11 @@ The Content Extractor node allows you to extract structured data from web pages:
    - **JSON Extractor** - For JSON APIs or embedded JSON data
    - **Regex Extractor** - For pattern-based extraction (21 built-in patterns or custom)
    - **Cosine Extractor** - For semantic similarity-based clustering (requires transformers)
-   - **Table Extractor** - For extracting tabular data
+   - **SEO Metadata** - For extracting page titles, meta tags, OG tags, and JSON-LD structured data
 3. Configure the extraction parameters
 4. Run the workflow to extract structured data
+
+> **Tip**: For table extraction, use the **Basic Crawler** node with Table Extraction options enabled.
 
 ## Configuration Options
 
@@ -183,7 +197,8 @@ nodes/
   │   │   ├── router.ts                       # Router handler
   │   │   ├── crawlSingleUrl.operation.ts     # Single URL crawl operation
   │   │   ├── crawlMultipleUrls.operation.ts  # Multiple URL crawl + recursive discovery
-  │   │   └── processRawHtml.operation.ts     # Raw HTML processing operation
+  │   │   ├── processRawHtml.operation.ts     # Raw HTML processing operation
+  │   │   └── discoverLinks.operation.ts      # Link discovery and extraction
   │   └── helpers/
   │       ├── interfaces.ts                   # Interface definitions
   │       ├── utils.ts                        # Common utilities
@@ -200,7 +215,8 @@ nodes/
       │   ├── llmExtractor.operation.ts       # LLM extraction
       │   ├── jsonExtractor.operation.ts      # JSON extraction
       │   ├── regexExtractor.operation.ts     # Regex extraction
-      │   └── cosineExtractor.operation.ts    # Cosine similarity extraction
+      │   ├── cosineExtractor.operation.ts    # Cosine similarity extraction
+      │   └── seoExtractor.operation.ts       # SEO metadata extraction
       └── helpers/
           ├── interfaces.ts                   # Interface definitions
           └── utils.ts                        # Common utilities (re-exports from BasicCrawler)

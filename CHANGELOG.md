@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-01-06
+
+### Added
+
+#### Basic Crawler Node
+- **Link Discovery Operation**: Dedicated operation for extracting and filtering links from web pages
+  - Filter by internal/external link types
+  - Include/exclude URL patterns with wildcard support
+  - Exclude social media domains and file types
+  - Grouped or split output formats for workflow flexibility
+  - Link deduplication and metadata extraction (text, title attributes)
+- **Shallow Crawl with Extraction**: Extraction strategy support in discovery mode
+  - Apply CSS selector or LLM extraction to each discovered page
+  - Enables keyword-driven shallow crawling (depth 1-2) with structured data extraction
+  - Supports both CSS schema and LLM-based extraction during recursive discovery
+
+#### Content Extractor Node
+- **SEO Metadata Extractor**: Comprehensive SEO metadata extraction operation
+  - Basic meta tags (title, description, keywords, canonical URL, author, viewport)
+  - Open Graph tags (OG title, description, image, type, URL, site name, locale)
+  - Twitter Cards metadata
+  - JSON-LD structured data extraction
+  - Robots and indexing directives
+  - Language and locale information (HTML lang, hreflang tags)
+  - Optional raw HTML head section output
+- **Regex Extractor Presets**: Quick-start presets for common extraction tasks
+  - **Contact Info Preset**: Extracts emails, phone numbers (US & international), Twitter handles, and URLs
+  - **Financial Data Preset**: Extracts currencies, credit cards, IBANs, percentages, and numbers
+
+#### Core Infrastructure
+- **Shared LLM Configuration Helpers**: Centralised LLM config building utilities
+  - `buildLlmConfig()`: Unified LLM provider/API key configuration
+  - `validateLlmCredentials()`: Credential validation with clear error messages
+  - `createLlmExtractionStrategy()`: LLM extraction strategy builder
+  - `createCssSelectorExtractionStrategy()`: CSS extraction strategy builder
+  - `cleanExtractedData()`: Recursive data cleaning utility
+  - Eliminates code duplication across operations
+
+### Changed
+
+#### Documentation
+- **README Updates**: Corrected extraction strategy count and operation listings
+  - Removed "Table Extractor" from Content Extractor operations list (it's a Basic Crawler option)
+  - Updated extraction strategy count to reflect new SEO Metadata Extractor
+  - Added documentation for new operations and presets
+
+#### Code Quality
+- **Refactoring**: Extracted duplicated LLM configuration logic to shared helpers
+  - Reduced code duplication in `crawlSingleUrl`, `crawlMultipleUrls`, `llmExtractor`, and `regexExtractor` operations
+  - Improved maintainability and consistency across operations
+
+### Fixed
+
+- **Documentation Accuracy**: Fixed README to accurately reflect that table extraction is a Basic Crawler option, not a standalone Content Extractor operation
+
+---
+
 ## [2.1.0] - 2026-01-06
 
 ### Added

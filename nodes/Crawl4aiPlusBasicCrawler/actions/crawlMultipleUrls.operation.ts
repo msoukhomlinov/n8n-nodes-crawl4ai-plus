@@ -171,6 +171,118 @@ export const description: INodeProperties[] = [
     ],
   },
   {
+    displayName: 'Extraction Options',
+    name: 'extractionOptions',
+    type: 'collection',
+    placeholder: 'Add Extraction',
+    default: {},
+    displayOptions: {
+      show: {
+        operation: ['crawlMultipleUrls'],
+        crawlMode: ['discover'],
+      },
+    },
+    description: 'Apply extraction strategies to discovered pages (shallow crawl with extraction)',
+    options: [
+      {
+        displayName: 'Base Selector',
+        name: 'baseSelector',
+        type: 'string',
+        default: '',
+        placeholder: 'article, .product-card',
+        description: 'CSS selector for the repeating container element',
+        displayOptions: {
+          show: {
+            enableExtraction: [true],
+            extractionType: ['css'],
+          },
+        },
+      },
+      {
+        displayName: 'Enable Extraction',
+        name: 'enableExtraction',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to apply an extraction strategy to each discovered page',
+      },
+      {
+        displayName: 'Extraction Instructions',
+        name: 'llmInstruction',
+        type: 'string',
+        typeOptions: {
+          rows: 4,
+        },
+        default: '',
+        placeholder: 'Extract the main content, title, and any contact information from each page.',
+        description: 'Natural language instructions for the LLM on what to extract',
+        displayOptions: {
+          show: {
+            enableExtraction: [true],
+            extractionType: ['llm'],
+          },
+        },
+      },
+      {
+        displayName: 'Extraction Type',
+        name: 'extractionType',
+        type: 'options',
+        options: [
+          {
+            name: 'CSS Selector Schema',
+            value: 'css',
+            description: 'Extract structured data using CSS selectors',
+          },
+          {
+            name: 'LLM Extraction',
+            value: 'llm',
+            description: 'Extract data using LLM with natural language instructions (requires LLM credentials)',
+          },
+        ],
+        default: 'css',
+        description: 'Type of extraction to apply to discovered pages',
+        displayOptions: {
+          show: {
+            enableExtraction: [true],
+          },
+        },
+      },
+      {
+        displayName: 'Field Selectors (JSON)',
+        name: 'fieldSelectors',
+        type: 'string',
+        typeOptions: {
+          rows: 6,
+        },
+        default: '[\n  {"name": "title", "selector": "h1, h2", "type": "text"},\n  {"name": "content", "selector": "p, .content", "type": "text"}\n]',
+        placeholder: '[{"name": "title", "selector": "h1", "type": "text"}]',
+        description: 'JSON array of field definitions: [{name, selector, type, attribute?}]. Type can be "text", "html", or "attribute".',
+        displayOptions: {
+          show: {
+            enableExtraction: [true],
+            extractionType: ['css'],
+          },
+        },
+      },
+      {
+        displayName: 'Schema (JSON)',
+        name: 'llmSchema',
+        type: 'string',
+        typeOptions: {
+          rows: 8,
+        },
+        default: '{\n  "type": "object",\n  "properties": {\n    "title": {"type": "string"},\n    "summary": {"type": "string"}\n  }\n}',
+        placeholder: '{"type": "object", "properties": {"title": {"type": "string"}}}',
+        description: 'JSON schema defining the structure of data to extract',
+        displayOptions: {
+          show: {
+            enableExtraction: [true],
+            extractionType: ['llm'],
+          },
+        },
+      },
+    ],
+  },
+  {
     displayName: 'URLs',
     name: 'urls',
     type: 'string',
@@ -1356,6 +1468,132 @@ export async function execute(
 
         // Tag options for downstream result handling
         mergedCrawlerOptions.__resultLimit = resultLimit;
+
+        // Handle extraction options for discovery mode
+        const extractionOptions = this.getNodeParameter('extractionOptions', i, {}) as IDataObject;
+        if (extractionOptions.enableExtraction === true) {
+          const extractionType = extractionOptions.extractionType as string || 'css';
+
+          if (extractionType === 'css') {
+            // CSS Selector extraction
+            const baseSelector = (extractionOptions.baseSelector as string || '').trim();
+            const fieldSelectorsJson = (extractionOptions.fieldSelectors as string || '[]').trim();
+
+            if (!baseSelector) {
+              throw new NodeOperationError(this.getNode(), 'Base selector is required for CSS extraction.', { itemIndex: i });
+            }
+
+            let fields: any[] = [];
+            try {
+              fields = JSON.parse(fieldSelectorsJson);
+              if (!Array.isArray(fields) || fields.length === 0) {
+                throw new Error('Field selectors must be a non-empty array');
+              }
+            } catch (e) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Invalid field selectors JSON: ${(e as Error).message}`,
+                { itemIndex: i }
+              );
+            }
+
+            mergedCrawlerOptions.extractionStrategy = {
+              type: 'JsonCssExtractionStrategy',
+              params: {
+                schema: {
+                  type: 'dict',
+                  value: {
+                    name: 'ExtractedData',
+                    baseSelector,
+                    fields,
+                  },
+                },
+              },
+            };
+          } else if (extractionType === 'llm') {
+            // LLM Extraction
+            const llmInstruction = (extractionOptions.llmInstruction as string || '').trim();
+            const llmSchemaJson = (extractionOptions.llmSchema as string || '{}').trim();
+
+            if (!llmInstruction) {
+              throw new NodeOperationError(this.getNode(), 'Extraction instructions are required for LLM extraction.', { itemIndex: i });
+            }
+
+            let schema: any = {};
+            try {
+              schema = JSON.parse(llmSchemaJson);
+            } catch (e) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Invalid LLM schema JSON: ${(e as Error).message}`,
+                { itemIndex: i }
+              );
+            }
+
+            // Get LLM credentials
+            const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
+
+            if (!credentials.enableLlm) {
+              throw new NodeOperationError(
+                this.getNode(),
+                'LLM features must be enabled in Crawl4AI credentials to use LLM extraction.',
+                { itemIndex: i }
+              );
+            }
+
+            // Build provider string and API key
+            let provider = 'openai/gpt-4o';
+            let apiKey = '';
+
+            if (credentials.llmProvider === 'openai') {
+              const model = credentials.llmModel || 'gpt-4o';
+              provider = `openai/${model}`;
+              apiKey = credentials.apiKey || '';
+            } else if (credentials.llmProvider === 'anthropic') {
+              const model = credentials.llmModel || 'claude-3-haiku-20240307';
+              provider = `anthropic/${model}`;
+              apiKey = credentials.apiKey || '';
+            } else if (credentials.llmProvider === 'groq') {
+              const model = credentials.llmModel || 'llama3-70b-8192';
+              provider = `groq/${model}`;
+              apiKey = credentials.apiKey || '';
+            } else if (credentials.llmProvider === 'ollama') {
+              const model = credentials.ollamaModel || 'llama3';
+              provider = `ollama/${model}`;
+            } else if (credentials.llmProvider === 'other') {
+              provider = credentials.customProvider || 'custom/model';
+              apiKey = credentials.customApiKey || '';
+            }
+
+            if (!apiKey && credentials.llmProvider !== 'ollama') {
+              throw new NodeOperationError(
+                this.getNode(),
+                `API key is required for ${credentials.llmProvider} provider.`,
+                { itemIndex: i }
+              );
+            }
+
+            mergedCrawlerOptions.extractionStrategy = {
+              type: 'LLMExtractionStrategy',
+              params: {
+                llm_config: {
+                  type: 'LLMConfig',
+                  params: {
+                    provider,
+                    api_token: apiKey,
+                    ...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
+                      { api_base: credentials.customBaseUrl } : {}),
+                    ...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
+                      { api_base: credentials.ollamaUrl } : {})
+                  }
+                },
+                schema: { type: 'dict', value: schema },
+                instruction: llmInstruction,
+                extraction_type: 'schema',
+              },
+            };
+          }
+        }
       }
 
       const crawlerConfig = createCrawlerRunConfig(mergedCrawlerOptions);

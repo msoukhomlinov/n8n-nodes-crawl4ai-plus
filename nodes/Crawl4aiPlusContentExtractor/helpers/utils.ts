@@ -5,8 +5,13 @@ export {
   createCrawlerRunConfig,
   safeJsonParse,
   cleanText,
-  isValidUrl
+  isValidUrl,
+  buildLlmConfig,
+  validateLlmCredentials,
 } from '../../Crawl4aiPlusBasicCrawler/helpers/utils';
+
+// Import types
+export type { LlmConfigResult } from '../../Crawl4aiPlusBasicCrawler/helpers/utils';
 
 import { IDataObject } from 'n8n-workflow';
 import { cleanText } from '../../Crawl4aiPlusBasicCrawler/helpers/utils';

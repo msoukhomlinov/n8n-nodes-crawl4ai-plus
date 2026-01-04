@@ -7,6 +7,7 @@ import * as cssExtractor from './cssExtractor.operation';
 import * as jsonExtractor from './jsonExtractor.operation';
 import * as llmExtractor from './llmExtractor.operation';
 import * as regexExtractor from './regexExtractor.operation';
+import * as seoExtractor from './seoExtractor.operation';
 
 // Type definition for the execute function of an operation
 type OperationExecuteFunction = (
@@ -23,6 +24,7 @@ export const operations: { [key: string]: OperationExecuteFunction } = {
   jsonExtractor: jsonExtractor.execute,
   llmExtractor: llmExtractor.execute,
   regexExtractor: regexExtractor.execute,
+  seoExtractor: seoExtractor.execute,
 };
 
 // Aggregate UI property descriptions from all operations
@@ -63,6 +65,12 @@ export const description: INodeProperties[] = [
         description: 'Extract data using regex patterns (NEW in 0.7.x)',
         action: 'Extract with regex',
       },
+      {
+        name: 'SEO Metadata Extractor',
+        value: 'seoExtractor',
+        description: 'Extract SEO metadata (title, meta tags, OG tags, JSON-LD)',
+        action: 'Extract SEO metadata',
+      },
     ],
     default: 'cssExtractor',
   },
@@ -73,4 +81,5 @@ export const description: INodeProperties[] = [
   ...jsonExtractor.description,
   ...llmExtractor.description,
   ...regexExtractor.description,
+  ...seoExtractor.description,
 ];
