@@ -17,9 +17,7 @@ export class Crawl4aiClient {
    * Create and configure an Axios instance for API communication
    */
   private createApiClient(): AxiosInstance {
-    const baseURL = this.credentials.connectionMode === 'docker'
-      ? this.credentials.dockerUrl
-      : 'http://localhost:11235'; // Default fallback for direct mode
+    const baseURL = this.credentials.dockerUrl || 'http://localhost:11235';
 
     const client = axios.create({
       baseURL,
@@ -27,7 +25,7 @@ export class Crawl4aiClient {
     });
 
     // Add authentication headers if needed
-    if (this.credentials.connectionMode === 'docker' && this.credentials.authenticationType) {
+    if (this.credentials.authenticationType) {
       if (this.credentials.authenticationType === 'token' && this.credentials.apiToken) {
         client.defaults.headers.common['Authorization'] = `Bearer ${this.credentials.apiToken}`;
       } else if (this.credentials.authenticationType === 'basic' && this.credentials.username && this.credentials.password) {
@@ -55,6 +53,62 @@ export class Crawl4aiClient {
   }
 
   /**
+   * Parse API error response and return actionable error message
+   */
+  private parseApiError(error: any, context: string = 'crawl'): string {
+    // Network/connection errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      return `Cannot connect to Crawl4AI API at ${this.apiClient.defaults.baseURL}. Check that the Docker container is running and the URL is correct.`;
+    }
+
+    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      return `Request timed out. The crawl operation took longer than the configured timeout. Consider increasing the timeout or simplifying the crawl configuration.`;
+    }
+
+    // HTTP error responses
+    if (error.response) {
+      const status = error.response.status;
+      const data = error.response.data;
+
+      // Extract detailed error message from API response
+      const detail = data?.detail || data?.error || data?.message;
+
+      if (status === 400) {
+        return `Invalid request (400): ${detail || 'Bad request format'}. Check your configuration parameters.`;
+      }
+
+      if (status === 401) {
+        return `Authentication failed (401): ${detail || 'Invalid credentials'}. Check your API token or username/password in credentials.`;
+      }
+
+      if (status === 403) {
+        return `Access forbidden (403): ${detail || 'Insufficient permissions'}. Check your authentication credentials.`;
+      }
+
+      if (status === 404) {
+        return `Endpoint not found (404): ${detail || 'The requested endpoint does not exist'}. Verify the Crawl4AI API version.`;
+      }
+
+      if (status === 422) {
+        return `Validation error (422): ${detail || 'Invalid configuration parameters'}. Review your browser_config or crawler_config settings.`;
+      }
+
+      if (status === 429) {
+        return `Rate limit exceeded (429): ${detail || 'Too many requests'}. Please wait before retrying.`;
+      }
+
+      if (status >= 500) {
+        return `Server error (${status}): ${detail || 'Crawl4AI API encountered an internal error'}. The server may be overloaded or experiencing issues.`;
+      }
+
+      return `API error (${status}): ${detail || error.response.statusText || 'Unknown error'}`;
+    }
+
+    // Generic error
+    return error instanceof Error ? error.message : 'Unknown error occurred';
+  }
+
+  /**
    * Crawl a single URL
    */
   async crawlUrl(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
@@ -75,13 +129,13 @@ export class Crawl4aiClient {
       return {
         url,
         success: false,
-        error_message: 'No result returned from Crawl4AI API',
+        error_message: 'No result returned from Crawl4AI API. The API responded but did not return any crawl results.',
       };
     } catch (error) {
       return {
         url,
         success: false,
-        error_message: error instanceof Error ? error.message : 'Unknown error occurred',
+        error_message: this.parseApiError(error, 'crawl'),
       };
     }
   }
@@ -107,13 +161,14 @@ export class Crawl4aiClient {
       return urls.map(url => ({
         url,
         success: false,
-        error_message: 'No results returned from Crawl4AI API',
+        error_message: 'No results returned from Crawl4AI API. The API responded but did not return any crawl results.',
       }));
     } catch (error) {
+      const errorMessage = this.parseApiError(error, 'crawlMultiple');
       return urls.map(url => ({
         url,
         success: false,
-        error_message: error instanceof Error ? error.message : 'Unknown error occurred',
+        error_message: errorMessage,
       }));
     }
   }
@@ -134,9 +189,10 @@ export class Crawl4aiClient {
         };
       }
 
-      // For raw HTML, we need to use a special URL format that tells Crawl4AI to process raw content
-      // Properly encode the HTML content to prevent injection vulnerabilities
-      const rawUrl = `raw://${encodeURIComponent(html)}`;
+      // For raw HTML, use the raw: prefix as documented in official Crawl4AI SDK
+      // The raw: prefix tells Crawl4AI to process the content as raw HTML string
+      // Note: Official docs specify "raw:" prefix (not "raw://")
+      const rawUrl = `raw:${html}`;
       const response = await this.apiClient.post('/crawl', {
         urls: [rawUrl],
         browser_config: this.formatBrowserConfig(config),
@@ -156,74 +212,27 @@ export class Crawl4aiClient {
       return {
         url: baseUrl,
         success: false,
-        error_message: 'No result returned from Crawl4AI API',
+        error_message: 'No result returned from Crawl4AI API. The API responded but did not return any crawl results.',
       };
     } catch (error) {
       return {
         url: baseUrl,
         success: false,
-        error_message: error instanceof Error ? error.message : 'Unknown error occurred',
+        error_message: this.parseApiError(error, 'processRawHtml'),
       };
     }
   }
 
   /**
    * Run an advanced operation (used for Content Extractor operations)
+   * Aligns with official SDK arun() method naming
    * @param url URL to process
-   * @param options Advanced options including extraction strategy
+   * @param config Crawler run configuration (standardized)
    * @returns Crawl result
    */
-  async arun(url: string, options: any): Promise<CrawlResult> {
-    try {
-      // Prepare the crawler config, only adding values if they exist
-      const crawlerParams: any = {
-        cache_mode: options.cacheMode || 'ENABLED',
-      };
-
-      if (options.jsCode) {
-        crawlerParams.js_code = options.jsCode;
-      }
-      if (options.cssSelector) {
-        crawlerParams.css_selector = options.cssSelector;
-      }
-      if (options.extractionStrategy) {
-        crawlerParams.extraction_strategy = options.extractionStrategy;
-      }
-      if (options.extraArgs) {
-        Object.assign(crawlerParams, options.extraArgs);
-      }
-
-      // Prepare the full request
-      const requestBody = {
-        urls: [url],
-        browser_config: this.formatBrowserConfig(options.browserConfig || {}),
-        crawler_config: {
-          type: 'CrawlerRunConfig',
-          params: crawlerParams,
-        },
-      };
-
-      const response = await this.apiClient.post('/crawl', requestBody, {
-        timeout: 120000, // 2 minutes for extraction operations
-      });
-
-      // Process the response
-      if (response.data && Array.isArray(response.data.results) && response.data.results.length > 0) {
-        return response.data.results[0];
-      }
-
-      return {
-        url,
-        success: false,
-        error_message: 'No result returned from Crawl4AI API',
-      };
-    } catch (error: any) {
-      return {
-        url,
-        success: false,
-        error_message: error.response?.data?.detail || error.message || 'Unknown error occurred',
-      };
-    }
+  async arun(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
+    // Use the same crawlUrl implementation for consistency
+    return this.crawlUrl(url, config);
   }
 
   /**
@@ -312,6 +321,10 @@ export class Crawl4aiClient {
       params.cache_mode = config.cacheMode;
     }
 
+    // Note: Streaming support (streamEnabled) sets the API flag but full streaming response
+    // handling is not yet implemented. The Crawl4AI API supports /crawl/stream endpoint for
+    // NDJSON responses, but n8n's output model expects complete results. For now, results
+    // are returned as a batch after all URLs are processed.
     if (config.streamEnabled) {
       params.stream = true;
     }
@@ -393,10 +406,12 @@ export class Crawl4aiClient {
       const response = await this.apiClient.post('/generate_pattern', payload);
       return response.data;
     } catch (error: any) {
-      if (error.response) {
-        throw new Error(`Pattern generation failed: ${error.response.data?.error || error.response.statusText}`);
+      const errorMessage = this.parseApiError(error, 'generatePattern');
+      // Check for LLM-specific errors
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        throw new Error(`${errorMessage} Check your LLM credentials in the node settings.`);
       }
-      throw new Error(`Pattern generation request failed: ${error.message}`);
+      throw new Error(errorMessage);
     }
   }
 

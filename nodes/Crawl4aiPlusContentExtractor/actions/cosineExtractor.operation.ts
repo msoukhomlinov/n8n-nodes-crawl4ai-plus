@@ -9,7 +9,7 @@ import { NodeOperationError } from 'n8n-workflow';
 // Import helpers and types
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
-	createBrowserConfig,
+	createCrawlerRunConfig,
 	createCosineExtractionStrategy,
 	getCrawl4aiClient,
 	isValidUrl,
@@ -441,26 +441,29 @@ export async function execute(
 				);
 			}
 
-			// Create browser config
-			const browserConfig = createBrowserConfig(mergedBrowserOptions);
-
 			// Create Cosine extraction strategy
 			const extractionStrategy = createCosineExtractionStrategy(
 				semanticFilter,
 				clusteringOptions
 			);
 
-			// Get crawler instance
-			const crawler = await getCrawl4aiClient(this);
-
-			// Run the extraction
-			const result = await crawler.arun(url, {
-				browserConfig,
-				extractionStrategy,
+			// Build crawler config using standardized helper
+			const crawlerOptions: any = {
+				...mergedBrowserOptions, // Include browser options
 				cacheMode: options.cacheMode || 'ENABLED',
 				jsCode: browserOptions.jsCode,
 				cssSelector: options.cssSelector,
-			});
+			};
+
+			const crawlerConfig = createCrawlerRunConfig(crawlerOptions);
+			// Set extraction strategy
+			crawlerConfig.extractionStrategy = extractionStrategy;
+
+			// Get crawler instance
+			const crawler = await getCrawl4aiClient(this);
+
+			// Run the extraction using standardized arun() method
+			const result = await crawler.arun(url, crawlerConfig);
 
 			// Parse extracted JSON (CosineStrategy returns array of clusters)
 			const extractedData = parseExtractedJson(result);

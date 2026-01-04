@@ -2,8 +2,7 @@ import { IDataObject } from 'n8n-workflow';
 
 // Credentials interface
 export interface Crawl4aiApiCredentials {
-  connectionMode: 'direct' | 'docker';
-  // Docker settings
+  // Docker REST API settings
   dockerUrl?: string;
   authenticationType?: 'none' | 'token' | 'basic';
   apiToken?: string;

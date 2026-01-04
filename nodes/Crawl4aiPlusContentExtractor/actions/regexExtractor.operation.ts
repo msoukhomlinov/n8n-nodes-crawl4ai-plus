@@ -11,6 +11,7 @@ import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
+	createCrawlerRunConfig,
 	isValidUrl
 } from '../helpers/utils';
 import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
@@ -304,7 +305,7 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified).',
 			},
 			{
 				displayName: 'Enable JavaScript',
@@ -635,20 +636,23 @@ export async function execute(
 				extractionStrategy.params.custom_patterns = customPatterns;
 			}
 
-			// Create browser config
-			const browserConfig = createBrowserConfig(browserOptions);
+			// Build crawler config using standardized helper
+			const crawlerOptions: any = {
+				...browserOptions, // Include browser options
+				cacheMode: options.cacheMode || 'ENABLED',
+				jsCode: browserOptions.jsCode,
+				cssSelector: options.cssSelector,
+			};
+
+			const crawlerConfig = createCrawlerRunConfig(crawlerOptions);
+			// Set extraction strategy
+			crawlerConfig.extractionStrategy = extractionStrategy;
 
 			// Get crawler instance
 			const crawler = await getCrawl4aiClient(this);
 
-			// Run the extraction
-			const result = await crawler.arun(url, {
-				browserConfig,
-				extractionStrategy,
-				cacheMode: options.cacheMode || 'ENABLED',
-				jsCode: browserOptions.jsCode,
-				cssSelector: options.cssSelector,
-			});
+			// Run the extraction using standardized arun() method
+			const result = await crawler.arun(url, crawlerConfig);
 
 			// Parse extracted JSON
 			const extractedData = parseExtractedJson(result);

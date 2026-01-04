@@ -10,7 +10,7 @@ import { NodeOperationError } from 'n8n-workflow';
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
-	createBrowserConfig,
+	createCrawlerRunConfig,
 	isValidUrl
 } from '../helpers/utils';
 
@@ -120,7 +120,7 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified).',
 			},
 			{
 				displayName: 'Enable JavaScript',
@@ -309,9 +309,6 @@ export async function execute(
 				}
 			}
 
-			// Create browser config
-			const browserConfig = createBrowserConfig(browserOptions);
-
 			// Get crawler instance
 			const crawler = await getCrawl4aiClient(this);
 
@@ -336,14 +333,26 @@ export async function execute(
 				},
 			};
 
-			// Run the extraction
-			const result = await crawler.arun(url, {
-				extractionStrategy: sourceType === 'direct' ? undefined : extractionStrategy,
-				browserConfig,
-				cacheMode: options.cacheMode || 'enabled',
+			// Build crawler config using standardized helper
+			const crawlerOptions: any = {
+				...browserOptions, // Include browser options
+				cacheMode: options.cacheMode || 'ENABLED',
 				jsCode: browserOptions.jsCode,
-				headers,
-			});
+			};
+
+			// Add headers if provided (headers go in browser config)
+			if (headers) {
+				crawlerOptions.headers = headers;
+			}
+
+			const crawlerConfig = createCrawlerRunConfig(crawlerOptions);
+			// Set extraction strategy only if not direct mode
+			if (sourceType !== 'direct') {
+				crawlerConfig.extractionStrategy = extractionStrategy;
+			}
+
+			// Run the extraction using standardized arun() method
+			const result = await crawler.arun(url, crawlerConfig);
 
 			// Process the result based on source type
 			let jsonData: IDataObject | IDataObject[] | null = null;

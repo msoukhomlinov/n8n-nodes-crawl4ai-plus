@@ -5,39 +5,14 @@ export class Crawl4aiApi implements ICredentialType {
 	displayName = 'Crawl4AI Plus API';
 	documentationUrl = 'https://github.com/msoukhomlinov/n8n-nodes-crawl4ai';
 	properties: INodeProperties[] = [
-		// Connection Mode
-		{
-			displayName: 'Connection Mode',
-			name: 'connectionMode',
-			type: 'options',
-			options: [
-				{
-					name: 'Direct Python Package',
-					value: 'direct',
-					description: 'Use Crawl4AI directly as a Python package'
-				},
-				{
-					name: 'Docker Client',
-					value: 'docker',
-					description: 'Connect to a Crawl4AI Docker container'
-				},
-			],
-			default: 'docker',
-			description: 'The mode to connect to Crawl4AI'
-		},
-		// Docker Client Settings
+		// Docker REST API Settings
 		{
 			displayName: 'Docker Server URL',
 			name: 'dockerUrl',
 			type: 'string',
 			default: 'http://crawl4ai:11235',
 			placeholder: 'http://crawl4ai:11235',
-			description: 'The URL of the Crawl4AI Docker server',
-			displayOptions: {
-				show: {
-					connectionMode: ['docker'],
-				},
-			},
+			description: 'The URL of the Crawl4AI Docker REST API server. This node connects to Crawl4AI via Docker REST API.',
 		},
 		{
 			displayName: 'Authentication Type',
@@ -61,12 +36,7 @@ export class Crawl4aiApi implements ICredentialType {
 				},
 			],
 			default: 'token',
-			description: 'The authentication method to use',
-			displayOptions: {
-				show: {
-					connectionMode: ['docker'],
-				},
-			},
+			description: 'The authentication method to use for the Docker REST API',
 		},
 		{
 			displayName: 'API Token',
@@ -79,7 +49,6 @@ export class Crawl4aiApi implements ICredentialType {
 			description: 'The API token for Docker server authentication',
 			displayOptions: {
 				show: {
-					connectionMode: ['docker'],
 					authenticationType: ['token'],
 				},
 			},
@@ -92,7 +61,6 @@ export class Crawl4aiApi implements ICredentialType {
 			description: 'The username for Docker server authentication',
 			displayOptions: {
 				show: {
-					connectionMode: ['docker'],
 					authenticationType: ['basic'],
 				},
 			},
@@ -108,7 +76,6 @@ export class Crawl4aiApi implements ICredentialType {
 			description: 'The password for Docker server authentication',
 			displayOptions: {
 				show: {
-					connectionMode: ['docker'],
 					authenticationType: ['basic'],
 				},
 			},

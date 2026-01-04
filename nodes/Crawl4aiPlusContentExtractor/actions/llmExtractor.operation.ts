@@ -1,8 +1,8 @@
 import type {
-	IDataObject,
-	IExecuteFunctions,
-	INodeExecutionData,
-	INodeProperties,
+  IDataObject,
+  IExecuteFunctions,
+  INodeExecutionData,
+  INodeProperties,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
@@ -10,7 +10,7 @@ import { NodeOperationError } from 'n8n-workflow';
 import type { Crawl4aiNodeOptions, Crawl4aiApiCredentials, LlmSchema, LlmSchemaField } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
-	createBrowserConfig,
+	createCrawlerRunConfig,
 	createLlmExtractionStrategy,
 	isValidUrl
 } from '../helpers/utils';
@@ -234,7 +234,7 @@ export const description: INodeProperties[] = [
 					},
 				],
 				default: 'chromium',
-				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
+				description: 'Which browser engine to use for crawling. Default: Chromium (if not specified).',
 			},
 			{
 				displayName: 'Enable JavaScript',
@@ -860,9 +860,6 @@ export async function execute(
 				}
 			}
 
-		// Create browser config
-		const browserConfig = createBrowserConfig(mergedBrowserOptions);
-
 		// Get input format from LLM options
 		const inputFormat = llmOptions.inputFormat as 'markdown' | 'html' | 'fit_markdown' | undefined;
 
@@ -876,27 +873,24 @@ export async function execute(
 			inputFormat
 		);
 
+		// Build crawler config using standardized helper
+		// Merge browser options and crawler options together (following basic crawler pattern)
+		const crawlerOptions: any = {
+			...mergedBrowserOptions, // Include browser options
+			cacheMode: options.cacheMode || 'ENABLED',
+			jsCode: browserOptions.jsCode,
+			cssSelector: options.cssSelector,
+		};
+
+		const crawlerConfig = createCrawlerRunConfig(crawlerOptions);
+		// Set extraction strategy
+		crawlerConfig.extractionStrategy = extractionStrategy;
+
 		// Get crawler instance
 		const crawler = await getCrawl4aiClient(this);
 
-		// Prepare extra arguments for LLM
-		const extraArgs: any = {};
-		if (llmOptions.temperature !== undefined) {
-			extraArgs.temperature = llmOptions.temperature;
-		}
-		if (llmOptions.maxTokens !== undefined) {
-			extraArgs.max_tokens = llmOptions.maxTokens;
-		}
-
-			// Run the extraction
-			const result = await crawler.arun(url, {
-				browserConfig,
-				extractionStrategy,
-				cacheMode: options.cacheMode || 'enabled',
-				jsCode: browserOptions.jsCode,
-				cssSelector: options.cssSelector,
-				extraArgs,
-			});
+		// Run the extraction using standardized arun() method
+		const result = await crawler.arun(url, crawlerConfig);
 
 			// Parse extracted JSON
 			const extractedData = parseExtractedJson(result);
