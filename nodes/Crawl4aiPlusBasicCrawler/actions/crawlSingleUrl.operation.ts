@@ -68,7 +68,7 @@ export const description: INodeProperties[] = [
           },
         ],
         default: 'chromium',
-        description: 'Which browser engine to use for crawling. Default: Chromium (if not specified)',
+        description: 'Which browser engine to use for crawling. Default: Chromium (if not specified).',
       },
       {
         displayName: 'Enable JavaScript',
