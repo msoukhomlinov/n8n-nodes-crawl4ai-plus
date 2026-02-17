@@ -13,6 +13,7 @@ import {
 	createCrawlerRunConfig,
 	isValidUrl
 } from '../helpers/utils';
+import { formatExtractionResult } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -73,12 +74,37 @@ export const description: INodeProperties[] = [
 		},
 	},
 	{
+		displayName: 'Extraction Schema Type',
+		name: 'extractionType',
+		type: 'options',
+		options: [
+			{
+				name: 'CSS Schema',
+				value: 'css',
+				description: 'Use JsonCssExtractionStrategy (CSS selectors)',
+			},
+			{
+				name: 'XPath Schema',
+				value: 'xpath',
+				description: 'Use JsonXPathExtractionStrategy (XPath expressions)',
+			},
+		],
+		default: 'css',
+		description: 'Schema extraction engine to use when source type is Script Tag or JSON-LD',
+		displayOptions: {
+			show: {
+				operation: ['jsonExtractor'],
+				sourceType: ['script', 'jsonld'],
+			},
+		},
+	},
+	{
 		displayName: 'Script Selector',
 		name: 'scriptSelector',
 		type: 'string',
 		default: '',
 		placeholder: 'script#__NEXT_DATA__',
-		description: 'CSS selector for the script tag containing JSON data',
+		description: 'CSS selector (or XPath expression when using XPath Schema) for the script tag containing JSON data',
 		displayOptions: {
 			show: {
 				operation: ['jsonExtractor'],
@@ -124,7 +150,7 @@ export const description: INodeProperties[] = [
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'java_script_enabled',
+				name: 'javaScriptEnabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -170,6 +196,31 @@ export const description: INodeProperties[] = [
 				description: 'Whether to run browser in headless mode',
 			},
 			{
+				displayName: 'Init Scripts',
+				name: 'initScripts',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				default: {},
+				description: 'JavaScript snippets injected before page load for stealth or setup',
+				options: [
+					{
+						name: 'scripts',
+						displayName: 'Scripts',
+						values: [
+							{
+								displayName: 'Script',
+								name: 'value',
+								type: 'string',
+								typeOptions: { rows: 3 },
+								default: '',
+								placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+								description: 'JavaScript to inject before page load',
+							},
+						],
+					},
+				],
+			},
+			{
 				displayName: 'JavaScript Code',
 				name: 'jsCode',
 				type: 'string',
@@ -186,6 +237,70 @@ export const description: INodeProperties[] = [
 				type: 'number',
 				default: 30000,
 				description: 'Maximum time to wait for the browser to load the page',
+			},
+		],
+	},
+	{
+		displayName: 'Session & Authentication',
+		name: 'sessionOptions',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
+		displayOptions: {
+			show: {
+				operation: ['jsonExtractor'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Cookies',
+				name: 'cookies',
+				type: 'fixedCollection',
+				default: { cookieValues: [] },
+				typeOptions: { multipleValues: true },
+				options: [
+					{
+						name: 'cookieValues',
+						displayName: 'Cookie',
+						values: [
+							{ displayName: 'Name', name: 'name', type: 'string', default: '', description: 'Cookie name' },
+							{ displayName: 'Value', name: 'value', type: 'string', default: '', description: 'Cookie value' },
+							{ displayName: 'Domain', name: 'domain', type: 'string', default: '', description: 'Cookie domain' },
+						],
+					},
+				],
+				description: 'Cookies to inject for authentication',
+			},
+			{
+				displayName: 'Storage State (JSON)',
+				name: 'storageState',
+				type: 'json',
+				default: '',
+				placeholder: '{"cookies": [...], "origins": [...]}',
+				description: 'Browser storage state as JSON',
+			},
+			{
+				displayName: 'Use Managed Browser',
+				name: 'useManagedBrowser',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to connect to an existing managed browser instance',
+			},
+			{
+				displayName: 'Use Persistent Context',
+				name: 'usePersistentContext',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to save browser context to disk for session persistence',
+			},
+			{
+				displayName: 'User Data Directory',
+				name: 'userDataDir',
+				type: 'string',
+				default: '',
+				placeholder: '/data/browser-profiles/profile1',
+				description: 'Path to browser profile directory for persistent sessions',
+				displayOptions: { show: { usePersistentContext: [true] } },
 			},
 		],
 	},
@@ -236,11 +351,11 @@ export const description: INodeProperties[] = [
 				description: 'How to use the cache when crawling',
 			},
 			{
-				displayName: 'Include Full Content',
-				name: 'includeFullContent',
+				displayName: 'Include Full Text',
+				name: 'includeFullText',
 				type: 'boolean',
 				default: false,
-				description: 'Whether to include the full JSON content in addition to the extracted data',
+				description: 'Whether to include the full crawled text in the output',
 			},
 			{
 				displayName: 'Headers',
@@ -271,8 +386,10 @@ export async function execute(
 			const url = this.getNodeParameter('url', i, '') as string;
 			const jsonPath = this.getNodeParameter('jsonPath', i, '') as string;
 			const sourceType = this.getNodeParameter('sourceType', i, 'direct') as string;
+			const extractionType = this.getNodeParameter('extractionType', i, 'css') as string;
 			const scriptSelector = this.getNodeParameter('scriptSelector', i, '') as string;
 			let browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+			const sessionOptions = this.getNodeParameter('sessionOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
 			// Transform extraArgs from fixedCollection format to array
@@ -285,6 +402,9 @@ export async function execute(
 					};
 				}
 			}
+
+			// Merge session options into browser options
+			browserOptions = { ...sessionOptions, ...browserOptions };
 
 			if (!url) {
 				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
@@ -312,19 +432,25 @@ export async function execute(
 			// Get crawler instance
 			const crawler = await getCrawl4aiClient(this);
 
-			// Create a JSON extraction strategy
+			// Create a JSON extraction strategy — CSS or XPath schema
+			const useXPath = extractionType === 'xpath';
+			const strategyTypeName = useXPath ? 'JsonXPathExtractionStrategy' : 'JsonCssExtractionStrategy';
+			const baseSelector = sourceType === 'jsonld'
+				? (useXPath ? '//script[@type="application/ld+json"]' : 'script[type="application/ld+json"]')
+				: (scriptSelector || (useXPath ? '//body' : 'body'));
+			const fieldSelector = sourceType === 'jsonld' ? '' : (scriptSelector || (useXPath ? '//pre' : 'pre'));
 			const extractionStrategy = {
-				type: 'JsonCssExtractionStrategy',
+				type: strategyTypeName,
 				params: {
 					schema: {
 						type: 'dict',
 						value: {
 							name: 'json_extraction',
-							baseSelector: sourceType === 'jsonld' ? 'script[type="application/ld+json"]' : scriptSelector || 'body',
+							baseSelector,
 							fields: [
 								{
 									name: 'content',
-									selector: sourceType === 'jsonld' ? '' : scriptSelector || 'pre',
+									selector: fieldSelector,
 									type: 'text',
 								}
 							],
@@ -415,31 +541,21 @@ export async function execute(
 				}
 			}
 
-			// Prepare output
-			const output: IDataObject = {
-				url,
-				success: result.success,
-			};
-
-			// Add error message if failed
-			if (!result.success && result.error_message) {
-				output.error = result.error_message;
-			} else if (jsonData) {
-				// Add data if successful
-				output.data = jsonData;
-
-				// Include full content if requested
-				if (options.includeFullContent === true) {
-					output.fullContent = result.text || result.extracted_content;
-				}
-			} else {
-				output.error = 'No JSON data found or failed to parse JSON';
-				output.success = false;
-			}
+			// Format result using standard output shape
+			const fetchedAt = new Date().toISOString();
+			const strategyName = sourceType !== 'direct'
+				? (extractionType === 'xpath' ? 'JsonXPathExtractionStrategy' : 'JsonCssExtractionStrategy')
+				: 'JsonExtractor';
+			const formattedResult = formatExtractionResult(result, jsonData as any, {
+				fetchedAt,
+				extractionStrategy: strategyName,
+				includeFullText: options.includeFullText as boolean,
+				includeLinks: false,
+			});
 
 			// Add the result to the output array
 			allResults.push({
-				json: output,
+				json: formattedResult,
 				pairedItem: { item: i },
 			});
 

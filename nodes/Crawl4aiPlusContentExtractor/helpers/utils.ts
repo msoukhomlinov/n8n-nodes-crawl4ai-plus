@@ -63,7 +63,7 @@ export function createLlmExtractionStrategy(
 ): any {
   const llmConfigParams: any = {
     provider: provider || 'openai/gpt-4o',
-    api_token: apiKey,
+    ...(apiKey ? { api_token: apiKey } : {}),
   };
 
   // Add custom base URL if provided (for external LiteLLM proxies or custom endpoints)

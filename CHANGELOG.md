@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.0] - 2026-02-18
+
+> **BREAKING CHANGE** — Complete rewrite targeting Crawl4AI v0.8.0. All field names, output shapes, and operation behaviour have changed. Existing workflows built on v3.x will require rebuilding.
+
+### Breaking changes
+- Targets Crawl4AI REST API v0.8.0; incompatible with v0.7.x server deployments
+- All API field names are strict snake_case matching the upstream API — no legacy aliases or fallback handling
+- Output shape standardised across all operations: `domain`, `fetchedAt`, `statusCode`, `content.*`, `extracted.*`, `metrics.*` at top level; prior nested structures removed
+- `getJobStatus` result no longer nested under a `crawlResult` key — fields appear at top level, enabling direct field access after Submit → Poll chains
+- `jsonExtractor` option renamed from `includeFullContent` to `includeFullText` (consistent with all other extractors)
+- `seoExtractor` and `jsonExtractor` now emit the standard output shape instead of custom `{ seo: {...} }` / `{ data: {...} }` shapes
+
+### New operations
+- `crawlStream` (Basic Crawler) — streaming crawl; one output item per result chunk with individual `fetchedAt` timestamps
+- `submitCrawlJob` (Basic Crawler) — submit async crawl job, returns `task_id`
+- `getJobStatus` (Basic Crawler) — poll job by `task_id`; flat output compatible with downstream field references
+- `healthCheck` (Basic Crawler) — verify server reachability
+- `seoExtractor` (Content Extractor) — extract title, meta, OG tags, canonical URL, JSON-LD
+- `submitLlmJob` (Content Extractor) — submit async LLM extraction job
+
+### Added
+- `initScripts` browser option added to all six Content Extractor operations (was BasicCrawler-only)
+- `sessionOptions` (cookies, storageState, persistent context, managed browser) added to `jsonExtractor`, `regexExtractor`, `seoExtractor`
+- `cleanText` option added to `llmExtractor`, `regexExtractor`, `cosineExtractor` to normalise whitespace in extracted values
+- `cosineExtractor`: added `browserType`, `timeout`, `viewportWidth`, `viewportHeight` browser options
+- `crawlMultipleUrls`: added `browserType` selector (chromium / firefox / webkit)
+- `discoverLinks`: added `enableStealth`, `initScripts`, and `scoreLinks` toggle (previously always enabled)
+- `regexExtractor`: custom patterns now validated client-side — invalid regex surfaces a clear error before the API call
+
+### Fixed
+- `javaScriptEnabled` browser toggle was silently ignored across all operations due to field name mismatch
+- `cosineExtractor` `continueOnFail` error path now preserves the original input item per n8n conventions
+- `crawlStream` was stamping all results with the same `fetchedAt`; each result now has its own timestamp
+- Invalid `resumeState` JSON is now surfaced as a clear error instead of being silently dropped
+- Action label typos in BasicCrawler: `'Crawl multiple ur ls'` and `'Crawl ur ls via streaming'` corrected
+- `timeout` browser option silently had no effect in all Content Extractor operations — now correctly maps to `page_timeout` in API requests
+- Structured cookies (fixedCollection format) were silently dropped in `cosineExtractor`, `jsonExtractor`, and `seoExtractor`; authenticated crawls now work correctly
+- `api_token: null` was sent to the API for Ollama LLM extraction (no API key required) — now omitted when blank
+- `seoExtractor` was missing `enableStealth` and `extraArgs` browser options present in all other operations
+
+### Changed
+- LLM config building centralised into `buildLlmConfig()` / `validateLlmCredentials()` utilities; inline provider switch-cases removed from `crawlSingleUrl`, `crawlMultipleUrls`, `llmExtractor`, `regexExtractor`
+- `crawlMultipleUrls` internal `resultLimit` no longer smuggled via a magic `__resultLimit` property on the config object
+
+---
+
 ## [3.0.0] - 2026-01-06
 
 ### Added

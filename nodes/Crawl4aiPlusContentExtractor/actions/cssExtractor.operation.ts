@@ -59,6 +59,7 @@ export const description: INodeProperties[] = [
       multipleValues: true,
     },
     default: {},
+    required: true,
     displayOptions: {
       show: {
         operation: ['cssExtractor'],
@@ -166,7 +167,7 @@ export const description: INodeProperties[] = [
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'java_script_enabled',
+				name: 'javaScriptEnabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -210,6 +211,31 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: true,
         description: 'Whether to run browser in headless mode',
+      },
+      {
+        displayName: 'Init Scripts',
+        name: 'initScripts',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        default: {},
+        description: 'JavaScript snippets injected before page load for stealth or setup',
+        options: [
+          {
+            name: 'scripts',
+            displayName: 'Scripts',
+            values: [
+              {
+                displayName: 'Script',
+                name: 'value',
+                type: 'string',
+                typeOptions: { rows: 3 },
+                default: '',
+                placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+                description: 'JavaScript to inject before page load',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'JavaScript Code',
@@ -449,17 +475,19 @@ export async function execute(
       const crawler = await getCrawl4aiClient(this);
 
       // Run the extraction using standardized arun() method
+      const fetchedAt = new Date().toISOString();
       const result = await crawler.arun(url, crawlerConfig);
 
       // Parse extracted JSON
       const extractedData = parseExtractedJson(result);
 
       // Format extraction result
-      const formattedResult = formatExtractionResult(
-        result,
-        extractedData,
-        options.includeFullText as boolean
-      );
+      const formattedResult = formatExtractionResult(result, extractedData, {
+        fetchedAt,
+        extractionStrategy: 'JsonCssExtractionStrategy',
+        includeFullText: options.includeFullText as boolean,
+        includeLinks: true,
+      });
 
       // Apply text cleaning if needed
       if (options.cleanText === true && extractedData) {

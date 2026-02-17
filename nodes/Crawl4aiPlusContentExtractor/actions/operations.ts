@@ -8,6 +8,7 @@ import * as jsonExtractor from './jsonExtractor.operation';
 import * as llmExtractor from './llmExtractor.operation';
 import * as regexExtractor from './regexExtractor.operation';
 import * as seoExtractor from './seoExtractor.operation';
+import * as submitLlmJob from './submitLlmJob.operation';
 
 // Type definition for the execute function of an operation
 type OperationExecuteFunction = (
@@ -17,7 +18,6 @@ type OperationExecuteFunction = (
 ) => Promise<INodeExecutionData[]>;
 
 // Export an object containing the execute function for each operation
-// This allows the router to dynamically call the correct execute function
 export const operations: { [key: string]: OperationExecuteFunction } = {
   cosineExtractor: cosineExtractor.execute,
   cssExtractor: cssExtractor.execute,
@@ -25,6 +25,7 @@ export const operations: { [key: string]: OperationExecuteFunction } = {
   llmExtractor: llmExtractor.execute,
   regexExtractor: regexExtractor.execute,
   seoExtractor: seoExtractor.execute,
+  submitLlmJob: submitLlmJob.execute,
 };
 
 // Aggregate UI property descriptions from all operations
@@ -51,7 +52,7 @@ export const description: INodeProperties[] = [
         name: 'JSON Extractor',
         value: 'jsonExtractor',
         description: 'Extract JSON data from a webpage',
-        action: 'Extract JSON data',
+        action: 'Extract with JSON path',
       },
       {
         name: 'LLM Extractor',
@@ -62,7 +63,7 @@ export const description: INodeProperties[] = [
       {
         name: 'Regex Extractor',
         value: 'regexExtractor',
-        description: 'Extract data using regex patterns (NEW in 0.7.x)',
+        description: 'Extract data using regex patterns',
         action: 'Extract with regex',
       },
       {
@@ -70,6 +71,12 @@ export const description: INodeProperties[] = [
         value: 'seoExtractor',
         description: 'Extract SEO metadata (title, meta tags, OG tags, JSON-LD)',
         action: 'Extract SEO metadata',
+      },
+      {
+        name: 'Submit LLM Job',
+        value: 'submitLlmJob',
+        description: 'Submit an async LLM extraction job and receive a task_id',
+        action: 'Submit async LLM job',
       },
     ],
     default: 'cssExtractor',
@@ -82,4 +89,5 @@ export const description: INodeProperties[] = [
   ...llmExtractor.description,
   ...regexExtractor.description,
   ...seoExtractor.description,
+  ...submitLlmJob.description,
 ];

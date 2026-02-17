@@ -91,8 +91,17 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
     config.ignore_https_errors = false;
   }
 
-  if (options.cookies && Array.isArray(options.cookies) && options.cookies.length > 0) {
-    config.cookies = options.cookies as Array<object>;
+  if (options.cookies) {
+    if (Array.isArray(options.cookies) && options.cookies.length > 0) {
+      // Raw array (from type: 'json' input in cssExtractor / llmExtractor)
+      config.cookies = options.cookies as Array<object>;
+    } else if (typeof options.cookies === 'object') {
+      // fixedCollection format used by cosineExtractor, jsonExtractor, seoExtractor
+      const cookiesObj = options.cookies as any;
+      if (cookiesObj.cookieValues && Array.isArray(cookiesObj.cookieValues) && cookiesObj.cookieValues.length > 0) {
+        config.cookies = cookiesObj.cookieValues as Array<object>;
+      }
+    }
   }
 
   if (options.headers && typeof options.headers === 'object' && Object.keys(options.headers as object).length > 0) {
@@ -117,6 +126,34 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
   if (options.enableStealth === true) {
     (config as any).enableStealth = true;
     config.enable_stealth = true;
+  }
+
+  // init_scripts: pre-page-load JS injection (0.8.0)
+  if (options.initScripts) {
+    const initScripts = options.initScripts as any;
+    // Handle fixedCollection format: { scripts: [{ value: '...' }, ...] }
+    if (initScripts.scripts && Array.isArray(initScripts.scripts)) {
+      const scripts = initScripts.scripts.map((s: any) => s.value).filter((v: string) => v);
+      if (scripts.length > 0) {
+        config.init_scripts = scripts;
+      }
+    } else if (Array.isArray(initScripts)) {
+      const scripts = (initScripts as string[]).filter((v) => v);
+      if (scripts.length > 0) {
+        config.init_scripts = scripts;
+      }
+    }
+  }
+
+  // proxy_config (replaces deprecated proxy string field)
+  if (options.proxyConfig && typeof options.proxyConfig === 'object') {
+    const pc = options.proxyConfig as any;
+    if (pc.server) {
+      const proxyObj: any = { server: pc.server };
+      if (pc.username) proxyObj.username = pc.username;
+      if (pc.password) proxyObj.password = pc.password;
+      config.proxy_config = proxyObj;
+    }
   }
 
   // User agent mode and generator
@@ -176,6 +213,9 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
 
   if (options.pageTimeout !== undefined) {
     config.pageTimeout = Number(options.pageTimeout);
+  } else if (options.timeout !== undefined) {
+    // 'timeout' is the UI field name used by all ContentExtractor browser options
+    config.pageTimeout = Number(options.timeout);
   }
 
   if (options.requestTimeout !== undefined) {
@@ -243,7 +283,25 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
   }
 
   if (options.deepCrawlStrategy) {
-    config.deepCrawlStrategy = options.deepCrawlStrategy as Record<string, any>;
+    let strategy = options.deepCrawlStrategy as Record<string, any>;
+    // Inject resume_state into strategy object if provided
+    if (options.resumeState && typeof options.resumeState === 'string' && options.resumeState.trim()) {
+      try {
+        const resumeObj = JSON.parse(options.resumeState.trim());
+        strategy = { ...strategy, resume_state: resumeObj };
+      } catch (e) {
+        throw new Error(`Invalid Resume State JSON: ${(e as Error).message}`);
+      }
+    }
+    config.deepCrawlStrategy = strategy;
+  }
+
+  if (options.prefetch === true) {
+    config.prefetch = true;
+  }
+
+  if (options.preserveHttpsForInternalLinks === true) {
+    config.preserveHttpsForInternalLinks = true;
   }
 
   // Output format options

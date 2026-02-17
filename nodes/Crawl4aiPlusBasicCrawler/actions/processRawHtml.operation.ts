@@ -146,14 +146,16 @@ export async function execute(
       const crawler = await getCrawl4aiClient(this);
 
       // Process the HTML
+      const fetchedAt = new Date().toISOString();
       const result = await crawler.processRawHtml(html, baseUrl, crawlerConfig);
 
       // Format result
-      const formattedResult = formatCrawlResult(
-        result,
-        options.includeMedia as boolean,
-        options.verboseResponse as boolean
-      );
+      const formattedResult = formatCrawlResult(result, {
+        includeHtml: options.verboseResponse as boolean,
+        includeMedia: options.includeMedia as boolean,
+        includeLinks: true,
+        fetchedAt,
+      });
 
       // Add the result to the output array
       allResults.push({

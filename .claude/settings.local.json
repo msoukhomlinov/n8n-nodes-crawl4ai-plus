@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.crawl4ai.com)",
+      "Bash(python3:*)",
+      "Bash(done)",
+      "Bash(pnpm build:*)",
+      "Bash(npx pnpm run lint:*)",
+      "Bash(npx pnpm run build)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(node -e:*)"
+    ]
+  }
+}

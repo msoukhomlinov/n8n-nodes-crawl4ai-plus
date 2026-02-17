@@ -1,7 +1,7 @@
 {
   "name": "n8n-nodes-crawl4ai-plus",
-  "version": "3.0.0",
-  "description": "n8n nodes for Crawl4AI v0.7.4+ web crawler and data extraction with enhanced features",
+  "version": "4.0.0",
+  "description": "n8n nodes for Crawl4AI v0.8.0 web crawler and data extraction with enhanced features",
   "keywords": [
     "n8n",
     "n8n-community-node-package",
@@ -14,12 +14,7 @@
   ],
   "license": "MIT",
   "homepage": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus",
-  "author": [
-    {
-      "name": "Max Soukhomlinov",
-      "email": "maxs@intellectit.com.au"
-    }
-  ],
+  "author": "Max Soukhomlinov",
   "repository": {
     "type": "git",
     "url": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus.git"

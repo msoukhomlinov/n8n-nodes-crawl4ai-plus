@@ -11,6 +11,7 @@ import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
   getCrawl4aiClient,
   createBrowserConfig,
+  buildLlmConfig,
   createCrawlerRunConfig,
   createMarkdownGenerator,
   createTableExtractionStrategy,
@@ -40,6 +41,35 @@ export const description: INodeProperties[] = [
     displayOptions: {
       show: {
         operation: ['crawlMultipleUrls'],
+      },
+    },
+  },
+  {
+    displayName: 'Seed URL',
+    name: 'seedUrl',
+    type: 'string',
+    required: true,
+    default: '',
+    placeholder: 'https://example.com',
+    description: 'Starting URL for discovery. The crawler will follow links from here matching your query.',
+    displayOptions: {
+      show: {
+        operation: ['crawlMultipleUrls'],
+        crawlMode: ['discover'],
+      },
+    },
+  },
+  {
+    displayName: 'Discovery Query',
+    name: 'query',
+    type: 'string',
+    default: '',
+    placeholder: 'pricing features documentation',
+    description: 'Keywords that guide which links to follow. Required for Best-First strategy (the default). Use spaces for AND logic, "OR" for alternatives.',
+    displayOptions: {
+      show: {
+        operation: ['crawlMultipleUrls'],
+        crawlMode: ['discover'],
       },
     },
   },
@@ -81,14 +111,6 @@ export const description: INodeProperties[] = [
         description: 'How the crawler explores links. Best-First prioritises relevance, BFS ensures breadth, DFS goes deep. Note: Best-First and DFS are validated but not officially tested by Crawl4AI.',
       },
       {
-        displayName: 'Discovery Query',
-        name: 'query',
-        type: 'string',
-        default: '',
-        placeholder: 'pricing features documentation',
-        description: 'Keywords that guide which links to follow. Use spaces for AND logic, "OR" for alternatives (e.g. "api documentation" finds pages about APIs and docs; "pricing OR plans" finds either).',
-      },
-      {
         displayName: 'Exclude Domains',
         name: 'excludeDomains',
         type: 'string',
@@ -103,6 +125,13 @@ export const description: INodeProperties[] = [
         default: '',
         placeholder: '*/careers/*, */legal/*',
         description: 'Skip URLs matching these patterns. Useful for avoiding careers, legal, login pages, etc.',
+      },
+      {
+        displayName: 'Fast URL Discovery (Prefetch)',
+        name: 'prefetch',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to pre-fetch links without full page processing for 5–10× faster URL discovery (0.8.0). Results contain less content but are returned much faster.',
       },
       {
         displayName: 'Include External Domains',
@@ -148,6 +177,15 @@ export const description: INodeProperties[] = [
         description: 'Whether to check and respect robots.txt directives during discovery',
       },
       {
+        displayName: 'Resume State (JSON)',
+        name: 'resumeState',
+        type: 'string',
+        default: '',
+        typeOptions: { rows: 4 },
+        placeholder: '{"visited_urls": [...], "frontier": [...]}',
+        description: 'Paste a previous crawl state JSON here to resume after a crash. Obtain the state from a previous run\'s output.',
+      },
+      {
         displayName: 'Score Threshold',
         name: 'scoreThreshold',
         type: 'number',
@@ -158,15 +196,6 @@ export const description: INodeProperties[] = [
             crawlStrategy: ['BFSDeepCrawlStrategy', 'DFSDeepCrawlStrategy'],
           },
         },
-      },
-      {
-        displayName: 'Seed URL',
-        name: 'seedUrl',
-        type: 'string',
-        default: '',
-        placeholder: 'https://example.com',
-        description: 'Starting point URL (usually homepage or main section). The crawler will follow links from here matching your query.',
-        required: true,
       },
     ],
   },
@@ -286,9 +315,10 @@ export const description: INodeProperties[] = [
     displayName: 'URLs',
     name: 'urls',
     type: 'string',
+    required: true,
     default: '',
     placeholder: 'https://example.com, https://example.org',
-    description: 'Comma-separated list of URLs to crawl. Required when using Manual URL List mode.',
+    description: 'Comma-separated list of URLs to crawl',
     displayOptions: {
       show: {
         operation: ['crawlMultipleUrls'],
@@ -311,8 +341,20 @@ export const description: INodeProperties[] = [
     },
     options: [
       {
+        displayName: 'Browser Type',
+        name: 'browserType',
+        type: 'options',
+        options: [
+          { name: 'Chromium', value: 'chromium', description: 'Use Chromium browser (default)' },
+          { name: 'Firefox', value: 'firefox', description: 'Use Firefox browser' },
+          { name: 'Webkit', value: 'webkit', description: 'Use Webkit browser (Safari engine)' },
+        ],
+        default: 'chromium',
+        description: 'Which browser engine to use',
+      },
+      {
         displayName: 'Enable JavaScript',
-        name: 'java_script_enabled',
+        name: 'javaScriptEnabled',
         type: 'boolean',
         default: true,
         description: 'Whether to enable JavaScript execution',
@@ -356,6 +398,31 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: true,
         description: 'Whether to run browser in headless mode',
+      },
+      {
+        displayName: 'Init Scripts',
+        name: 'initScripts',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        default: {},
+        description: 'JavaScript snippets injected before page load for stealth or setup (0.8.0)',
+        options: [
+          {
+            name: 'scripts',
+            displayName: 'Scripts',
+            values: [
+              {
+                displayName: 'Script',
+                name: 'value',
+                type: 'string',
+                typeOptions: { rows: 3 },
+                default: '',
+                placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+                description: 'JavaScript to inject before page load',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'Timeout (Ms)',
@@ -542,6 +609,13 @@ export const description: INodeProperties[] = [
         type: 'number',
         default: 30000,
         description: 'Maximum time to wait for the page to load',
+      },
+      {
+        displayName: 'Preserve HTTPS for Internal Links',
+        name: 'preserveHttpsForInternalLinks',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to preserve HTTPS scheme for internal links (0.7.5)',
       },
       {
         displayName: 'Request Timeout (Ms)',
@@ -1128,6 +1202,7 @@ export async function execute(
       }
 
       const crawlMode = this.getNodeParameter('crawlMode', i, 'manual') as string;
+      let effectiveResultLimit = 0;
 
       let urls: string[] = [];
 
@@ -1198,50 +1273,10 @@ export async function execute(
             );
           }
 
-          // Build provider string and API key based on provider type
-          let provider = 'openai/gpt-4o';
-          let apiKey = '';
+          // Build LLM config from credentials
+          const { llmConfig } = buildLlmConfig(credentials);
 
-          if (credentials.llmProvider === 'openai') {
-            const model = credentials.llmModel || 'gpt-4o';
-            provider = `openai/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'anthropic') {
-            const model = credentials.llmModel || 'claude-3-haiku-20240307';
-            provider = `anthropic/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'groq') {
-            const model = credentials.llmModel || 'llama3-70b-8192';
-            provider = `groq/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'ollama') {
-            const model = credentials.ollamaModel || 'llama3';
-            provider = `ollama/${model}`;
-            // Ollama doesn't require API key but needs base URL
-          } else if (credentials.llmProvider === 'other') {
-            provider = credentials.customProvider || 'custom/model';
-            apiKey = credentials.customApiKey || '';
-          }
-
-          if (!apiKey && credentials.llmProvider !== 'ollama') {
-            throw new NodeOperationError(
-              this.getNode(),
-              `API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`,
-              { itemIndex: i }
-            );
-          }
-
-          enrichedFilterConfig.llmConfig = {
-            type: 'LLMConfig',
-            params: {
-              provider,
-              api_token: apiKey,
-              ...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
-                { api_base: credentials.customBaseUrl } : {}),
-              ...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
-                { api_base: credentials.ollamaUrl } : {})
-            }
-          };
+          enrichedFilterConfig.llmConfig = llmConfig;
         }
 
         mergedCrawlerOptions.markdownGenerator = createMarkdownGenerator(enrichedFilterConfig);
@@ -1265,50 +1300,9 @@ export async function execute(
             );
           }
 
-          // Build provider string and API key based on provider type
-          let provider = 'openai/gpt-4o';
-          let apiKey = '';
-
-          if (credentials.llmProvider === 'openai') {
-            const model = credentials.llmModel || 'gpt-4o';
-            provider = `openai/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'anthropic') {
-            const model = credentials.llmModel || 'claude-3-haiku-20240307';
-            provider = `anthropic/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'groq') {
-            const model = credentials.llmModel || 'llama3-70b-8192';
-            provider = `groq/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'ollama') {
-            const model = credentials.ollamaModel || 'llama3';
-            provider = `ollama/${model}`;
-            // Ollama doesn't require API key but needs base URL
-          } else if (credentials.llmProvider === 'other') {
-            provider = credentials.customProvider || 'custom/model';
-            apiKey = credentials.customApiKey || '';
-          }
-
-          if (!apiKey && credentials.llmProvider !== 'ollama') {
-            throw new NodeOperationError(
-              this.getNode(),
-              `API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`,
-              { itemIndex: i }
-            );
-          }
-
-          enrichedTableConfig.llmConfig = {
-            type: 'LLMConfig',
-            params: {
-              provider,
-              api_token: apiKey,
-              ...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
-                { api_base: credentials.customBaseUrl } : {}),
-              ...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
-                { api_base: credentials.ollamaUrl } : {})
-            }
-          };
+          // Build LLM config from credentials
+          const { llmConfig: tableLlmConfig } = buildLlmConfig(credentials);
+          enrichedTableConfig.llmConfig = tableLlmConfig;
         }
 
         mergedCrawlerOptions.tableExtraction = createTableExtractionStrategy(enrichedTableConfig);
@@ -1317,8 +1311,8 @@ export async function execute(
       if (crawlMode === 'discover') {
         const discoveryOptions = this.getNodeParameter('discoveryOptions', i, {}) as IDataObject;
 
-        const seedUrl = String(discoveryOptions.seedUrl ?? '').trim();
-        const query = String(discoveryOptions.query ?? '').trim();
+        const seedUrl = String(this.getNodeParameter('seedUrl', i, '') as string).trim();
+        const query = String(this.getNodeParameter('query', i, '') as string).trim();
 
         if (!seedUrl) {
           throw new NodeOperationError(this.getNode(), 'Seed URL is required when discovery mode is enabled.', { itemIndex: i });
@@ -1459,6 +1453,16 @@ export async function execute(
 
         mergedCrawlerOptions.deepCrawlStrategy = deepCrawlStrategy;
 
+        // prefetch: fast URL discovery mode (0.8.0)
+        if (discoveryOptions.prefetch === true) {
+          mergedCrawlerOptions.prefetch = true;
+        }
+
+        // resumeState: inject into deepCrawlStrategy params if provided
+        if (discoveryOptions.resumeState && typeof discoveryOptions.resumeState === 'string' && String(discoveryOptions.resumeState).trim()) {
+          mergedCrawlerOptions.resumeState = String(discoveryOptions.resumeState).trim();
+        }
+
         // Move respect_robots_txt to crawler config level (not strategy level)
         if (respectRobotsTxt) {
           mergedCrawlerOptions.checkRobotsTxt = true;
@@ -1467,7 +1471,7 @@ export async function execute(
         urls = [seedUrl];
 
         // Tag options for downstream result handling
-        mergedCrawlerOptions.__resultLimit = resultLimit;
+        effectiveResultLimit = resultLimit;
 
         // Handle extraction options for discovery mode
         const extractionOptions = this.getNodeParameter('extractionOptions', i, {}) as IDataObject;
@@ -1541,52 +1545,13 @@ export async function execute(
               );
             }
 
-            // Build provider string and API key
-            let provider = 'openai/gpt-4o';
-            let apiKey = '';
-
-            if (credentials.llmProvider === 'openai') {
-              const model = credentials.llmModel || 'gpt-4o';
-              provider = `openai/${model}`;
-              apiKey = credentials.apiKey || '';
-            } else if (credentials.llmProvider === 'anthropic') {
-              const model = credentials.llmModel || 'claude-3-haiku-20240307';
-              provider = `anthropic/${model}`;
-              apiKey = credentials.apiKey || '';
-            } else if (credentials.llmProvider === 'groq') {
-              const model = credentials.llmModel || 'llama3-70b-8192';
-              provider = `groq/${model}`;
-              apiKey = credentials.apiKey || '';
-            } else if (credentials.llmProvider === 'ollama') {
-              const model = credentials.ollamaModel || 'llama3';
-              provider = `ollama/${model}`;
-            } else if (credentials.llmProvider === 'other') {
-              provider = credentials.customProvider || 'custom/model';
-              apiKey = credentials.customApiKey || '';
-            }
-
-            if (!apiKey && credentials.llmProvider !== 'ollama') {
-              throw new NodeOperationError(
-                this.getNode(),
-                `API key is required for ${credentials.llmProvider} provider.`,
-                { itemIndex: i }
-              );
-            }
+            // Build LLM config from credentials
+            const { llmConfig: extractionLlmConfig } = buildLlmConfig(credentials);
 
             mergedCrawlerOptions.extractionStrategy = {
               type: 'LLMExtractionStrategy',
               params: {
-                llm_config: {
-                  type: 'LLMConfig',
-                  params: {
-                    provider,
-                    api_token: apiKey,
-                    ...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
-                      { api_base: credentials.customBaseUrl } : {}),
-                    ...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
-                      { api_base: credentials.ollamaUrl } : {})
-                  }
-                },
+                llm_config: extractionLlmConfig,
                 schema: { type: 'dict', value: schema },
                 instruction: llmInstruction,
                 extraction_type: 'schema',
@@ -1604,25 +1569,21 @@ export async function execute(
       const results = await crawler.crawlMultipleUrls(urls, crawlerConfig);
 
       // Apply result limit if set in discovery mode
-      const resultLimit = crawlMode === 'discover'
-        ? Number(mergedCrawlerOptions.__resultLimit ?? 0)
-        : 0;
-      const limitedResults = resultLimit > 0 ? results.slice(0, resultLimit) : results;
+      const limitedResults = effectiveResultLimit > 0 ? results.slice(0, effectiveResultLimit) : results;
 
+      const fetchedAt = new Date().toISOString();
       for (const result of limitedResults) {
-        const formattedResult = formatCrawlResult(
-          result,
-          outputOptions.includeMedia as boolean,
-          outputOptions.verboseResponse as boolean,
-          {
-            markdownOutput: outputOptions.markdownOutput as 'raw' | 'fit' | 'both',
-            includeLinks: outputOptions.includeLinks as boolean,
-            includeScreenshot: outputOptions.screenshot as boolean,
-            includePdf: outputOptions.pdf as boolean,
-            includeSslCertificate: outputOptions.fetchSslCertificate as boolean,
-            includeTables: outputOptions.includeTables as boolean,
-          }
-        );
+        const formattedResult = formatCrawlResult(result, {
+          cacheMode: crawlerOptions.cacheMode as string | undefined,
+          includeHtml: outputOptions.verboseResponse as boolean,
+          includeLinks: outputOptions.includeLinks !== false,
+          includeMedia: outputOptions.includeMedia as boolean,
+          includeScreenshot: outputOptions.screenshot as boolean,
+          includePdf: outputOptions.pdf as boolean,
+          includeSslCertificate: outputOptions.fetchSslCertificate as boolean,
+          includeTables: outputOptions.includeTables as boolean,
+          fetchedAt,
+        });
 
         allResults.push({
           json: formattedResult,

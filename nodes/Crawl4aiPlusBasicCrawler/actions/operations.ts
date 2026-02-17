@@ -2,10 +2,14 @@ import type { INodeProperties, IExecuteFunctions, INodeExecutionData } from 'n8n
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 
 // Import definitions for each operation
-import * as crawlSingleUrl from './crawlSingleUrl.operation';
 import * as crawlMultipleUrls from './crawlMultipleUrls.operation';
-import * as processRawHtml from './processRawHtml.operation';
+import * as crawlSingleUrl from './crawlSingleUrl.operation';
+import * as crawlStream from './crawlStream.operation';
 import * as discoverLinks from './discoverLinks.operation';
+import * as getJobStatus from './getJobStatus.operation';
+import * as healthCheck from './healthCheck.operation';
+import * as processRawHtml from './processRawHtml.operation';
+import * as submitCrawlJob from './submitCrawlJob.operation';
 
 // Type definition for the execute function of an operation
 type OperationExecuteFunction = (
@@ -15,12 +19,15 @@ type OperationExecuteFunction = (
 ) => Promise<INodeExecutionData[]>;
 
 // Export an object containing the execute function for each operation
-// This allows the router to dynamically call the correct execute function
 export const operations: { [key: string]: OperationExecuteFunction } = {
-  crawlSingleUrl: crawlSingleUrl.execute,
   crawlMultipleUrls: crawlMultipleUrls.execute,
-  processRawHtml: processRawHtml.execute,
+  crawlSingleUrl: crawlSingleUrl.execute,
+  crawlStream: crawlStream.execute,
   discoverLinks: discoverLinks.execute,
+  getJobStatus: getJobStatus.execute,
+  healthCheck: healthCheck.execute,
+  processRawHtml: processRawHtml.execute,
+  submitCrawlJob: submitCrawlJob.execute,
 };
 
 // Aggregate UI property descriptions from all operations
@@ -32,22 +39,24 @@ export const description: INodeProperties[] = [
     noDataExpression: true,
     options: [
       {
+        name: 'Crawl Multiple URLs',
+        value: 'crawlMultipleUrls',
+        description: 'Crawl multiple URLs and extract content',
+        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
+        action: 'Crawl multiple URLs',
+      },
+      {
         name: 'Crawl Single URL',
         value: 'crawlSingleUrl',
         description: 'Crawl a single URL and extract content',
         action: 'Crawl a single URL',
       },
       {
-        name: 'Crawl Multiple URLs',
-        value: 'crawlMultipleUrls',
-        description: 'Crawl multiple URLs and extract content',
-        action: 'Crawl multiple ur ls',
-      },
-      {
-        name: 'Process Raw HTML',
-        value: 'processRawHtml',
-        description: 'Process provided HTML content without crawling',
-        action: 'Process raw html',
+        name: 'Crawl Stream',
+        value: 'crawlStream',
+        description: 'Crawl URLs via the streaming endpoint — one output item per page result',
+        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
+        action: 'Crawl URLs via streaming',
       },
       {
         name: 'Discover Links',
@@ -55,13 +64,41 @@ export const description: INodeProperties[] = [
         description: 'Extract and filter all links from a page',
         action: 'Discover links from URL',
       },
+      {
+        name: 'Get Job Status',
+        value: 'getJobStatus',
+        description: 'Poll the status of an async crawl job by task_id',
+        action: 'Get async job status',
+      },
+      {
+        name: 'Health Check',
+        value: 'healthCheck',
+        description: 'Check server health, memory usage, and endpoint statistics',
+        action: 'Check server health',
+      },
+      {
+        name: 'Process Raw HTML',
+        value: 'processRawHtml',
+        description: 'Process provided HTML content without crawling',
+        action: 'Process raw HTML',
+      },
+      {
+        name: 'Submit Crawl Job',
+        value: 'submitCrawlJob',
+        description: 'Submit an async crawl job and receive a task_id (for large/long-running crawls)',
+        action: 'Submit async crawl job',
+      },
     ],
     default: 'crawlSingleUrl',
   },
 
   // Spread descriptions from each operation file
-  ...crawlSingleUrl.description,
   ...crawlMultipleUrls.description,
-  ...processRawHtml.description,
+  ...crawlSingleUrl.description,
+  ...crawlStream.description,
   ...discoverLinks.description,
+  ...getJobStatus.description,
+  ...healthCheck.description,
+  ...processRawHtml.description,
+  ...submitCrawlJob.description,
 ];

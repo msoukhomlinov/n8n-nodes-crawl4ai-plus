@@ -12,6 +12,8 @@ import {
 	getCrawl4aiClient,
 	createBrowserConfig,
 	createCrawlerRunConfig,
+	buildLlmConfig,
+	cleanExtractedData,
 	isValidUrl
 } from '../helpers/utils';
 import { parseExtractedJson, formatExtractionResult } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
@@ -319,7 +321,7 @@ export const description: INodeProperties[] = [
 			},
 			{
 				displayName: 'Enable JavaScript',
-				name: 'java_script_enabled',
+				name: 'javaScriptEnabled',
 				type: 'boolean',
 				default: true,
 				description: 'Whether to enable JavaScript execution',
@@ -365,6 +367,31 @@ export const description: INodeProperties[] = [
 				description: 'Whether to run browser in headless mode',
 			},
 			{
+				displayName: 'Init Scripts',
+				name: 'initScripts',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				default: {},
+				description: 'JavaScript snippets injected before page load for stealth or setup',
+				options: [
+					{
+						name: 'scripts',
+						displayName: 'Scripts',
+						values: [
+							{
+								displayName: 'Script',
+								name: 'value',
+								type: 'string',
+								typeOptions: { rows: 3 },
+								default: '',
+								placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+								description: 'JavaScript to inject before page load',
+							},
+						],
+					},
+				],
+			},
+			{
 				displayName: 'JavaScript Code',
 				name: 'jsCode',
 				type: 'string',
@@ -395,6 +422,94 @@ export const description: INodeProperties[] = [
 				type: 'number',
 				default: 1280,
 				description: 'The width of the browser viewport',
+			},
+		],
+	},
+	{
+		displayName: 'Session & Authentication',
+		name: 'sessionOptions',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
+		displayOptions: {
+			show: {
+				operation: ['regexExtractor'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Cookies',
+				name: 'cookies',
+				type: 'fixedCollection',
+				default: { cookieValues: [] },
+				typeOptions: {
+					multipleValues: true,
+				},
+				options: [
+					{
+						name: 'cookieValues',
+						displayName: 'Cookie',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Cookie name',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Cookie value',
+							},
+							{
+								displayName: 'Domain',
+								name: 'domain',
+								type: 'string',
+								default: '',
+								description: 'Cookie domain',
+							},
+						],
+					},
+				],
+				description: 'Cookies to inject for authentication',
+			},
+			{
+				displayName: 'Storage State (JSON)',
+				name: 'storageState',
+				type: 'json',
+				default: '',
+				placeholder: '{"cookies": [...], "origins": [...]}',
+				description: 'Browser storage state (cookies, localStorage, sessionStorage) as JSON',
+			},
+			{
+				displayName: 'Use Managed Browser',
+				name: 'useManagedBrowser',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to connect to an existing managed browser instance',
+			},
+			{
+				displayName: 'Use Persistent Context',
+				name: 'usePersistentContext',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to save browser context to disk for session persistence',
+			},
+			{
+				displayName: 'User Data Directory',
+				name: 'userDataDir',
+				type: 'string',
+				default: '',
+				placeholder: '/data/browser-profiles/profile1',
+				description: 'Path to browser profile directory for persistent sessions',
+				displayOptions: {
+					show: {
+						usePersistentContext: [true],
+					},
+				},
 			},
 		],
 	},
@@ -453,6 +568,13 @@ export const description: INodeProperties[] = [
 				description: 'CSS selector to focus extraction on a specific part of the page',
 			},
 			{
+				displayName: 'Clean Extracted Text',
+				name: 'cleanText',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to normalise whitespace in all extracted string values',
+			},
+			{
 				displayName: 'Include Original Text',
 				name: 'includeFullText',
 				type: 'boolean',
@@ -477,7 +599,11 @@ export async function execute(
 			const url = this.getNodeParameter('url', i, '') as string;
 			const patternType = this.getNodeParameter('patternType', i, 'builtin') as string;
 			let browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+			const sessionOptions = this.getNodeParameter('sessionOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+
+			// Merge session options into browser options
+			browserOptions = { ...sessionOptions, ...browserOptions };
 
 			// Transform extraArgs from fixedCollection format to array
 			if (browserOptions.extraArgs && typeof browserOptions.extraArgs === 'object') {
@@ -558,38 +684,6 @@ export async function execute(
 					);
 				}
 
-				// Build LLM provider config
-				let provider = 'openai/gpt-4o';
-				let apiKey = '';
-
-				if (credentials.llmProvider === 'openai') {
-					const model = credentials.llmModel || 'gpt-4o-mini';
-					provider = `openai/${model}`;
-					apiKey = credentials.apiKey || '';
-				} else if (credentials.llmProvider === 'anthropic') {
-					const model = credentials.llmModel || 'claude-3-haiku-20240307';
-					provider = `anthropic/${model}`;
-					apiKey = credentials.apiKey || '';
-				} else if (credentials.llmProvider === 'groq') {
-					const model = credentials.llmModel || 'llama3-70b-8192';
-					provider = `groq/${model}`;
-					apiKey = credentials.apiKey || '';
-				} else if (credentials.llmProvider === 'ollama') {
-					const model = credentials.ollamaModel || 'llama3';
-					provider = `ollama/${model}`;
-				} else if (credentials.llmProvider === 'other') {
-					provider = credentials.customProvider || 'custom/model';
-					apiKey = credentials.customApiKey || '';
-				}
-
-				if (!apiKey && credentials.llmProvider !== 'ollama') {
-					throw new NodeOperationError(
-						this.getNode(),
-						`API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`,
-						{ itemIndex: i }
-					);
-				}
-
 				// First, crawl the sample URL to get HTML
 				const crawler = await getCrawl4aiClient(this);
 				const sampleBrowserConfig = createBrowserConfig(browserOptions);
@@ -623,21 +717,12 @@ export async function execute(
 
 				// Call pattern generation endpoint
 				// The API expects: POST /generate_pattern with { label, html, query, llm_config }
+				const { llmConfig } = buildLlmConfig(credentials);
 				const patternGenPayload: any = {
 					label: llmLabel,
 					html: sampleHtml,
 					query: llmQuery,
-					llm_config: {
-						type: 'LLMConfig',
-						params: {
-							provider,
-							api_token: apiKey,
-							...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
-								{ api_base: credentials.customBaseUrl } : {}),
-							...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
-								{ api_base: credentials.ollamaUrl } : {})
-						}
-					}
+					llm_config: llmConfig,
 				};
 
 				const generatedPattern = await crawler.generateRegexPattern(patternGenPayload);
@@ -649,6 +734,19 @@ export async function execute(
 				const customPatternsValues = this.getNodeParameter('customPatterns.patternValues', i, []) as IDataObject[];
 				if (!customPatternsValues || customPatternsValues.length === 0) {
 					throw new NodeOperationError(this.getNode(), 'At least one custom pattern must be defined.', { itemIndex: i });
+				}
+
+				// Validate custom regex patterns before sending to API
+				for (const { label, pattern } of customPatternsValues) {
+					if (!label || !pattern) continue;
+					try { new RegExp(pattern as string, 'g'); }
+					catch (e) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`Pattern "${label}" is not a valid regex: ${(e as Error).message}`,
+							{ itemIndex: i }
+						);
+					}
 				}
 
 				// Build custom patterns object
@@ -680,17 +778,24 @@ export async function execute(
 			const crawler = await getCrawl4aiClient(this);
 
 			// Run the extraction using standardized arun() method
+			const fetchedAt = new Date().toISOString();
 			const result = await crawler.arun(url, crawlerConfig);
 
 			// Parse extracted JSON
-			const extractedData = parseExtractedJson(result);
+			let extractedData = parseExtractedJson(result);
+
+			// Apply cleanText if requested
+			if (options.cleanText === true && extractedData) {
+				extractedData = cleanExtractedData(extractedData) as IDataObject;
+			}
 
 			// Format extraction result
-			const formattedResult = formatExtractionResult(
-				result,
-				extractedData,
-				options.includeFullText as boolean
-			);
+			const formattedResult = formatExtractionResult(result, extractedData, {
+				fetchedAt,
+				extractionStrategy: 'RegexExtractionStrategy',
+				includeFullText: options.includeFullText as boolean,
+				includeLinks: true,
+			});
 
 			// Add processed result to output array
 			allResults.push({

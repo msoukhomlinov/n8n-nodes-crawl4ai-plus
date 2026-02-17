@@ -145,10 +145,17 @@ export const description: INodeProperties[] = [
       },
       {
         displayName: 'Enable JavaScript',
-        name: 'java_script_enabled',
+        name: 'javaScriptEnabled',
         type: 'boolean',
         default: true,
         description: 'Whether to enable JavaScript execution (recommended for dynamic links)',
+      },
+      {
+        displayName: 'Enable Stealth Mode',
+        name: 'enableStealth',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to enable stealth mode to bypass bot detection during link discovery',
       },
       {
         displayName: 'Headless Mode',
@@ -156,6 +163,31 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: true,
         description: 'Whether to run browser in headless mode',
+      },
+      {
+        displayName: 'Init Scripts',
+        name: 'initScripts',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        default: {},
+        description: 'JavaScript snippets injected before page load for stealth or setup',
+        options: [
+          {
+            name: 'scripts',
+            displayName: 'Scripts',
+            values: [
+              {
+                displayName: 'Script',
+                name: 'value',
+                type: 'string',
+                typeOptions: { rows: 3 },
+                default: '',
+                placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+                description: 'JavaScript to inject before page load',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'JavaScript Code',
@@ -222,6 +254,20 @@ export const description: INodeProperties[] = [
         description: 'How to use the cache when crawling',
       },
       {
+        displayName: 'Deduplicate',
+        name: 'deduplicate',
+        type: 'boolean',
+        default: true,
+        description: 'Whether to remove duplicate URLs from the output',
+      },
+      {
+        displayName: 'Include Metadata',
+        name: 'includeMetadata',
+        type: 'boolean',
+        default: true,
+        description: 'Whether to include link text and title attributes in output',
+      },
+      {
         displayName: 'Output Format',
         name: 'outputFormat',
         type: 'options',
@@ -241,18 +287,11 @@ export const description: INodeProperties[] = [
         description: 'How to format the output',
       },
       {
-        displayName: 'Include Metadata',
-        name: 'includeMetadata',
+        displayName: 'Score Links',
+        name: 'scoreLinks',
         type: 'boolean',
         default: true,
-        description: 'Whether to include link text and title attributes in output',
-      },
-      {
-        displayName: 'Deduplicate',
-        name: 'deduplicate',
-        type: 'boolean',
-        default: true,
-        description: 'Whether to remove duplicate URLs from the output',
+        description: 'Whether to compute a relevance score for each discovered link (disable for large link sets or time-sensitive flows)',
       },
     ],
   },
@@ -312,8 +351,7 @@ export async function execute(
         cacheMode: outputOptions.cacheMode || 'ENABLED',
         jsCode: browserOptions.jsCode,
         waitFor: browserOptions.waitFor,
-        // Request link extraction
-        scoreLinks: true,
+        scoreLinks: outputOptions.scoreLinks !== false,
       });
 
       // Get crawler client

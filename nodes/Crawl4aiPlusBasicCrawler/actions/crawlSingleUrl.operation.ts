@@ -11,6 +11,7 @@ import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
   getCrawl4aiClient,
   createBrowserConfig,
+  buildLlmConfig,
   createCrawlerRunConfig,
   createMarkdownGenerator,
   createTableExtractionStrategy,
@@ -72,7 +73,7 @@ export const description: INodeProperties[] = [
       },
       {
         displayName: 'Enable JavaScript',
-        name: 'java_script_enabled',
+        name: 'javaScriptEnabled',
         type: 'boolean',
         default: true,
         description: 'Whether to enable JavaScript execution',
@@ -116,6 +117,31 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: true,
         description: 'Whether to run browser in headless mode',
+      },
+      {
+        displayName: 'Init Scripts',
+        name: 'initScripts',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        default: {},
+        description: 'JavaScript snippets injected before page load for stealth or setup (0.8.0)',
+        options: [
+          {
+            name: 'scripts',
+            displayName: 'Scripts',
+            values: [
+              {
+                displayName: 'Script',
+                name: 'value',
+                type: 'string',
+                typeOptions: { rows: 3 },
+                default: '',
+                placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+                description: 'JavaScript to inject before page load',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'Timeout (Ms)',
@@ -320,6 +346,13 @@ export const description: INodeProperties[] = [
         type: 'number',
         default: 30000,
         description: 'Maximum time to wait for the page to load',
+      },
+      {
+        displayName: 'Preserve HTTPS for Internal Links',
+        name: 'preserveHttpsForInternalLinks',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to preserve HTTPS scheme for internal links (0.7.5)',
       },
       {
         displayName: 'Request Timeout (Ms)',
@@ -900,6 +933,8 @@ export async function execute(
         }
       }
 
+      // initScripts stays as fixedCollection object — createBrowserConfig handles the format
+
       if (!url) {
         throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
       }
@@ -950,50 +985,9 @@ export async function execute(
             );
           }
 
-          // Build provider string and API key based on provider type
-          let provider = 'openai/gpt-4o';
-          let apiKey = '';
-
-          if (credentials.llmProvider === 'openai') {
-            const model = credentials.llmModel || 'gpt-4o';
-            provider = `openai/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'anthropic') {
-            const model = credentials.llmModel || 'claude-3-haiku-20240307';
-            provider = `anthropic/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'groq') {
-            const model = credentials.llmModel || 'llama3-70b-8192';
-            provider = `groq/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'ollama') {
-            const model = credentials.ollamaModel || 'llama3';
-            provider = `ollama/${model}`;
-            // Ollama doesn't require API key but needs base URL
-          } else if (credentials.llmProvider === 'other') {
-            provider = credentials.customProvider || 'custom/model';
-            apiKey = credentials.customApiKey || '';
-          }
-
-          if (!apiKey && credentials.llmProvider !== 'ollama') {
-            throw new NodeOperationError(
-              this.getNode(),
-              `API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`,
-              { itemIndex: i }
-            );
-          }
-
-          enrichedFilterConfig.llmConfig = {
-            type: 'LLMConfig',
-            params: {
-              provider,
-              api_token: apiKey,
-              ...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
-                { api_base: credentials.customBaseUrl } : {}),
-              ...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
-                { api_base: credentials.ollamaUrl } : {})
-            }
-          };
+          // Build LLM config from credentials
+          const { llmConfig: filterLlmConfig } = buildLlmConfig(credentials);
+          enrichedFilterConfig.llmConfig = filterLlmConfig;
         }
 
         crawlerConfig.markdownGenerator = createMarkdownGenerator(enrichedFilterConfig);
@@ -1017,50 +1011,9 @@ export async function execute(
             );
           }
 
-          // Build provider string and API key based on provider type
-          let provider = 'openai/gpt-4o';
-          let apiKey = '';
-
-          if (credentials.llmProvider === 'openai') {
-            const model = credentials.llmModel || 'gpt-4o';
-            provider = `openai/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'anthropic') {
-            const model = credentials.llmModel || 'claude-3-haiku-20240307';
-            provider = `anthropic/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'groq') {
-            const model = credentials.llmModel || 'llama3-70b-8192';
-            provider = `groq/${model}`;
-            apiKey = credentials.apiKey || '';
-          } else if (credentials.llmProvider === 'ollama') {
-            const model = credentials.ollamaModel || 'llama3';
-            provider = `ollama/${model}`;
-            // Ollama doesn't require API key but needs base URL
-          } else if (credentials.llmProvider === 'other') {
-            provider = credentials.customProvider || 'custom/model';
-            apiKey = credentials.customApiKey || '';
-          }
-
-          if (!apiKey && credentials.llmProvider !== 'ollama') {
-            throw new NodeOperationError(
-              this.getNode(),
-              `API key is required for ${credentials.llmProvider} provider. Please configure it in the Crawl4AI credentials.`,
-              { itemIndex: i }
-            );
-          }
-
-          enrichedTableConfig.llmConfig = {
-            type: 'LLMConfig',
-            params: {
-              provider,
-              api_token: apiKey,
-              ...(credentials.llmProvider === 'other' && credentials.customBaseUrl ?
-                { api_base: credentials.customBaseUrl } : {}),
-              ...(credentials.llmProvider === 'ollama' && credentials.ollamaUrl ?
-                { api_base: credentials.ollamaUrl } : {})
-            }
-          };
+          // Build LLM config from credentials
+          const { llmConfig: tableLlmConfig } = buildLlmConfig(credentials);
+          enrichedTableConfig.llmConfig = tableLlmConfig;
         }
 
         crawlerConfig.tableExtraction = createTableExtractionStrategy(enrichedTableConfig);
@@ -1070,22 +1023,21 @@ export async function execute(
       const crawler = await getCrawl4aiClient(this);
 
       // Run the crawl
+      const fetchedAt = new Date().toISOString();
       const result = await crawler.crawlUrl(url, crawlerConfig);
 
-      // Format result with all output options
-      const formattedResult = formatCrawlResult(
-        result,
-        outputOptions.includeMedia as boolean,
-        outputOptions.verboseResponse as boolean,
-        {
-          markdownOutput: outputOptions.markdownOutput as 'raw' | 'fit' | 'both',
-          includeLinks: outputOptions.includeLinks as boolean,
-          includeScreenshot: outputOptions.screenshot as boolean,
-          includePdf: outputOptions.pdf as boolean,
-          includeSslCertificate: outputOptions.fetchSslCertificate as boolean,
-          includeTables: outputOptions.includeTables as boolean,
-        }
-      );
+      // Format result with new structured output shape
+      const formattedResult = formatCrawlResult(result, {
+        cacheMode: crawlerOptions.cacheMode as string | undefined,
+        includeHtml: outputOptions.verboseResponse as boolean,
+        includeLinks: outputOptions.includeLinks !== false,
+        includeMedia: outputOptions.includeMedia as boolean,
+        includeScreenshot: outputOptions.screenshot as boolean,
+        includePdf: outputOptions.pdf as boolean,
+        includeSslCertificate: outputOptions.fetchSslCertificate as boolean,
+        includeTables: outputOptions.includeTables as boolean,
+        fetchedAt,
+      });
 
       // Add the result to the output array
       allResults.push({

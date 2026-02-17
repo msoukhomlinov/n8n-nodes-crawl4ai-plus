@@ -13,6 +13,7 @@ import {
 	createCosineExtractionStrategy,
 	getCrawl4aiClient,
 	isValidUrl,
+	cleanExtractedData,
 } from '../helpers/utils';
 import { formatExtractionResult, parseExtractedJson } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
 
@@ -59,6 +60,25 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'Browser Type',
+				name: 'browserType',
+				type: 'options',
+				options: [
+					{ name: 'Chromium', value: 'chromium', description: 'Use Chromium browser (default)' },
+					{ name: 'Firefox', value: 'firefox', description: 'Use Firefox browser' },
+					{ name: 'Webkit', value: 'webkit', description: 'Use Webkit browser (Safari engine)' },
+				],
+				default: 'chromium',
+				description: 'Which browser engine to use',
+			},
+			{
+				displayName: 'Enable JavaScript',
+				name: 'javaScriptEnabled',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to enable JavaScript execution',
+			},
+			{
 				displayName: 'Enable Stealth Mode',
 				name: 'enableStealth',
 				type: 'boolean',
@@ -99,6 +119,31 @@ export const description: INodeProperties[] = [
 				description: 'Whether to run the browser in headless mode',
 			},
 			{
+				displayName: 'Init Scripts',
+				name: 'initScripts',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				default: {},
+				description: 'JavaScript snippets injected before page load for stealth or setup',
+				options: [
+					{
+						name: 'scripts',
+						displayName: 'Scripts',
+						values: [
+							{
+								displayName: 'Script',
+								name: 'value',
+								type: 'string',
+								typeOptions: { rows: 3 },
+								default: '',
+								placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+								description: 'JavaScript to inject before page load',
+							},
+						],
+					},
+				],
+			},
+			{
 				displayName: 'JavaScript Code',
 				name: 'jsCode',
 				type: 'string',
@@ -108,6 +153,13 @@ export const description: INodeProperties[] = [
 				default: '',
 				placeholder: "document.querySelector('.load-more').click();",
 				description: 'JavaScript code to execute on the page before extraction',
+			},
+			{
+				displayName: 'Timeout (MS)',
+				name: 'timeout',
+				type: 'number',
+				default: 30000,
+				description: 'Maximum time to wait for the browser to load the page',
 			},
 			{
 				displayName: 'User Agent',
@@ -378,6 +430,13 @@ export const description: INodeProperties[] = [
 				description: 'How to use the cache when crawling',
 			},
 			{
+				displayName: 'Clean Extracted Text',
+				name: 'cleanText',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to normalise whitespace in all extracted string values',
+			},
+			{
 				displayName: 'CSS Selector',
 				name: 'cssSelector',
 				type: 'string',
@@ -463,17 +522,24 @@ export async function execute(
 			const crawler = await getCrawl4aiClient(this);
 
 			// Run the extraction using standardized arun() method
+			const fetchedAt = new Date().toISOString();
 			const result = await crawler.arun(url, crawlerConfig);
 
 			// Parse extracted JSON (CosineStrategy returns array of clusters)
-			const extractedData = parseExtractedJson(result);
+			let extractedData = parseExtractedJson(result);
+
+			// Apply cleanText if requested
+			if (options.cleanText === true && extractedData) {
+				extractedData = cleanExtractedData(extractedData) as IDataObject;
+			}
 
 			// Format extraction result
-			const formattedResult = formatExtractionResult(
-				result,
-				extractedData,
-				options.includeFullText as boolean
-			);
+			const formattedResult = formatExtractionResult(result, extractedData, {
+				fetchedAt,
+				extractionStrategy: 'CosineStrategy',
+				includeFullText: options.includeFullText as boolean,
+				includeLinks: true,
+			});
 
 			// Add result to output array
 			allResults.push({
@@ -485,9 +551,10 @@ export async function execute(
 			// Handle continueOnFail or re-throw
 			if (this.continueOnFail()) {
 				allResults.push({
-					json: {
-						error: error.message,
-					},
+					json: items[i].json,
+					error: new NodeOperationError(this.getNode(), (error as Error).message, {
+						itemIndex: (error as any).itemIndex ?? i,
+					}),
 					pairedItem: { item: i },
 				});
 			} else {

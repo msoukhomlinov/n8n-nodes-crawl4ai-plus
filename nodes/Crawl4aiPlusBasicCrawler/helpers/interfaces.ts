@@ -42,7 +42,7 @@ export interface BrowserConfig {
   user_data_dir?: string;
   chrome_channel?: string;
   channel?: string;
-  proxy?: string;
+  proxy_config?: object;
   viewport_width?: number;
   viewport_height?: number;
   viewport?: {
@@ -64,6 +64,7 @@ export interface BrowserConfig {
   extra_args?: Array<string>;
   host?: string;
   enable_stealth?: boolean;
+  init_scripts?: string[];  // 0.8.0: pre-page-load JS injection for stealth
 }
 
 // Crawler run configuration interface
@@ -112,6 +113,7 @@ export interface CrawlerRunConfig {
   excludeSocialMediaLinks?: boolean;
   excludeDomains?: string[];
   scoreLinks?: boolean;
+  preserveHttpsForInternalLinks?: boolean;  // 0.7.5
 
   // Media and Screenshots
   screenshot?: boolean;
@@ -162,6 +164,9 @@ export interface CrawlerRunConfig {
   virtualScrollConfig?: object;
   deepCrawlStrategy?: Record<string, any>;
   experimental?: object;
+
+  // 0.8.0: Fast URL discovery pre-fetch mode
+  prefetch?: boolean;
 }
 
 // Crawl result interface
@@ -269,4 +274,73 @@ export interface LlmSchema {
   type: 'object';
   properties: Record<string, LlmSchemaField>;
   required?: string[];
+}
+
+// Webhook configuration for async job submission
+export interface WebhookConfig {
+  webhook_url: string;
+  webhook_data_in_payload?: boolean;
+  webhook_headers?: Record<string, string>;
+}
+
+// Crawl job request (POST /crawl/job)
+export interface CrawlJobRequest {
+  urls: string[];
+  browser_config?: any;
+  crawler_config?: any;
+  webhook_config?: WebhookConfig;
+}
+
+// Job status response (GET /job/{task_id})
+export interface JobStatusResponse {
+  task_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  result?: CrawlResult | CrawlResult[];
+  message?: string;
+}
+
+// Monitor health response (GET /monitor/health)
+export interface MonitorHealth {
+  status: string;
+  memory_percent: number;
+  cpu_percent: number;
+  uptime_seconds: number;
+  active_requests: number;
+  pool_info?: Record<string, any>;
+}
+
+// LLM async job request (POST /llm/job)
+export interface LlmJobRequest {
+  url: string;
+  q: string;
+  provider?: string;
+  temperature?: number;
+  webhook_config?: WebhookConfig;
+}
+
+// Structured output interface for the new output shape
+export interface Crawl4aiOutput {
+  domain: string;
+  url: string;
+  fetchedAt: string;       // ISO8601
+  success: boolean;
+  statusCode: number | null;
+  errorMessage?: string;
+  cacheMode?: string;
+  content: {
+    markdownRaw: string;
+    markdownFit: string;
+    html?: string | null;  // only when includeHtml is true
+  };
+  extracted: {
+    strategy: string | null;
+    json: object | null;
+  };
+  links: {
+    internal: Link[];
+    external: Link[];
+  };
+  metrics: {
+    durationMs: number | null;
+  };
 }

@@ -10,9 +10,11 @@ import { NodeOperationError } from 'n8n-workflow';
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
   getCrawl4aiClient,
+  createBrowserConfig,
   createCrawlerRunConfig,
   isValidUrl
 } from '../helpers/utils';
+import { formatExtractionResult } from '../../Crawl4aiPlusBasicCrawler/helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -112,10 +114,43 @@ export const description: INodeProperties[] = [
       },
       {
         displayName: 'Enable JavaScript',
-        name: 'java_script_enabled',
+        name: 'javaScriptEnabled',
         type: 'boolean',
         default: true,
         description: 'Whether to enable JavaScript execution (recommended for dynamic SEO tags)',
+      },
+      {
+        displayName: 'Enable Stealth Mode',
+        name: 'enableStealth',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to enable stealth mode to bypass basic bot detection (hides webdriver properties and modifies browser fingerprints)',
+      },
+      {
+        displayName: 'Extra Browser Arguments',
+        name: 'extraArgs',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        default: {},
+        description: 'Additional command-line arguments to pass to the browser (advanced users only)',
+        options: [
+          {
+            name: 'args',
+            displayName: 'Arguments',
+            values: [
+              {
+                displayName: 'Argument',
+                name: 'value',
+                type: 'string',
+                default: '',
+                placeholder: '--disable-blink-features=AutomationControlled',
+                description: 'Browser command-line argument (e.g., --disable-blink-features=AutomationControlled)',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'Headless Mode',
@@ -123,6 +158,31 @@ export const description: INodeProperties[] = [
         type: 'boolean',
         default: true,
         description: 'Whether to run browser in headless mode',
+      },
+      {
+        displayName: 'Init Scripts',
+        name: 'initScripts',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        default: {},
+        description: 'JavaScript snippets injected before page load for stealth or setup',
+        options: [
+          {
+            name: 'scripts',
+            displayName: 'Scripts',
+            values: [
+              {
+                displayName: 'Script',
+                name: 'value',
+                type: 'string',
+                typeOptions: { rows: 3 },
+                default: '',
+                placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined});',
+                description: 'JavaScript to inject before page load',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'Timeout (MS)',
@@ -138,6 +198,94 @@ export const description: INodeProperties[] = [
         default: '',
         placeholder: 'head',
         description: 'CSS selector to wait for before extracting (useful for dynamically injected meta tags)',
+      },
+    ],
+  },
+  {
+    displayName: 'Session & Authentication',
+    name: 'sessionOptions',
+    type: 'collection',
+    placeholder: 'Add Option',
+    default: {},
+    displayOptions: {
+      show: {
+        operation: ['seoExtractor'],
+      },
+    },
+    options: [
+      {
+        displayName: 'Cookies',
+        name: 'cookies',
+        type: 'fixedCollection',
+        default: { cookieValues: [] },
+        typeOptions: {
+          multipleValues: true,
+        },
+        options: [
+          {
+            name: 'cookieValues',
+            displayName: 'Cookie',
+            values: [
+              {
+                displayName: 'Name',
+                name: 'name',
+                type: 'string',
+                default: '',
+                description: 'Cookie name',
+              },
+              {
+                displayName: 'Value',
+                name: 'value',
+                type: 'string',
+                default: '',
+                description: 'Cookie value',
+              },
+              {
+                displayName: 'Domain',
+                name: 'domain',
+                type: 'string',
+                default: '',
+                description: 'Cookie domain',
+              },
+            ],
+          },
+        ],
+        description: 'Cookies to inject for authentication',
+      },
+      {
+        displayName: 'Storage State (JSON)',
+        name: 'storageState',
+        type: 'json',
+        default: '',
+        placeholder: '{"cookies": [...], "origins": [...]}',
+        description: 'Browser storage state (cookies, localStorage, sessionStorage) as JSON',
+      },
+      {
+        displayName: 'Use Managed Browser',
+        name: 'useManagedBrowser',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to connect to an existing managed browser instance',
+      },
+      {
+        displayName: 'Use Persistent Context',
+        name: 'usePersistentContext',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to save browser context to disk for session persistence',
+      },
+      {
+        displayName: 'User Data Directory',
+        name: 'userDataDir',
+        type: 'string',
+        default: '',
+        placeholder: '/data/browser-profiles/profile1',
+        description: 'Path to browser profile directory for persistent sessions',
+        displayOptions: {
+          show: {
+            usePersistentContext: [true],
+          },
+        },
       },
     ],
   },
@@ -258,6 +406,7 @@ export async function execute(
       const url = this.getNodeParameter('url', i, '') as string;
       const metadataTypes = this.getNodeParameter('metadataTypes', i, ['basic', 'openGraph', 'jsonLd']) as string[];
       const browserOptions = this.getNodeParameter('browserOptions', i, {}) as IDataObject;
+      const sessionOptions = this.getNodeParameter('sessionOptions', i, {}) as IDataObject;
       const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
       if (!url) {
@@ -300,9 +449,19 @@ export async function execute(
         },
       } : null;
 
+      // Transform extraArgs from fixedCollection format to array
+      let mergedBrowserOptions = { ...browserOptions, ...sessionOptions };
+      if (browserOptions.extraArgs && typeof browserOptions.extraArgs === 'object') {
+        const extraArgsCollection = browserOptions.extraArgs as any;
+        if (extraArgsCollection.args && Array.isArray(extraArgsCollection.args)) {
+          mergedBrowserOptions.extraArgs = extraArgsCollection.args.map((arg: any) => arg.value).filter((v: string) => v);
+        }
+      }
+
       // Build crawler config
+      const browserConfig = createBrowserConfig(mergedBrowserOptions);
       const crawlerOptions: any = {
-        ...browserOptions,
+        ...browserConfig,
         cacheMode: options.cacheMode || 'ENABLED',
         waitFor: browserOptions.waitFor,
       };
@@ -361,13 +520,18 @@ export async function execute(
         }
       }
 
-      // Build result
-      const formattedResult: IDataObject = {
-        url,
-        success: true,
-        seo: seoData,
-        ...(options.includeRawHtml ? { rawHtml: extractHead(result.html || '') } : {}),
-      };
+      // Build result using standard output shape
+      const fetchedAt = new Date().toISOString();
+      const formattedResult = formatExtractionResult(result, seoData as any, {
+        fetchedAt,
+        extractionStrategy: 'SeoExtractor',
+        includeLinks: false,
+      });
+
+      // Add raw HTML head if requested
+      if (options.includeRawHtml) {
+        (formattedResult as any).rawHtml = extractHead(result.html || '');
+      }
 
       // Add the result to the output array
       allResults.push({
