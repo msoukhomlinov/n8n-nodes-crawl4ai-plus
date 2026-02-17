@@ -1,10 +1,10 @@
 # Crawl4AI Plus for n8n
 
-> **Enhanced fork** with comprehensive Crawl4AI v0.7.x support, including regex extraction, multi-browser support, and 22+ LLM providers.
+> **Enhanced fork** targeting Crawl4AI v0.8.0 with 8 Basic Crawler operations, 7 Content Extractor operations, streaming crawl, async job submission, and comprehensive browser/session/LLM configuration.
 
 ## Project History & Attribution
 
-This is a maintained fork with enhanced features for Crawl4AI 0.7.x.
+This is a maintained fork with enhanced features for Crawl4AI 0.8.0.
 
 ### Fork Chain
 - **Original author**: [Heictor Hsiao](https://github.com/golfamigo) - [golfamigo/n8n-nodes-crawl4j](https://github.com/golfamigo/n8n-nodes-crawl4j)
@@ -13,224 +13,238 @@ This is a maintained fork with enhanced features for Crawl4AI 0.7.x.
 
 All credit for the original implementation goes to **Heictor Hsiao** and **Matias Lopez**.
 
-## What's New in v2.1.0
-
-This version includes comprehensive Crawl4AI 0.7.4+ support with major improvements:
-
-### 🚀 Major Features
-- ✅ **Recursive Deep Crawling** - Keyword-driven recursive crawling with BestFirst/BFS/DFS strategies
-- ✅ **6 Extraction Strategies** - CSS, LLM, JSON, Regex, Cosine Similarity, and SEO Metadata extraction
-- ✅ **LLM Pattern Generation** - Natural language to regex pattern conversion
-- ✅ **Table Extraction** - LLM-based and default table extraction for complex structures
-- ✅ **Session Management** - Browser storage state, cookies, and persistent contexts
-- ✅ **Output Formats** - Screenshot, PDF, and SSL certificate extraction
-- ✅ **Content Filtering** - Pruning, BM25, and LLM content filters
-- ✅ **Anti-Bot Features** - Magic mode, user simulation, and navigator override
-
-### 🔧 Core Improvements
-- ✅ **Unified API Client** - Standardized error handling with actionable messages
-- ✅ **95%+ API Coverage** - Comprehensive support for Crawl4AI 0.7.4 REST API
-- ✅ **Multi-Browser Support** - Chromium, Firefox, and Webkit
-- ✅ **22+ LLM Providers** - OpenAI, Anthropic, Groq, Ollama, and custom providers
-- ✅ **Enhanced Cache Modes** - 5 modes (ENABLED, DISABLED, READ_ONLY, WRITE_ONLY, BYPASS)
+> **v4.0.0 is a breaking change** — all field names, output shapes, and operation behaviour have changed from v3.x. Existing workflows will need rebuilding. See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-This project provides n8n integration for Crawl4AI, a powerful web crawling and data extraction tool. It consists of two main nodes:
-
-1. **Crawl4AI Plus: Basic Crawler** - For general web crawling, recursive discovery, and content extraction
-2. **Crawl4AI Plus: Content Extractor** - For extracting structured data using 6 different extraction strategies
-
 ## Features
 
-### Basic Crawler Node
+### Basic Crawler Node (8 operations)
 
-- **Crawl Single URL** - Extract content from a single web page with full configuration options
-- **Crawl Multiple URLs** - Process multiple web pages or use recursive discovery mode
-  - **Recursive Discovery** - Keyword-driven deep crawling with configurable depth and filters
-  - **Multiple Strategies** - BestFirst (recommended), BFS, or DFS crawling strategies
-  - **Extraction Options** - Apply CSS or LLM extraction to each discovered page (shallow crawl with extraction)
-- **Process Raw HTML** - Extract content from raw HTML without crawling
-- **Discover Links** - Extract and filter all links from a page
-  - **Link Types** - Filter by internal or external links
-  - **Pattern Filters** - Include/exclude URLs by pattern matching
-  - **Output Formats** - Grouped or split output for workflow flexibility
+- **Crawl Single URL** — Extract content from a single page with full browser and crawler configuration
+- **Crawl Multiple URLs** — Process multiple pages or use recursive keyword-driven discovery
+  - **Manual list** — comma-separated URLs crawled in parallel
+  - **Recursive Discovery** — BestFirst (recommended), BFS, or DFS strategies with seed URL and keyword query
+- **Crawl Stream** — Stream crawl results one-item-at-a-time via `/crawl/stream`; each result has its own timestamp
+- **Process Raw HTML** — Parse and extract content from raw HTML without a network request
+- **Discover Links** — Extract, filter, and score all links from a page (internal/external, include/exclude patterns)
+- **Submit Crawl Job** — Submit an async crawl job to `/crawl/job` and receive a `task_id` for large or long-running crawls; supports webhook callbacks
+- **Get Job Status** — Poll `/job/{task_id}` to check status; returns full result data when complete
+- **Health Check** — Query `/monitor/health` and `/monitor/endpoints/stats` to verify server reachability and resource usage
 
-### Content Extractor Node
+### Content Extractor Node (7 operations)
 
-- **CSS Selector Extractor** - Extract structured data using CSS selectors
-- **LLM Extractor** - Use AI to extract structured data with schema support
-  - **Input Formats** - Markdown, HTML, or fit_markdown
-  - **Schema Modes** - Simple fields or advanced JSON schema
-- **JSON Extractor** - Extract and process JSON data from web pages (direct, script tags, or JSON-LD)
-- **Regex Extractor** - Extract data using 21 built-in patterns, custom regex, or LLM-generated patterns
-  - **Quick Presets** - Contact Info and Financial Data presets for common extraction tasks
-- **Cosine Similarity Extractor** - Semantic similarity-based content extraction with clustering (requires `all` Docker image)
-- **SEO Metadata Extractor** - Extract SEO metadata including:
-  - **Basic Meta Tags** - Title, description, keywords, canonical URL
-  - **Open Graph Tags** - OG title, description, image, type
-  - **Twitter Cards** - Twitter card metadata
-  - **JSON-LD** - Schema.org structured data
+- **CSS Selector Extractor** — Structured extraction using `JsonCssExtractionStrategy` with field-level selectors and attribute extraction
+- **LLM Extractor** — AI-powered structured extraction with schema support
+  - Input formats: markdown (default), HTML, or fit_markdown
+  - Schema modes: simple fields or advanced JSON schema
+- **JSON Extractor** — Extract JSON from direct URLs, embedded `<script>` tags (CSS or XPath selector), or JSON-LD
+- **Regex Extractor** — Pattern-based extraction with 21 built-in patterns, custom regex, LLM-generated patterns, or quick presets (Contact Info, Financial Data)
+- **Cosine Similarity Extractor** — Semantic similarity clustering via `CosineStrategy`; requires `unclecode/crawl4ai:all` Docker image
+- **SEO Metadata Extractor** — Extract title, meta tags, Open Graph, Twitter Cards, JSON-LD, robots directives, and hreflang tags
+- **Submit LLM Job** — Submit an async LLM extraction job to `/llm/job` and receive a `task_id`
 
-> **Note**: Table extraction is available in the **Basic Crawler** node via the Table Extraction options (LLM-based or default heuristics).
+> **Table extraction** is available in the **Basic Crawler** node via the Table Extraction crawler option (LLM-based or default heuristics).
+
+---
+
+## Requirements
+
+- **n8n**: 1.79.1 or higher
+- **Crawl4AI Docker**: 0.8.0
+  - Standard operations: `unclecode/crawl4ai:latest`
+  - Cosine Similarity Extractor: `unclecode/crawl4ai:all` (includes sentence-transformers)
+
+---
 
 ## Installation
 
-1. Clone this repository into your n8n custom nodes directory
-2. Run `npm install` to install dependencies
-3. Restart your n8n instance
+```bash
+# Install with pnpm (required — npm/yarn not supported)
+pnpm install
+pnpm build
+```
 
-## Usage
+Then restart your n8n instance. The nodes are declared in `package.json → "n8n" → "nodes"` and loaded from `dist/`.
 
-### Setting up credentials
+---
 
-Before using the nodes, you need to set up Crawl4AI API credentials:
+## Setup
 
-1. Go to **Settings > Credentials > New**
-2. Select **Crawl4AI API**
-3. Configure connection settings:
-   - **Docker URL**: URL of your Crawl4AI Docker container (default: `http://localhost:11235`)
-   - **Authentication**: Optional token or basic auth if your Docker instance requires it
-   - **LLM Settings**: Enable and configure LLM provider for AI extraction features
-     - Supported providers: OpenAI, Anthropic, Groq, Ollama, or custom LiteLLM endpoints
+### Credentials
 
-### Basic Crawler Usage
+1. **Settings → Credentials → New → Crawl4AI API**
+2. Configure:
+   - **Docker URL** — URL of your Crawl4AI container (default: `http://crawl4ai:11235`)
+   - **Authentication** — None, Bearer token, or Basic auth
+   - **LLM Settings** — Enable and configure a provider for AI-powered operations:
+     - OpenAI, Anthropic, Groq, Ollama, or custom LiteLLM endpoint
 
-The Basic Crawler node allows you to crawl web pages and extract their content:
+### Basic Crawler
 
-1. Add the "Crawl4AI: Basic Crawler" node to your workflow
-2. Select an operation (Crawl Single URL, Crawl Multiple URLs, or Process Raw HTML)
-3. Configure the required parameters
-4. Run the workflow to extract content
+1. Add **Crawl4AI Plus: Basic Crawler** to your workflow
+2. Select an operation
+3. Configure the required fields (shown at top level — no digging through collapsed options for required parameters)
+4. Optional browser, crawler, and output options are in expandable collections
 
-### Content Extractor Usage
+### Content Extractor
 
-The Content Extractor node allows you to extract structured data from web pages:
+1. Add **Crawl4AI Plus: Content Extractor** to your workflow
+2. Select an extraction strategy
+3. Enter the URL and strategy-specific configuration
+4. LLM-based strategies use the provider configured in credentials
 
-1. Add the "Crawl4AI Plus: Content Extractor" node to your workflow
-2. Select an extraction method:
-   - **CSS Selector** - For structured pages with consistent selectors
-   - **LLM Extractor** - For AI-powered extraction with natural language instructions
-   - **JSON Extractor** - For JSON APIs or embedded JSON data
-   - **Regex Extractor** - For pattern-based extraction (21 built-in patterns or custom)
-   - **Cosine Extractor** - For semantic similarity-based clustering (requires transformers)
-   - **SEO Metadata** - For extracting page titles, meta tags, OG tags, and JSON-LD structured data
-3. Configure the extraction parameters
-4. Run the workflow to extract structured data
+---
 
-> **Tip**: For table extraction, use the **Basic Crawler** node with Table Extraction options enabled.
-
-## Configuration Options
+## Configuration Reference
 
 ### Browser Options
 
-- **Browser Type**: Chromium (default), Firefox, or Webkit
-- **Headless Mode**: Run browser in headless mode
-- **Enable JavaScript**: Enable JavaScript execution
-- **Enable Stealth Mode**: Bypass basic bot detection
-- **Extra Browser Arguments**: Custom command-line arguments
-- **Viewport Size**: Set browser viewport dimensions
-- **Timeout**: Maximum time to wait for page load
-- **User Agent**: Override browser user agent
+| Option | Description |
+|---|---|
+| Browser Type | Chromium (default), Firefox, or Webkit |
+| Headless Mode | Run browser without a visible window |
+| Enable JavaScript | Enable JS execution (required for dynamic pages) |
+| Enable Stealth Mode | Hides webdriver properties to bypass bot detection |
+| Extra Browser Arguments | Command-line flags passed to the browser process |
+| Init Scripts | JavaScript injected before page load (stealth setup) |
+| Viewport Width / Height | Browser viewport dimensions |
+| Timeout (MS) | Maximum page load wait time |
+| User Agent | Override the browser user agent string |
 
 ### Session & Authentication
 
-- **Storage State (JSON)**: Browser storage state for authenticated sessions (works in all n8n environments)
-- **Cookies**: Array of cookie objects for simple authentication
-- **User Data Directory**: Persistent browser profiles (self-hosted only)
-- **Use Managed Browser**: Enable managed browser mode for persistent contexts
+| Option | Description |
+|---|---|
+| Storage State (JSON) | Browser state (cookies, localStorage) as JSON — works on n8n Cloud |
+| Cookies | Structured cookie entries for authentication |
+| Session ID | Reuse a named browser context across requests |
+| Use Managed Browser | Connect to an existing managed browser instance |
+| Use Persistent Context | Persist browser profile to disk (self-hosted only) |
+| User Data Directory | Path to the browser profile directory |
 
 ### Crawler Options
 
-- **Cache Mode**: 5 modes (ENABLED, DISABLED, READ_ONLY, WRITE_ONLY, BYPASS)
-- **JavaScript Code**: Execute custom JS on the page before extraction
-- **CSS Selector**: Focus crawling on specific elements
-- **Wait Until**: Control when page is considered loaded
-- **Delay Before Return**: Add delay before returning HTML
-- **Excluded Tags**: Skip specific HTML tags
-- **Check Robots.txt**: Respect robots.txt rules
-- **Word Count Threshold**: Filter content by word count
+| Option | Description |
+|---|---|
+| Cache Mode | ENABLED, BYPASS, DISABLED, READ\_ONLY, or WRITE\_ONLY |
+| CSS Selector | Pre-filter page content before extraction |
+| JavaScript Code | Execute custom JS on the page before extracting |
+| Wait For | CSS selector or JS expression to wait for before extracting |
+| Check Robots.txt | Respect the site's robots.txt rules |
+| Word Count Threshold | Minimum word count for a content block to be included |
+| Exclude External Links | Strip external links from results |
+| Preserve HTTPS for Internal Links | Normalise internal link protocols |
 
-### Deep Crawl Options (Crawl Multiple URLs)
+### Deep Crawl Options (Crawl Multiple URLs — Discover mode)
 
-- **Crawl Mode**: Manual URL list or Recursive Discovery
-- **Seed URL**: Starting URL for recursive discovery
-- **Query**: Keywords for relevance-based crawling
-- **Strategy**: BestFirst (recommended), BFS, or DFS
-- **Max Depth**: Maximum crawl depth
-- **Max Pages**: Maximum number of pages to crawl
-- **Domain Filters**: Include/exclude specific domains
-- **URL Pattern Filters**: Regex patterns for URL filtering
+| Option | Description |
+|---|---|
+| Seed URL | Starting URL for recursive discovery |
+| Discovery Query | Keywords that guide which links to follow (required for BestFirst) |
+| Strategy | BestFirst (recommended), BFS, or DFS |
+| Max Depth | Maximum link depth to follow |
+| Max Pages | Maximum number of pages to crawl |
+| Score Threshold | Minimum relevance score for BestFirst |
 
 ### Output Options
 
-- **Screenshot**: Capture page screenshots
-- **PDF**: Generate PDF from page
-- **SSL Certificate**: Extract SSL certificate information
-- **Markdown Variants**: Raw markdown, fit markdown, or cleaned markdown
-- **Structured Links**: Extract and structure all links from page
+| Option | Description |
+|---|---|
+| Include HTML | Include raw HTML in `content.html` |
+| Include Links | Include `links.internal` and `links.external` arrays |
+| Include Media | Include images, videos, and audio metadata |
+| Screenshot | Capture a screenshot (base64) |
+| PDF | Generate a PDF (base64) |
+| SSL Certificate | Extract SSL certificate details |
 
-### Content Filtering
+### Output Shape
 
-- **Pruning Filter**: Remove low-value content based on thresholds
-- **BM25 Filter**: Relevance-based content filtering
-- **LLM Content Filter**: Intelligent content filtering using LLM
+All operations return a consistent output object:
 
-### LLM Extraction Options
+```json
+{
+  "domain": "example.com",
+  "url": "https://example.com/page",
+  "fetchedAt": "2026-02-18T10:00:00.000Z",
+  "success": true,
+  "statusCode": 200,
+  "content": {
+    "markdownRaw": "...",
+    "markdownFit": "..."
+  },
+  "extracted": {
+    "strategy": "JsonCssExtractionStrategy",
+    "json": { ... }
+  },
+  "links": {
+    "internal": [{ "href": "...", "text": "..." }],
+    "external": []
+  },
+  "metrics": {
+    "durationMs": 1240
+  }
+}
+```
 
-- **Extraction Instructions**: Natural language instructions for the AI
-- **Schema Mode**: Simple fields or advanced JSON schema
-- **Input Format**: Markdown (default), HTML, or fit_markdown
-- **LLM Provider**: Choose AI model provider
-- **Temperature**: Control randomness of AI responses (0-1)
-- **Max Tokens**: Maximum tokens for LLM response
+### Async Job Workflow
+
+For large or long-running crawls, use the async pattern:
+
+1. **Submit Crawl Job** → returns `task_id`
+2. **Get Job Status** (poll with task_id) → returns `status: pending | processing | completed | failed`
+3. When `completed`, result fields are returned directly at top level alongside `task_id` and `status`
+
+Webhook callbacks are supported in Submit Crawl Job for push-based notification when the job finishes.
+
+---
 
 ## Project Structure
 
 ```
 nodes/
   ├── Crawl4aiPlusBasicCrawler/
-  │   ├── Crawl4aiPlusBasicCrawler.node.ts    # Main node file
-  │   ├── crawl4aiplus.svg                    # Icon
+  │   ├── Crawl4aiPlusBasicCrawler.node.ts
+  │   ├── crawl4aiplus.svg
   │   ├── actions/
-  │   │   ├── operations.ts                   # Operations definition
-  │   │   ├── router.ts                       # Router handler
-  │   │   ├── crawlSingleUrl.operation.ts     # Single URL crawl operation
-  │   │   ├── crawlMultipleUrls.operation.ts  # Multiple URL crawl + recursive discovery
-  │   │   ├── processRawHtml.operation.ts     # Raw HTML processing operation
-  │   │   └── discoverLinks.operation.ts      # Link discovery and extraction
+  │   │   ├── operations.ts                   # Operation list and UI aggregation
+  │   │   ├── router.ts                       # Dispatch to operation execute()
+  │   │   ├── crawlSingleUrl.operation.ts
+  │   │   ├── crawlMultipleUrls.operation.ts  # Manual list + recursive discovery
+  │   │   ├── crawlStream.operation.ts        # Streaming crawl via /crawl/stream
+  │   │   ├── processRawHtml.operation.ts
+  │   │   ├── discoverLinks.operation.ts
+  │   │   ├── submitCrawlJob.operation.ts     # Async job submission
+  │   │   ├── getJobStatus.operation.ts       # Async job polling
+  │   │   └── healthCheck.operation.ts
   │   └── helpers/
-  │       ├── interfaces.ts                   # Interface definitions
-  │       ├── utils.ts                        # Common utilities
-  │       ├── apiClient.ts                    # Unified API client
-  │       └── formatters.ts                   # Formatting tools
+  │       ├── interfaces.ts
+  │       ├── utils.ts                        # createBrowserConfig, createCrawlerRunConfig, buildLlmConfig, etc.
+  │       ├── apiClient.ts                    # Crawl4aiClient — all HTTP calls
+  │       └── formatters.ts                   # formatCrawlResult, formatExtractionResult
   │
   └── Crawl4aiPlusContentExtractor/
-      ├── Crawl4aiPlusContentExtractor.node.ts # Main node file
-      ├── crawl4aiplus.svg                    # Icon
+      ├── Crawl4aiPlusContentExtractor.node.ts
+      ├── crawl4aiplus.svg
       ├── actions/
-      │   ├── operations.ts                   # Operations definition
-      │   ├── router.ts                       # Router handler
-      │   ├── cssExtractor.operation.ts       # CSS selector extraction
-      │   ├── llmExtractor.operation.ts       # LLM extraction
-      │   ├── jsonExtractor.operation.ts      # JSON extraction
-      │   ├── regexExtractor.operation.ts     # Regex extraction
-      │   ├── cosineExtractor.operation.ts    # Cosine similarity extraction
-      │   └── seoExtractor.operation.ts       # SEO metadata extraction
+      │   ├── operations.ts
+      │   ├── router.ts
+      │   ├── cssExtractor.operation.ts
+      │   ├── llmExtractor.operation.ts
+      │   ├── jsonExtractor.operation.ts
+      │   ├── regexExtractor.operation.ts
+      │   ├── cosineExtractor.operation.ts
+      │   ├── seoExtractor.operation.ts
+      │   └── submitLlmJob.operation.ts       # Async LLM job submission
       └── helpers/
-          ├── interfaces.ts                   # Interface definitions
-          └── utils.ts                        # Common utilities (re-exports from BasicCrawler)
+          ├── interfaces.ts
+          └── utils.ts                        # Re-exports from BasicCrawler + extractor-specific helpers
 
 credentials/
-  └── Crawl4aiApi.credentials.ts              # Credentials definition
+  └── Crawl4aiApi.credentials.ts             # Docker URL, auth, LLM provider config
 ```
 
-## Requirements
-
-- **n8n**: Version 1.79.1 or higher
-- **Crawl4AI Docker**: Version 0.7.3+ (0.7.4 recommended)
-  - For Cosine Similarity Extractor: Use `unclecode/crawl4ai:all` image (includes transformers)
-  - Standard image: `unclecode/crawl4ai:latest` or `unclecode/crawl4ai:0.7.3`
+---
 
 ## Version History
 
@@ -239,7 +253,3 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history and breaking chang
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
