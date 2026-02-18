@@ -29,7 +29,6 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
 
   if (options.browserType) {
     (config as any).browserType = String(options.browserType);
-    config.browser_type = String(options.browserType);
   }
 
   if (options.headless === false) {
@@ -40,26 +39,21 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
 
   if (options.browserMode) {
     (config as any).browserMode = String(options.browserMode);
-    config.browser_mode = String(options.browserMode);
   }
 
   if (options.useManagedBrowser === true) {
     (config as any).useManagedBrowser = true;
-    config.use_managed_browser = true;
   }
 
   if (options.debuggingPort !== undefined) {
     (config as any).debuggingPort = Number(options.debuggingPort);
-    config.debugging_port = Number(options.debuggingPort);
   }
 
   if (options.chromeChannel) {
     (config as any).chromeChannel = String(options.chromeChannel);
-    config.chrome_channel = String(options.chromeChannel);
   }
 
   if (options.channel) {
-    (config as any).channel = String(options.channel);
     config.channel = String(options.channel);
   }
 
@@ -71,23 +65,18 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
   }
 
   if (options.javaScriptEnabled === false) {
-    (config as any).javaScriptEnabled = false;
     config.java_script_enabled = false;
   } else if (options.javaScriptEnabled === true) {
-    (config as any).javaScriptEnabled = true;
     config.java_script_enabled = true;
   }
 
   if (options.userAgent) {
-    (config as any).userAgent = String(options.userAgent);
     config.user_agent = String(options.userAgent);
   }
 
   if (options.ignoreHttpsErrors === true) {
-    (config as any).ignoreHttpsErrors = true;
     config.ignore_https_errors = true;
   } else if (options.ignoreHttpsErrors === false) {
-    (config as any).ignoreHttpsErrors = false;
     config.ignore_https_errors = false;
   }
 
@@ -109,22 +98,18 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
   }
 
   if (options.textMode === true) {
-    (config as any).textMode = true;
     config.text_mode = true;
   }
 
   if (options.lightMode === true) {
-    (config as any).lightMode = true;
     config.light_mode = true;
   }
 
   if (options.extraArgs && Array.isArray(options.extraArgs) && options.extraArgs.length > 0) {
-    (config as any).extraArgs = options.extraArgs as string[];
     config.extra_args = options.extraArgs as string[];
   }
 
   if (options.enableStealth === true) {
-    (config as any).enableStealth = true;
     config.enable_stealth = true;
   }
 
@@ -158,12 +143,10 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
 
   // User agent mode and generator
   if (options.userAgentMode) {
-    (config as any).userAgentMode = String(options.userAgentMode);
     config.user_agent_mode = String(options.userAgentMode);
   }
 
   if (options.userAgentGeneratorConfig && typeof options.userAgentGeneratorConfig === 'object') {
-    (config as any).userAgentGeneratorConfig = options.userAgentGeneratorConfig;
     config.user_agent_generator_config = options.userAgentGeneratorConfig as object;
   }
 

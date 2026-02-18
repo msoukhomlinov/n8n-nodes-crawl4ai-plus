@@ -278,8 +278,8 @@ export async function execute(
 
       const taskId = await crawler.submitCrawlJob({
         urls,
-        browser_config: Object.keys(browserCfg).length > 0 ? browserCfg : undefined,
-        crawler_config: Object.keys(crawlerCfg).length > 0 ? crawlerCfg : undefined,
+        browser_config: Object.keys(browserCfg).length > 0 ? browserCfg : {},
+        crawler_config: Object.keys(crawlerCfg).length > 0 ? crawlerCfg : {},
         ...(webhookConfig ? { webhook_config: webhookConfig } : {}),
       });
 

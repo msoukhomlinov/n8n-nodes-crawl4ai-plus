@@ -41,6 +41,12 @@ All notable changes to this project will be documented in this file.
 - Structured cookies (fixedCollection format) were silently dropped in `cosineExtractor`, `jsonExtractor`, and `seoExtractor`; authenticated crawls now work correctly
 - `api_token: null` was sent to the API for Ollama LLM extraction (no API key required) — now omitted when blank
 - `seoExtractor` was missing `enableStealth` and `extraArgs` browser options present in all other operations
+- 12 `CrawlerRunConfig` fields were captured by the UI but never serialized into the API request body — all silently had no effect: `screenshot`, `pdf`, `fetch_ssl_certificate`, `request_timeout`, `magic`, `simulate_user`, `override_navigator`, `exclude_social_media_links`, `exclude_external_images`, `delay_before_return_html`, `verbose`, and `markdown_generator` (content filter)
+- `deep_crawl_strategy` was written to the flat params object and then redundantly spread again inside the typed wrapper when both an extraction strategy and a deep crawl strategy were active
+- Credential documentation link pointed to `n8n-nodes-crawl4ai` (wrong repo) instead of `n8n-nodes-crawl4ai-plus`
+- Default authentication type in credentials was `token`, causing immediate request failures for new users running Crawl4AI with no authentication; default is now `none`
+- `submitCrawlJob` sent `undefined` for `browser_config` / `crawler_config` when no options were set, inconsistent with all other operations which send `{}`; corrected to always send `{}`
+- `createBrowserConfig()` was assigning both camelCase and snake_case variants of each browser field (`browser_type` / `browserType`, etc.), doubling the object size with dead assignments; redundant duplicates removed
 
 ### Changed
 - LLM config building centralised into `buildLlmConfig()` / `validateLlmCredentials()` utilities; inline provider switch-cases removed from `crawlSingleUrl`, `crawlMultipleUrls`, `llmExtractor`, `regexExtractor`

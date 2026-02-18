@@ -3,7 +3,7 @@ import { ICredentialType, INodeProperties } from 'n8n-workflow';
 export class Crawl4aiApi implements ICredentialType {
 	name = 'crawl4aiPlusApi';
 	displayName = 'Crawl4AI Plus API';
-	documentationUrl = 'https://github.com/msoukhomlinov/n8n-nodes-crawl4ai';
+	documentationUrl = 'https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus';
 	properties: INodeProperties[] = [
 		// Docker REST API Settings
 		{
@@ -35,7 +35,7 @@ export class Crawl4aiApi implements ICredentialType {
 					description: 'Use username and password for authentication'
 				},
 			],
-			default: 'token',
+			default: 'none',
 			description: 'The authentication method to use for the Docker REST API',
 		},
 		{

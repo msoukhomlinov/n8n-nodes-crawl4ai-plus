@@ -76,7 +76,7 @@ Then restart your n8n instance. The nodes are declared in `package.json → "n8n
 1. **Settings → Credentials → New → Crawl4AI API**
 2. Configure:
    - **Docker URL** — URL of your Crawl4AI container (default: `http://crawl4ai:11235`)
-   - **Authentication** — None, Bearer token, or Basic auth
+   - **Authentication** — Defaults to **No Authentication**, which is correct for a standard Docker quickstart deployment. Switch to Token or Basic auth only if your Crawl4AI instance is configured with authentication.
    - **LLM Settings** — Enable and configure a provider for AI-powered operations:
      - OpenAI, Anthropic, Groq, Ollama, or custom LiteLLM endpoint
 

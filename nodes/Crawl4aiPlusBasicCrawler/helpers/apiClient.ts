@@ -415,9 +415,6 @@ export class Crawl4aiClient {
     if (config.cssSelector) {
       params.css_selector = config.cssSelector;
     }
-    if (config.deepCrawlStrategy) {
-      params.deep_crawl_strategy = config.deepCrawlStrategy;
-    }
     if (config.excludedTags && config.excludedTags.length > 0) {
       params.excluded_tags = config.excludedTags;
     }
@@ -442,6 +439,18 @@ export class Crawl4aiClient {
     if (config.preserveHttpsForInternalLinks === true) {
       params.preserve_https_for_internal_links = true;
     }
+    if (config.screenshot === true) params.screenshot = true;
+    if (config.pdf === true) params.pdf = true;
+    if (config.fetchSslCertificate === true) params.fetch_ssl_certificate = true;
+    if (config.requestTimeout !== undefined) params.request_timeout = config.requestTimeout;
+    if (config.magic === true) params.magic = true;
+    if (config.simulateUser === true) params.simulate_user = true;
+    if (config.overrideNavigator === true) params.override_navigator = true;
+    if (config.excludeSocialMediaLinks === true) params.exclude_social_media_links = true;
+    if (config.excludeExternalImages === true) params.exclude_external_images = true;
+    if (config.delayBeforeReturnHtml !== undefined) params.delay_before_return_html = config.delayBeforeReturnHtml;
+    if (config.verbose === true) params.verbose = true;
+    if (config.markdownGenerator) params.markdown_generator = config.markdownGenerator;
 
     // Use type/params wrapper ONLY if extraction strategy, deep crawl, or table extraction present
     if (config.extractionStrategy || config.deepCrawlStrategy || config.tableExtraction) {

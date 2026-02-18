@@ -11,7 +11,11 @@
       "Bash(npx pnpm run build)",
       "Bash(npx tsc:*)",
       "Bash(npx eslint:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(dir:*)",
+      "Bash(where:*)",
+      "Bash(\"C:/Users/maxs/AppData/Roaming/npm/pnpm.exe\" build)",
+      "Bash(\"C:/Users/maxs/AppData/Roaming/npm/pnpm.exe\" lint)"
     ]
   }
 }
