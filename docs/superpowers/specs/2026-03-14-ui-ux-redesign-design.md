@@ -339,7 +339,7 @@ The `crawlMultipleUrls` operation supports two modes via a **Crawl Mode** field:
 | Strategy Type | options | BFS | `BFS` (BFSDeepCrawlStrategy) / `DFS` (DFSDeepCrawlStrategy) / `BestFirst` (BestFirstCrawlStrategy) |
 | Max Depth | number | 3 | Maximum crawl depth |
 | Max Pages | number | 100 | Total page limit |
-| Max Links Per Page | number | 50 | Links to follow per page |
+| Max Links Per Page | number | 50 | Links to follow per page. Maps to `max_links` in the deep crawl strategy config. |
 | Exclude Patterns | string | — | Comma-separated URL patterns to skip |
 | Include Patterns | string | — | Comma-separated URL patterns to include |
 | Query Terms | string | — | Comma-separated terms for BestFirst strategy relevance scoring |
@@ -423,6 +423,7 @@ nodes/
   │   │   ├── jsonExtractor.operation.ts
   │   │   ├── regexExtractor.operation.ts
   │   │   ├── cosineExtractor.operation.ts
+  │   │   ├── seoExtractor.operation.ts
   │   │   ├── submitCrawlJob.operation.ts
   │   │   ├── submitLlmJob.operation.ts
   │   │   ├── getJobStatus.operation.ts
