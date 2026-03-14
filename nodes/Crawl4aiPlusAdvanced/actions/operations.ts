@@ -178,7 +178,7 @@ export const description: INodeProperties[] = [
         action: 'Check server health',
         groupName: 'Jobs & Monitoring',
       },
-    ],
+    ] as any,
     default: 'crawlUrl',
   },
 
