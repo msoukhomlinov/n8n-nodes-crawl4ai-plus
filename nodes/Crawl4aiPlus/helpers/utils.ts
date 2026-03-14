@@ -97,9 +97,16 @@ export function buildDeepCrawlStrategy(
 	const filters: IDataObject[] = [];
 
 	// Same-domain filter using seed URL
-	let seedDomain = '';
 	try {
-		seedDomain = new URL(seedUrl).hostname;
+		const seedDomain = new URL(seedUrl).hostname;
+		if (seedDomain) {
+			filters.push({
+				type: 'URLPatternFilter',
+				params: {
+					patterns: [`*${seedDomain}*`],
+				},
+			});
+		}
 	} catch {
 		// skip domain filter if URL is invalid
 	}

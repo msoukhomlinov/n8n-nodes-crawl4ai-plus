@@ -16,7 +16,6 @@ import {
 	createLlmExtractionStrategy,
 } from '../helpers/utils';
 import { formatQuestionResult } from '../helpers/formatters';
-import { parseExtractedJson } from '../../shared/formatters';
 
 // Fixed schema for question-answering
 const QUESTION_SCHEMA = {
