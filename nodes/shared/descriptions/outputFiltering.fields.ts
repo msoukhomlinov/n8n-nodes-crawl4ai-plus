@@ -23,31 +23,6 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 				},
 			},
 			options: [
-				// ===== Output Fields =====
-
-				// --- Capture Screenshot ---
-				{
-					displayName: 'Capture Screenshot',
-					name: 'screenshot',
-					type: 'boolean',
-					default: false,
-					description: 'Whether to capture a screenshot of the page (returned as base64)',
-				},
-				// --- Content Filter ---
-				{
-					displayName: 'Content Filter',
-					name: 'contentFilter',
-					type: 'options',
-					options: [
-						{ name: 'None', value: 'none', description: 'No content filtering' },
-						{ name: 'Pruning', value: 'pruning', description: 'Statistical pruning of low-quality content blocks' },
-						{ name: 'BM25', value: 'bm25', description: 'BM25 relevance scoring against a query' },
-						{ name: 'LLM', value: 'llm', description: 'LLM-powered content filtering (requires LLM credentials)' },
-					],
-					default: 'none',
-					description: 'Content filtering strategy for fit_markdown generation',
-				},
-				// --- Content Filter: BM25 Threshold ---
 				{
 					displayName: 'BM25 Threshold',
 					name: 'bm25Threshold',
@@ -60,7 +35,13 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'BM25 relevance threshold (lower = more results)',
 				},
-				// --- Content Filter: LLM Chunk Token Threshold ---
+				{
+					displayName: 'Capture Screenshot',
+					name: 'screenshot',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to capture a screenshot of the page (returned as base64)',
+				},
 				{
 					displayName: 'Chunk Token Threshold',
 					name: 'chunkTokenThreshold',
@@ -73,7 +54,79 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'Maximum number of tokens per chunk sent to the LLM',
 				},
-				// --- Content Filter: LLM Instruction ---
+				{
+					displayName: 'Chunk Token Threshold',
+					name: 'tableChunkTokenThreshold',
+					type: 'number',
+					default: 500,
+					displayOptions: {
+						show: {
+							tableExtraction: ['llm'],
+							tableEnableChunking: [true],
+						},
+					},
+					description: 'Maximum tokens per chunk for LLM table extraction',
+				},
+				{
+					displayName: 'Content Filter',
+					name: 'contentFilter',
+					type: 'options',
+					options: [
+						{ name: 'BM25', value: 'bm25', description: 'BM25 relevance scoring against a query' },
+						{ name: 'LLM', value: 'llm', description: 'LLM-powered content filtering (requires LLM credentials)' },
+						{ name: 'None', value: 'none', description: 'No content filtering' },
+						{ name: 'Pruning', value: 'pruning', description: 'Statistical pruning of low-quality content blocks' },
+					],
+					default: 'none',
+					description: 'Content filtering strategy for fit_markdown generation',
+				},
+				{
+					displayName: 'Enable Chunking',
+					name: 'tableEnableChunking',
+					type: 'boolean',
+					default: false,
+					displayOptions: {
+						show: {
+							tableExtraction: ['llm'],
+						},
+					},
+					description: 'Whether to split large tables into chunks for LLM processing',
+				},
+				{
+					displayName: 'Fetch SSL Certificate',
+					name: 'fetchSslCertificate',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to fetch and include SSL certificate information',
+				},
+				{
+					displayName: 'Generate PDF',
+					name: 'pdf',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to generate a PDF of the page (returned as base64)',
+				},
+				{
+					displayName: 'Include Links',
+					name: 'includeLinks',
+					type: 'boolean',
+					default: true,
+					description: 'Whether to include discovered links (internal and external) in the output',
+				},
+				{
+					displayName: 'Include Media',
+					name: 'includeMedia',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to include discovered media (images, videos, audio) in the output',
+				},
+				{
+					displayName: 'Include Tables',
+					name: 'includeTables',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to include extracted tables in the output',
+				},
 				{
 					displayName: 'Instruction',
 					name: 'llmInstruction',
@@ -91,20 +144,56 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					placeholder: 'Extract only paragraphs that discuss pricing information...',
 					description: 'Instruction for the LLM content filter describing what content to keep',
 				},
-				// --- Content Filter: LLM Verbose ---
 				{
-					displayName: 'Verbose',
-					name: 'llmVerbose',
-					type: 'boolean',
-					default: false,
+					displayName: 'Markdown Output',
+					name: 'markdownOutput',
+					type: 'options',
+					options: [
+						{ name: 'Both', value: 'both', description: 'Include both raw and fit markdown' },
+						{ name: 'Fit Markdown', value: 'fit', description: 'Filtered/cleaned markdown (requires content filter)' },
+						{ name: 'Raw Markdown', value: 'raw', description: 'Full unfiltered markdown' },
+					],
+					default: 'raw',
+					description: 'Which markdown format to include in the output',
+				},
+				{
+					displayName: 'Max Parallel Chunks',
+					name: 'tableMaxParallelChunks',
+					type: 'number',
+					default: 3,
 					displayOptions: {
 						show: {
-							contentFilter: ['llm'],
+							tableExtraction: ['llm'],
+							tableEnableChunking: [true],
 						},
 					},
-					description: 'Whether to enable verbose logging for LLM content filter',
+					description: 'Maximum number of table chunks to process in parallel',
 				},
-				// --- Content Filter: Pruning Min Word Threshold ---
+				{
+					displayName: 'Max Tries',
+					name: 'tableMaxTries',
+					type: 'number',
+					default: 3,
+					displayOptions: {
+						show: {
+							tableExtraction: ['llm'],
+						},
+					},
+					description: 'Maximum number of LLM attempts for table extraction',
+				},
+				{
+					displayName: 'Min Rows Per Chunk',
+					name: 'tableMinRowsPerChunk',
+					type: 'number',
+					default: 5,
+					displayOptions: {
+						show: {
+							tableExtraction: ['llm'],
+							tableEnableChunking: [true],
+						},
+					},
+					description: 'Minimum number of rows per chunk for LLM table extraction',
+				},
 				{
 					displayName: 'Min Word Threshold',
 					name: 'minWordThreshold',
@@ -117,7 +206,43 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'Minimum word count for a block to be considered (0 = no minimum)',
 				},
-				// --- Content Filter: Pruning Threshold ---
+				{
+					displayName: 'Score Threshold',
+					name: 'tableScoreThreshold',
+					type: 'number',
+					default: 0.5,
+					displayOptions: {
+						show: {
+							tableExtraction: ['default'],
+						},
+					},
+					description: 'Minimum score for a table to be extracted (0-1)',
+				},
+				{
+					displayName: 'Table CSS Selector',
+					name: 'tableCssSelector',
+					type: 'string',
+					default: '',
+					placeholder: 'table.data-table',
+					displayOptions: {
+						show: {
+							tableExtraction: ['llm'],
+						},
+					},
+					description: 'CSS selector to target specific tables for LLM extraction',
+				},
+				{
+					displayName: 'Table Extraction',
+					name: 'tableExtraction',
+					type: 'options',
+					options: [
+						{ name: 'Default', value: 'default', description: 'Statistical table extraction' },
+						{ name: 'LLM', value: 'llm', description: 'LLM-powered table extraction (requires LLM credentials)' },
+						{ name: 'None', value: 'none', description: 'No table extraction' },
+					],
+					default: 'none',
+					description: 'Table extraction strategy',
+				},
 				{
 					displayName: 'Threshold',
 					name: 'threshold',
@@ -130,14 +255,13 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'Pruning threshold score (higher = more aggressive filtering)',
 				},
-				// --- Content Filter: Pruning Threshold Type ---
 				{
 					displayName: 'Threshold Type',
 					name: 'thresholdType',
 					type: 'options',
 					options: [
-						{ name: 'Fixed', value: 'fixed', description: 'Use a fixed threshold value' },
 						{ name: 'Dynamic', value: 'dynamic', description: 'Dynamically adjust threshold based on content' },
+						{ name: 'Fixed', value: 'fixed', description: 'Use a fixed threshold value' },
 					],
 					default: 'fixed',
 					displayOptions: {
@@ -147,7 +271,6 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'How the pruning threshold should be applied',
 				},
-				// --- Content Filter: BM25 User Query ---
 				{
 					displayName: 'User Query',
 					name: 'userQuery',
@@ -162,86 +285,18 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					placeholder: 'pricing plans enterprise',
 					description: 'Search query to score content blocks against using BM25',
 				},
-				// --- Fetch SSL Certificate ---
 				{
-					displayName: 'Fetch SSL Certificate',
-					name: 'fetchSslCertificate',
+					displayName: 'Verbose',
+					name: 'llmVerbose',
 					type: 'boolean',
 					default: false,
-					description: 'Whether to fetch and include SSL certificate information',
-				},
-				// --- Generate PDF ---
-				{
-					displayName: 'Generate PDF',
-					name: 'pdf',
-					type: 'boolean',
-					default: false,
-					description: 'Whether to generate a PDF of the page (returned as base64)',
-				},
-				// --- Include Links ---
-				{
-					displayName: 'Include Links',
-					name: 'includeLinks',
-					type: 'boolean',
-					default: true,
-					description: 'Whether to include discovered links (internal and external) in the output',
-				},
-				// --- Include Media ---
-				{
-					displayName: 'Include Media',
-					name: 'includeMedia',
-					type: 'boolean',
-					default: false,
-					description: 'Whether to include discovered media (images, videos, audio) in the output',
-				},
-				// --- Include Tables ---
-				{
-					displayName: 'Include Tables',
-					name: 'includeTables',
-					type: 'boolean',
-					default: false,
-					description: 'Whether to include extracted tables in the output',
-				},
-				// --- Markdown Output ---
-				{
-					displayName: 'Markdown Output',
-					name: 'markdownOutput',
-					type: 'options',
-					options: [
-						{ name: 'Raw Markdown', value: 'raw', description: 'Full unfiltered markdown' },
-						{ name: 'Fit Markdown', value: 'fit', description: 'Filtered/cleaned markdown (requires content filter)' },
-						{ name: 'Both', value: 'both', description: 'Include both raw and fit markdown' },
-					],
-					default: 'raw',
-					description: 'Which markdown format to include in the output',
-				},
-				// --- Table Extraction ---
-				{
-					displayName: 'Table Extraction',
-					name: 'tableExtraction',
-					type: 'options',
-					options: [
-						{ name: 'None', value: 'none', description: 'No table extraction' },
-						{ name: 'Default', value: 'default', description: 'Statistical table extraction' },
-						{ name: 'LLM', value: 'llm', description: 'LLM-powered table extraction (requires LLM credentials)' },
-					],
-					default: 'none',
-					description: 'Table extraction strategy',
-				},
-				// --- Table Extraction: Default Score Threshold ---
-				{
-					displayName: 'Score Threshold',
-					name: 'tableScoreThreshold',
-					type: 'number',
-					default: 0.5,
 					displayOptions: {
 						show: {
-							tableExtraction: ['default'],
+							contentFilter: ['llm'],
 						},
 					},
-					description: 'Minimum score for a table to be extracted (0-1)',
+					description: 'Whether to enable verbose logging for LLM content filter',
 				},
-				// --- Table Extraction: Default Verbose ---
 				{
 					displayName: 'Verbose',
 					name: 'tableVerbose',
@@ -254,89 +309,6 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'Whether to enable verbose logging for default table extraction',
 				},
-				// --- Table Extraction: LLM CSS Selector ---
-				{
-					displayName: 'Table CSS Selector',
-					name: 'tableCssSelector',
-					type: 'string',
-					default: '',
-					placeholder: 'table.data-table',
-					displayOptions: {
-						show: {
-							tableExtraction: ['llm'],
-						},
-					},
-					description: 'CSS selector to target specific tables for LLM extraction',
-				},
-				// --- Table Extraction: LLM Chunk Token Threshold ---
-				{
-					displayName: 'Chunk Token Threshold',
-					name: 'tableChunkTokenThreshold',
-					type: 'number',
-					default: 500,
-					displayOptions: {
-						show: {
-							tableExtraction: ['llm'],
-							tableEnableChunking: [true],
-						},
-					},
-					description: 'Maximum tokens per chunk for LLM table extraction',
-				},
-				// --- Table Extraction: LLM Enable Chunking ---
-				{
-					displayName: 'Enable Chunking',
-					name: 'tableEnableChunking',
-					type: 'boolean',
-					default: false,
-					displayOptions: {
-						show: {
-							tableExtraction: ['llm'],
-						},
-					},
-					description: 'Whether to split large tables into chunks for LLM processing',
-				},
-				// --- Table Extraction: LLM Max Parallel Chunks ---
-				{
-					displayName: 'Max Parallel Chunks',
-					name: 'tableMaxParallelChunks',
-					type: 'number',
-					default: 3,
-					displayOptions: {
-						show: {
-							tableExtraction: ['llm'],
-							tableEnableChunking: [true],
-						},
-					},
-					description: 'Maximum number of table chunks to process in parallel',
-				},
-				// --- Table Extraction: LLM Max Tries ---
-				{
-					displayName: 'Max Tries',
-					name: 'tableMaxTries',
-					type: 'number',
-					default: 3,
-					displayOptions: {
-						show: {
-							tableExtraction: ['llm'],
-						},
-					},
-					description: 'Maximum number of LLM attempts for table extraction',
-				},
-				// --- Table Extraction: LLM Min Rows Per Chunk ---
-				{
-					displayName: 'Min Rows Per Chunk',
-					name: 'tableMinRowsPerChunk',
-					type: 'number',
-					default: 5,
-					displayOptions: {
-						show: {
-							tableExtraction: ['llm'],
-							tableEnableChunking: [true],
-						},
-					},
-					description: 'Minimum number of rows per chunk for LLM table extraction',
-				},
-				// --- Table Extraction: LLM Verbose ---
 				{
 					displayName: 'Verbose',
 					name: 'tableLlmVerbose',
@@ -349,7 +321,6 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					},
 					description: 'Whether to enable verbose logging for LLM table extraction',
 				},
-				// --- Verbose Response ---
 				{
 					displayName: 'Verbose Response',
 					name: 'verbose',

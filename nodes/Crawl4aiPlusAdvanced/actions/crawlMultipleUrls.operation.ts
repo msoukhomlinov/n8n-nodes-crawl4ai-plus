@@ -126,7 +126,7 @@ export const description: INodeProperties[] = [
 					{
 						name: 'Depth-First Search (DFS)',
 						value: 'DFSDeepCrawlStrategy',
-						description: 'Follow each path to its deepest point before backtracking.',
+						description: 'Follow each path to its deepest point before backtracking',
 					},
 				],
 				default: 'BestFirstCrawlingStrategy',

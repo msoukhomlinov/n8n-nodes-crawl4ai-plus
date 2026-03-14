@@ -66,11 +66,6 @@ export const cacheModeField: INodeProperties = {
 	type: 'options',
 	options: [
 		{
-			name: 'Enabled',
-			value: 'ENABLED',
-			description: 'Use cache for reads and writes',
-		},
-		{
 			name: 'Bypass',
 			value: 'BYPASS',
 			description: 'Skip cache entirely',
@@ -79,6 +74,11 @@ export const cacheModeField: INodeProperties = {
 			name: 'Disabled',
 			value: 'DISABLED',
 			description: 'Disable caching completely',
+		},
+		{
+			name: 'Enabled',
+			value: 'ENABLED',
+			description: 'Use cache for reads and writes',
 		},
 		{
 			name: 'Read Only',

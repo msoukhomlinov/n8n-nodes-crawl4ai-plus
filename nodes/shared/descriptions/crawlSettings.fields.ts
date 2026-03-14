@@ -50,9 +50,9 @@ export function getCrawlSettingsFields(operations: string[]): INodeProperties[] 
 					name: 'cacheMode',
 					type: 'options',
 					options: [
-						{ name: 'Enabled', value: 'ENABLED', description: 'Use cache for reads and writes' },
 						{ name: 'Bypass', value: 'BYPASS', description: 'Skip cache entirely' },
 						{ name: 'Disabled', value: 'DISABLED', description: 'Disable caching completely' },
+						{ name: 'Enabled', value: 'ENABLED', description: 'Use cache for reads and writes' },
 						{ name: 'Read Only', value: 'READ_ONLY', description: 'Read from cache but do not write' },
 						{ name: 'Write Only', value: 'WRITE_ONLY', description: 'Write to cache but do not read' },
 					],
@@ -78,7 +78,7 @@ export function getCrawlSettingsFields(operations: string[]): INodeProperties[] 
 				},
 				// --- Delay Before Return (ms) ---
 				{
-					displayName: 'Delay Before Return (ms)',
+					displayName: 'Delay Before Return (Ms)',
 					name: 'delayBeforeReturnHtml',
 					type: 'number',
 					default: 0,
