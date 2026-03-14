@@ -1,0 +1,182 @@
+import { INodeProperties } from 'n8n-workflow';
+
+/**
+ * Returns a "Browser & Session" collection with fields matching
+ * what createBrowserConfig() in shared/utils.ts expects.
+ *
+ * @param operations - operation values for which this collection is shown
+ */
+export function getBrowserSessionFields(operations: string[]): INodeProperties[] {
+	return [
+		{
+			displayName: 'Browser & Session',
+			name: 'browserSession',
+			type: 'collection',
+			placeholder: 'Add Option',
+			default: {},
+			displayOptions: {
+				show: {
+					operation: operations,
+				},
+			},
+			options: [
+				// --- Browser Type ---
+				{
+					displayName: 'Browser Type',
+					name: 'browserType',
+					type: 'options',
+					options: [
+						{ name: 'Chromium', value: 'chromium' },
+						{ name: 'Firefox', value: 'firefox' },
+						{ name: 'WebKit', value: 'webkit' },
+					],
+					default: 'chromium',
+					description: 'Which browser engine to use',
+				},
+				// --- Cookies ---
+				{
+					displayName: 'Cookies',
+					name: 'cookies',
+					type: 'json',
+					default: '',
+					placeholder: '[{"name":"sid","value":"abc","domain":".example.com"}]',
+					description: 'JSON array of cookie objects to inject into the browser',
+				},
+				// --- Enable JavaScript ---
+				{
+					displayName: 'Enable JavaScript',
+					name: 'javaScriptEnabled',
+					type: 'boolean',
+					default: true,
+					description: 'Whether to enable JavaScript execution in the browser',
+				},
+				// --- Enable Stealth Mode ---
+				{
+					displayName: 'Enable Stealth Mode',
+					name: 'enableStealth',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to enable stealth mode to avoid bot detection',
+				},
+				// --- Extra Browser Args ---
+				{
+					displayName: 'Extra Browser Args',
+					name: 'extraArgs',
+					type: 'string',
+					typeOptions: {
+						rows: 4,
+					},
+					default: '',
+					placeholder: '--disable-gpu\n--no-sandbox',
+					description: 'Additional browser launch arguments, one per line',
+				},
+				// --- Headless Mode ---
+				{
+					displayName: 'Headless Mode',
+					name: 'headless',
+					type: 'boolean',
+					default: true,
+					description: 'Whether to run the browser in headless mode',
+				},
+				// --- Init Scripts ---
+				{
+					displayName: 'Init Scripts',
+					name: 'initScripts',
+					type: 'string',
+					typeOptions: {
+						rows: 4,
+					},
+					default: '',
+					placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => false})',
+					description: 'JavaScript code to inject before page load, one script per line',
+				},
+				// --- Session ID ---
+				{
+					displayName: 'Session ID',
+					name: 'sessionId',
+					type: 'string',
+					default: '',
+					placeholder: 'my-session-1',
+					description: 'Session identifier for maintaining browser state across crawls',
+				},
+				// --- Storage State ---
+				{
+					displayName: 'Storage State',
+					name: 'storageState',
+					type: 'json',
+					default: '',
+					placeholder: '{"cookies":[],"origins":[]}',
+					description: 'Browser storage state (cookies, localStorage) as JSON',
+				},
+				// --- Timeout ---
+				{
+					displayName: 'Timeout',
+					name: 'timeout',
+					type: 'number',
+					default: 30000,
+					description: 'Page load timeout in milliseconds',
+				},
+				// --- Use Managed Browser ---
+				{
+					displayName: 'Use Managed Browser',
+					name: 'useManagedBrowser',
+					type: 'boolean',
+					default: false,
+					displayOptions: {
+						show: {
+							usePersistentContext: [true],
+						},
+					},
+					description: 'Whether to use the managed browser instance (requires persistent context)',
+				},
+				// --- Use Persistent Context ---
+				{
+					displayName: 'Use Persistent Context',
+					name: 'usePersistentContext',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to use a persistent browser context that retains data between sessions',
+				},
+				// --- User Agent ---
+				{
+					displayName: 'User Agent',
+					name: 'userAgent',
+					type: 'string',
+					default: '',
+					placeholder: 'Mozilla/5.0 ...',
+					description: 'Custom user agent string to use for requests',
+				},
+				// --- User Data Dir ---
+				{
+					displayName: 'User Data Dir',
+					name: 'userDataDir',
+					type: 'string',
+					default: '',
+					placeholder: '/tmp/browser-data',
+					displayOptions: {
+						show: {
+							usePersistentContext: [true],
+						},
+					},
+					description: 'Directory to store persistent browser data (requires persistent context)',
+				},
+				// --- Viewport Height ---
+				{
+					displayName: 'Viewport Height',
+					name: 'viewportHeight',
+					type: 'number',
+					default: 768,
+					description: 'Browser viewport height in pixels',
+				},
+				// --- Viewport Width ---
+				{
+					displayName: 'Viewport Width',
+					name: 'viewportWidth',
+					type: 'number',
+					default: 1024,
+					description: 'Browser viewport width in pixels',
+				},
+			],
+		},
+	];
+}
