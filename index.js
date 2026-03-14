@@ -2,8 +2,8 @@
 
 module.exports = {
   nodeTypes: {
-    crawl4aiPlusBasicCrawler: require('./dist/nodes/Crawl4aiPlusBasicCrawler/Crawl4aiPlusBasicCrawler.node.js').Crawl4aiPlusBasicCrawler,
-    crawl4aiPlusContentExtractor: require('./dist/nodes/Crawl4aiPlusContentExtractor/Crawl4aiPlusContentExtractor.node.js').Crawl4aiPlusContentExtractor,
+    crawl4aiPlus: require('./dist/nodes/Crawl4aiPlus/Crawl4aiPlus.node.js').Crawl4aiPlus,
+    crawl4aiPlusAdvanced: require('./dist/nodes/Crawl4aiPlusAdvanced/Crawl4aiPlusAdvanced.node.js').Crawl4aiPlusAdvanced,
   },
   credentialTypes: {
     crawl4aiPlusApi: require('./dist/credentials/Crawl4aiApi.credentials.js').Crawl4aiApi,
