@@ -887,14 +887,15 @@ import type { BrowserConfig, CrawlerRunConfig, CrawlResult } from '../../shared/
 import type { Crawl4aiClient } from '../../shared/apiClient';
 
 /** Smart defaults for simple node — merged into CrawlerRunConfig.
- *  The API client's formatBrowserConfig() reads these from the flat config. */
+ *  Uses camelCase field names matching the CrawlerRunConfig interface.
+ *  The API client's formatBrowserConfig()/formatCrawlerConfig() read these. */
 export function getSimpleDefaults(): Partial<CrawlerRunConfig> {
 	return {
 		headless: true,
-		browser_type: 'chromium',
-		java_script_enabled: true,
-		viewport_width: 1280,
-		viewport_height: 800,
+		browserType: 'chromium',
+		javaScriptEnabled: true,
+		viewportWidth: 1280,
+		viewportHeight: 800,
 	};
 }
 
@@ -1253,14 +1254,14 @@ export async function execute(this: IExecuteFunctions): Promise<INodeExecutionDa
 
 		const config: CrawlerRunConfig = {
 			...getSimpleDefaults(),
-			cache_mode: options.cacheMode || 'ENABLED',
-			...(options.cssSelector && { css_selector: options.cssSelector }),
-			...(options.waitFor && { wait_for: options.waitFor }),
+			cacheMode: options.cacheMode || 'ENABLED',
+			...(options.cssSelector && { cssSelector: options.cssSelector }),
+			...(options.waitFor && { waitFor: options.waitFor }),
 		};
 
 		// Apply content quality filter
 		if (options.contentQuality !== 'complete') {
-			config.markdown_generator = createMarkdownGenerator({
+			config.markdownGenerator = createMarkdownGenerator({
 				filterType: 'pruning',
 				threshold: 0.48,
 				thresholdType: 'fixed',
@@ -1403,9 +1404,9 @@ export async function execute(this: IExecuteFunctions): Promise<INodeExecutionDa
 
 		const config: CrawlerRunConfig = {
 			...getSimpleDefaults(),
-			cache_mode: options.cacheMode || 'ENABLED',
-			...(options.waitFor && { wait_for: options.waitFor }),
-			extraction_strategy: extractionStrategy,
+			cacheMode: options.cacheMode || 'ENABLED',
+			...(options.waitFor && { waitFor: options.waitFor }),
+			extractionStrategy,
 		};
 
 		const results = await executeCrawl(client, url, crawlScope, config, {
@@ -1613,8 +1614,8 @@ export async function execute(this: IExecuteFunctions): Promise<INodeExecutionDa
 
 		const config: CrawlerRunConfig = {
 			...getSimpleDefaults(),
-			cache_mode: options.cacheMode || 'ENABLED',
-			...(options.waitFor && { wait_for: options.waitFor }),
+			cacheMode: options.cacheMode || 'ENABLED',
+			...(options.waitFor && { waitFor: options.waitFor }),
 		};
 
 		// For LLM extraction, add extraction strategy to config
@@ -1627,7 +1628,7 @@ export async function execute(this: IExecuteFunctions): Promise<INodeExecutionDa
 			const schema = buildJsonSchema(schemaFieldsRaw.fields);
 
 			const llmConfig = buildLlmConfig(credentials);
-			config.extraction_strategy = createLlmExtractionStrategy(
+			config.extractionStrategy = createLlmExtractionStrategy(
 				schema,
 				instruction,
 				llmConfig.provider,
@@ -1833,9 +1834,9 @@ export async function execute(this: IExecuteFunctions): Promise<INodeExecutionDa
 
 		const config: CrawlerRunConfig = {
 			...getSimpleDefaults(),
-			cache_mode: options.cacheMode || 'ENABLED',
-			...(options.waitFor && { wait_for: options.waitFor }),
-			extraction_strategy: extractionStrategy,
+			cacheMode: options.cacheMode || 'ENABLED',
+			...(options.waitFor && { waitFor: options.waitFor }),
+			extractionStrategy,
 		};
 
 		const result = await client.crawlUrl(url, config);
@@ -2023,11 +2024,17 @@ const outputFiltering = this.getNodeParameter('outputFiltering', i, {}) as Recor
 
 // Merge all into one flat CrawlerRunConfig — the API client splits them
 const config: CrawlerRunConfig = {
-    ...createBrowserConfig(browserSession),   // browser_type, headless, viewport, etc.
-    ...createCrawlerRunConfig(crawlSettings),  // cache_mode, css_selector, wait_for, etc.
+    ...createBrowserConfig(browserSession),   // browserType, headless, viewport, etc.
+    ...createCrawlerRunConfig(crawlSettings),  // cacheMode, cssSelector, waitFor, etc.
     // Add output/filtering config (markdown generator, table extraction, etc.)
 };
 ```
+
+**Field name mapping note:** The shared description field names (e.g., `javascriptCode`, `delayBeforeReturn`, `magicMode`, `preserveHttps`, `captureScreenshot`, `generatePdf`) may not exactly match what `createBrowserConfig()` / `createCrawlerRunConfig()` expect (e.g., `jsCode`, `delayBeforeReturnHtml`, `magic`, `preserveHttpsForInternalLinks`, `screenshot`, `pdf`). When implementing advanced operations, either:
+- (a) Name the UI fields to match the existing utility function keys (preferred — less mapping code), OR
+- (b) Add an explicit mapping object that translates UI field names to config keys before calling `createBrowserConfig()`/`createCrawlerRunConfig()`
+
+Option (a) is recommended: use the same field names the utility functions already expect. Update the shared descriptions in Tasks 2-4 to use matching names. This is a deliberate trade-off — the UI `displayName` (what users see) is separate from the `name` (what code reads), so names like `jsCode` are fine internally while the display shows "JavaScript Code".
 
 - [ ] **Step 1: Create crawlUrl.operation.ts**
 
