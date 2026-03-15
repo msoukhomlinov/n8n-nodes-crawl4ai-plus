@@ -6,24 +6,26 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
 	createCrawlerRunConfig,
+	applyOutputFilteringConfig,
 	isValidUrl,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
 import {
 	getBrowserSessionFields,
 	getCrawlSettingsFields,
+	getOutputFilteringFields,
 } from '../../shared/descriptions';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
 	{
 		displayName: 'URLs',
-		name: 'streamUrls',
+		name: 'urls',
 		type: 'string',
 		typeOptions: {
 			rows: 4,
@@ -31,7 +33,7 @@ export const description: INodeProperties[] = [
 		required: true,
 		default: '',
 		placeholder: 'https://example.com\nhttps://example.com/page2',
-		description: 'One URL per line to crawl via the streaming endpoint. Each URL produces one output item.',
+		description: 'URLs to crawl via the streaming endpoint, one per line or comma-separated. Each URL produces one output item.',
 		displayOptions: {
 			show: {
 				operation: ['crawlStream'],
@@ -40,6 +42,7 @@ export const description: INodeProperties[] = [
 	},
 	...getBrowserSessionFields(['crawlStream']),
 	...getCrawlSettingsFields(['crawlStream']),
+	...getOutputFilteringFields(['crawlStream']),
 ];
 
 // --- Execution Logic ---
@@ -49,15 +52,17 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const rawUrls = this.getNodeParameter('streamUrls', i, '') as string;
+			const rawUrls = this.getNodeParameter('urls', i, '') as string;
 			const bs = this.getNodeParameter('browserSession', i, {}) as IDataObject;
 			const cs = this.getNodeParameter('crawlSettings', i, {}) as IDataObject;
+			const of = this.getNodeParameter('outputFiltering', i, {}) as IDataObject;
 
 			const urls = rawUrls
-				.split('\n')
+				.split(/[\n,]/)
 				.map((u) => u.trim())
 				.filter((u) => u.length > 0);
 
@@ -72,23 +77,57 @@ export async function execute(
 			}
 
 			// Build config from shared collections
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
+				screenshot: of.screenshot as boolean,
+				pdf: of.pdf as boolean,
+				fetchSslCertificate: of.fetchSslCertificate as boolean,
+				...(of.verbose === true ? { verbose: true } : {}),
 			};
 
-			const crawler = await getCrawl4aiClient(this);
-			const results = await crawler.crawlStream(urls, config);
+			// Apply content filter and table extraction from output filtering
+			const filteringConfig = await applyOutputFilteringConfig(of, this, i);
+			if (filteringConfig.markdownGenerator) {
+				config.markdownGenerator = filteringConfig.markdownGenerator;
+			}
+			if (filteringConfig.tableExtraction) {
+				config.tableExtraction = filteringConfig.tableExtraction;
+			}
 
-			for (const result of results) {
+			const { results, parseErrors } = await crawler.crawlStream(urls, config);
+
+			if (results.length === 0) {
+				allResults.push({
+					json: {
+						success: false,
+						error: 'Stream returned no results. The URLs may be inaccessible or blocked.',
+						...(parseErrors > 0 ? { parseErrors } : {}),
+					},
+					pairedItem: { item: i },
+				});
+				continue;
+			}
+
+			for (let ri = 0; ri < results.length; ri++) {
+				const result = results[ri];
 				const fetchedAt = new Date().toISOString();
 				const formatted = formatCrawlResult(result, {
 					cacheMode: cs.cacheMode as string | undefined,
-					includeHtml: false,
-					includeLinks: true,
-					includeMedia: false,
+					markdownOutput: (of.markdownOutput as 'raw' | 'fit' | 'both') || 'both',
+					includeHtml: of.includeHtml === true,
+					includeLinks: of.includeLinks !== false,
+					includeMedia: of.includeMedia as boolean,
+					includeScreenshot: of.screenshot as boolean,
+					includePdf: of.pdf as boolean,
+					includeSslCertificate: of.fetchSslCertificate as boolean,
+					includeTables: of.includeTables as boolean,
 					fetchedAt,
 				});
+				// Surface parse errors on the last result so users know about discarded stream chunks
+				if (ri === results.length - 1 && parseErrors > 0) {
+					(formatted as IDataObject).streamParseErrors = parseErrors;
+				}
 				allResults.push({ json: formatted, pairedItem: { item: i } });
 			}
 		} catch (error) {

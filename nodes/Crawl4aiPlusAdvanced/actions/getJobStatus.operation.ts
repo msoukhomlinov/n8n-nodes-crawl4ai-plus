@@ -35,6 +35,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -43,8 +44,6 @@ export async function execute(
 			if (!taskId || !taskId.trim()) {
 				throw new NodeOperationError(this.getNode(), 'Task ID cannot be empty.', { itemIndex: i });
 			}
-
-			const crawler = await getCrawl4aiClient(this);
 			const statusResponse = await crawler.getJobStatus(taskId.trim());
 			const checkedAt = new Date().toISOString();
 
@@ -54,17 +53,37 @@ export async function execute(
 					? statusResponse.result as CrawlResult[]
 					: [statusResponse.result as CrawlResult];
 
-				for (const result of rawResults) {
-					const formatted = formatCrawlResult(result, {
-						includeLinks: true,
-						fetchedAt: checkedAt,
-					});
+				if (rawResults.length > 0) {
+					for (const result of rawResults) {
+						const formatted = formatCrawlResult(result, {
+							includeLinks: true,
+							includeScreenshot: true,
+							includePdf: true,
+							includeSslCertificate: true,
+							includeTables: true,
+							includeMedia: true,
+							includeHtml: true,
+							extractionStrategy: result.extracted_content ? 'unknown' : undefined,
+							fetchedAt: checkedAt,
+						});
+						allResults.push({
+							json: {
+								...formatted,
+								taskId: statusResponse.task_id,
+								status: statusResponse.status,
+								checkedAt,
+							} as IDataObject,
+							pairedItem: { item: i },
+						});
+					}
+				} else {
+					// Job completed but returned empty results
 					allResults.push({
 						json: {
-							...formatted,
-							task_id: statusResponse.task_id,
+							taskId: statusResponse.task_id,
 							status: statusResponse.status,
 							checkedAt,
+							message: 'Job completed but returned no results.',
 						} as IDataObject,
 						pairedItem: { item: i },
 					});
@@ -72,7 +91,7 @@ export async function execute(
 			} else {
 				allResults.push({
 					json: {
-						task_id: statusResponse.task_id,
+						taskId: statusResponse.task_id,
 						status: statusResponse.status,
 						checkedAt,
 						...(statusResponse.message ? { message: statusResponse.message } : {}),

@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions } from '../helpers/interfaces';
 import { getCrawl4aiClient } from '../../shared/utils';
 
 // --- UI Definition ---
@@ -31,11 +31,11 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
+	const credentials = await this.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const crawler = await getCrawl4aiClient(this);
-			const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
 			const checkedAt = new Date().toISOString();
 
 			let healthData: IDataObject = {};
@@ -65,6 +65,7 @@ export async function execute(
 
 			allResults.push({
 				json: {
+					success: !healthError,
 					serverUrl: credentials.dockerUrl || 'http://crawl4ai:11235',
 					checkedAt,
 					...healthData,

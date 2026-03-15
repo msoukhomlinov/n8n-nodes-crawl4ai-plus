@@ -126,7 +126,7 @@ export function getCrawlSettingsFields(operations: string[]): INodeProperties[] 
 					displayName: 'Max Retries',
 					name: 'maxRetries',
 					type: 'number',
-					default: 0,
+					default: 3,
 					description: 'Maximum number of retry attempts if the crawl fails',
 				},
 				// --- Preserve HTTPS for Internal Links ---

@@ -70,6 +70,15 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					placeholder: '--disable-gpu\n--no-sandbox',
 					description: 'Additional browser launch arguments, one per line',
 				},
+				// --- Headers ---
+				{
+					displayName: 'Headers',
+					name: 'headers',
+					type: 'json',
+					default: '',
+					placeholder: '{"Authorization":"Bearer token","Accept-Language":"en-US"}',
+					description: 'Custom HTTP headers to send with browser requests (JSON object)',
+				},
 				// --- Headless Mode ---
 				{
 					displayName: 'Headless Mode',
@@ -77,6 +86,14 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					type: 'boolean',
 					default: true,
 					description: 'Whether to run the browser in headless mode',
+				},
+				// --- Ignore HTTPS Errors ---
+				{
+					displayName: 'Ignore HTTPS Errors',
+					name: 'ignoreHttpsErrors',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to ignore HTTPS certificate errors (useful for self-signed certs)',
 				},
 				// --- Init Scripts ---
 				{
@@ -89,6 +106,23 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					default: '',
 					placeholder: 'Object.defineProperty(navigator, "webdriver", {get: () => false})',
 					description: 'JavaScript code to inject before page load, one script per line',
+				},
+				// --- Light Mode ---
+				{
+					displayName: 'Light Mode',
+					name: 'lightMode',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to enable light mode for faster page loading (disables images and heavy resources)',
+				},
+				// --- Proxy Config ---
+				{
+					displayName: 'Proxy Config',
+					name: 'proxyConfig',
+					type: 'json',
+					default: '',
+					placeholder: '{"server":"http://proxy:8080","username":"user","password":"pass"}',
+					description: 'Proxy configuration with server URL and optional authentication',
 				},
 				// --- Session ID ---
 				{
@@ -107,6 +141,14 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					default: '',
 					placeholder: '{"cookies":[],"origins":[]}',
 					description: 'Browser storage state (cookies, localStorage) as JSON',
+				},
+				// --- Text Mode ---
+				{
+					displayName: 'Text Mode',
+					name: 'textMode',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to enable text-only mode (no images, styles, or scripts loaded)',
 				},
 				// --- Timeout ---
 				{
@@ -165,7 +207,7 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					displayName: 'Viewport Height',
 					name: 'viewportHeight',
 					type: 'number',
-					default: 768,
+					default: 800,
 					description: 'Browser viewport height in pixels',
 				},
 				// --- Viewport Width ---
@@ -173,7 +215,7 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					displayName: 'Viewport Width',
 					name: 'viewportWidth',
 					type: 'number',
-					default: 1024,
+					default: 1280,
 					description: 'Browser viewport width in pixels',
 				},
 			],

@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig, Link } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, FullCrawlConfig, Link } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
@@ -187,6 +187,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -208,8 +209,11 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'At least one link type must be selected.', { itemIndex: i });
 			}
 
-			// Build config using shared browser session collection
-			const config: CrawlerRunConfig = {
+			// Build config using shared browser session collection.
+			// discoverLinks intentionally does not expose Crawl Settings to keep the UI
+			// focused on link discovery. Cache mode is hardcoded to ENABLED for performance
+			// since re-fetching the same page is unnecessary for link extraction.
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig({
 					cacheMode: 'ENABLED',
@@ -217,7 +221,6 @@ export async function execute(
 				}),
 			};
 
-			const crawler = await getCrawl4aiClient(this);
 			const result = await crawler.crawlUrl(url, config);
 
 			if (!result.success) {

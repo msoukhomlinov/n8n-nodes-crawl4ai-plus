@@ -1,6 +1,6 @@
 import { IDataObject } from 'n8n-workflow';
 import { Crawl4aiClient } from '../../shared/apiClient';
-import { CrawlerRunConfig, CrawlResult } from '../../shared/interfaces';
+import { DeepCrawlStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
 
 // Re-export shared utilities needed by operations
 export {
@@ -17,14 +17,14 @@ export {
  * browserType and javaScriptEnabled are passed through to the API client
  * which reads them as extra properties on the config object.
  */
-export function getSimpleDefaults(): Partial<CrawlerRunConfig> {
+export function getSimpleDefaults(): Partial<FullCrawlConfig> {
 	return {
 		headless: true,
 		browserType: 'chromium',
-		javaScriptEnabled: true,
-		viewportWidth: 1280,
-		viewportHeight: 800,
-	} as Partial<CrawlerRunConfig>;
+		java_script_enabled: true,
+		viewport: { width: 1280, height: 800 },
+		pageTimeout: 30000,
+	};
 }
 
 /**
@@ -90,25 +90,21 @@ export function buildDeepCrawlStrategy(
 	maxPages: number,
 	seedUrl: string,
 	excludePatterns?: string,
-): IDataObject {
+): DeepCrawlStrategy {
 	const maxDepth = scope === 'followLinks' ? 1 : 3;
 
 	// Build filter chain
 	const filters: IDataObject[] = [];
 
 	// Same-domain filter using seed URL
-	try {
-		const seedDomain = new URL(seedUrl).hostname;
-		if (seedDomain) {
-			filters.push({
-				type: 'URLPatternFilter',
-				params: {
-					patterns: [`*${seedDomain}*`],
-				},
-			});
-		}
-	} catch {
-		// skip domain filter if URL is invalid
+	const seedDomain = new URL(seedUrl).hostname;
+	if (seedDomain) {
+		filters.push({
+			type: 'URLPatternFilter',
+			params: {
+				patterns: [`*${seedDomain}*`],
+			},
+		});
 	}
 
 	// Combine exclude patterns with smart dedup defaults
@@ -132,7 +128,7 @@ export function buildDeepCrawlStrategy(
 		});
 	}
 
-	const strategyParams: IDataObject = {
+	const strategyParams: Record<string, unknown> = {
 		max_depth: maxDepth,
 		max_pages: maxPages,
 		...(filters.length > 0
@@ -159,7 +155,7 @@ export async function executeCrawl(
 	client: Crawl4aiClient,
 	url: string,
 	scope: 'singlePage' | 'followLinks' | 'fullSite',
-	config: CrawlerRunConfig,
+	config: FullCrawlConfig,
 	options: {
 		maxPages?: number;
 		excludePatterns?: string;
@@ -171,7 +167,7 @@ export async function executeCrawl(
 	}
 
 	// Multi-page crawl
-	const defaultMaxPages = scope === 'followLinks' ? 10 : 50;
+	const defaultMaxPages = 10;
 	const maxPages = options.maxPages ?? defaultMaxPages;
 
 	const deepCrawlStrategy = buildDeepCrawlStrategy(
@@ -181,9 +177,9 @@ export async function executeCrawl(
 		options.excludePatterns,
 	);
 
-	const multiConfig: CrawlerRunConfig = {
+	const multiConfig: FullCrawlConfig = {
 		...config,
-		deepCrawlStrategy: deepCrawlStrategy as Record<string, any>,
+		deepCrawlStrategy,
 	};
 
 	let results = await client.crawlMultipleUrls([url], multiConfig);

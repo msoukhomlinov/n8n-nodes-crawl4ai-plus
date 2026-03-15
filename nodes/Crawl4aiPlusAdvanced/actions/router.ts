@@ -13,32 +13,27 @@ export async function router(this: IExecuteFunctions): Promise<INodeExecutionDat
 	const node = this.getNode();
 
 	const operation = this.getNodeParameter('operation', 0) as string;
-	const nodeOptions = this.getNodeParameter('options', 0, {}) as Crawl4aiNodeOptions;
+	const nodeOptions = {} as Crawl4aiNodeOptions;
 	const continueOnFail = this.continueOnFail();
 
-	try {
-		const executeFunction = operations[operation];
+	const executeFunction = operations[operation];
 
-		if (!executeFunction) {
-			throw new NodeOperationError(node, `The operation "${operation}" is not supported!`, {
-				itemIndex: 0,
-			});
-		}
-
-		returnData = await executeFunction.call(this, items, nodeOptions);
-	} catch (error) {
+	if (!executeFunction) {
 		if (continueOnFail) {
-			returnData = items.map((item, index) => ({
+			return this.prepareOutputData(items.map((item, index) => ({
 				json: item.json,
-				error: new NodeOperationError(node, (error as Error).message, {
-					itemIndex: (error as any).itemIndex ?? index,
+				error: new NodeOperationError(node, `The operation "${operation}" is not supported!`, {
+					itemIndex: index,
 				}),
 				pairedItem: { item: index },
-			}));
-		} else {
-			throw error;
+			})));
 		}
+		throw new NodeOperationError(node, `The operation "${operation}" is not supported!`, {
+			itemIndex: 0,
+		});
 	}
+
+	returnData = await executeFunction.call(this, items, nodeOptions);
 
 	return this.prepareOutputData(returnData);
 }

@@ -6,12 +6,13 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, ExtractionStrategy, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
 	createCrawlerRunConfig,
 	buildLlmConfig,
+	validateLlmCredentials,
 	cleanExtractedData,
 	isValidUrl,
 } from '../../shared/utils';
@@ -237,6 +238,8 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
+	const credentials = await this.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -255,7 +258,7 @@ export async function execute(
 			}
 
 			// Build regex extraction strategy config
-			const extractionStrategy: any = {
+			const extractionStrategy: ExtractionStrategy = {
 				type: 'RegexExtractionStrategy',
 				params: {},
 			};
@@ -287,25 +290,20 @@ export async function execute(
 					throw new NodeOperationError(this.getNode(), 'Valid sample URL is required for LLM pattern generation.', { itemIndex: i });
 				}
 
-				const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
-
-				if (!credentials.enableLlm) {
-					throw new NodeOperationError(
-						this.getNode(),
-						'LLM features must be enabled in Crawl4AI credentials to use LLM pattern generation.',
-						{ itemIndex: i },
-					);
+				try {
+					validateLlmCredentials(credentials, 'LLM pattern generation');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
 				}
 
 				// Crawl sample URL first
-				const sampleCrawler = await getCrawl4aiClient(this);
 				const sampleBrowserConfig = createBrowserConfig(bs);
-				const sampleConfig: CrawlerRunConfig = {
+				const sampleConfig: FullCrawlConfig = {
 					...sampleBrowserConfig,
-					cacheMode: 'BYPASS' as any,
+					cacheMode: 'BYPASS',
 				};
 
-				const sampleResult = await sampleCrawler.crawlUrl(llmSampleUrl, sampleConfig);
+				const sampleResult = await crawler.crawlUrl(llmSampleUrl, sampleConfig);
 
 				if (!sampleResult.success) {
 					throw new NodeOperationError(
@@ -315,8 +313,9 @@ export async function execute(
 					);
 				}
 
-				const sampleHtml = (typeof sampleResult.markdown === 'object' && (sampleResult.markdown as any).fit_html)
-					? (sampleResult.markdown as any).fit_html
+				const md = sampleResult.markdown;
+				const sampleHtml = (typeof md === 'object' && md !== null && md.fit_html)
+					? md.fit_html
 					: sampleResult.cleaned_html || sampleResult.html || '';
 
 				if (!sampleHtml) {
@@ -331,8 +330,15 @@ export async function execute(
 					llm_config: llmConfig,
 				};
 
-				const generatedPattern = await sampleCrawler.generateRegexPattern(patternGenPayload);
-				extractionStrategy.params.custom = generatedPattern;
+				const generatedPattern = await crawler.generateRegexPattern(patternGenPayload);
+				if (!generatedPattern || typeof generatedPattern !== 'object') {
+					throw new NodeOperationError(
+						this.getNode(),
+						'LLM pattern generation returned an unexpected response. Check your LLM credentials and try again.',
+						{ itemIndex: i },
+					);
+				}
+				extractionStrategy.params.custom_patterns = generatedPattern;
 			} else {
 				// Custom patterns
 				const customPatternsValues = this.getNodeParameter('customPatterns.patternValues', i, []) as IDataObject[];
@@ -366,13 +372,12 @@ export async function execute(
 				extractionStrategy.params.custom_patterns = customPatterns;
 			}
 
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
 				extractionStrategy,
 			};
 
-			const crawler = await getCrawl4aiClient(this);
 			const fetchedAt = new Date().toISOString();
 			const result = await crawler.crawlUrl(url, config);
 

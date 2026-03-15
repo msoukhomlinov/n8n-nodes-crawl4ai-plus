@@ -9,3 +9,4 @@ export {
 export { getBrowserSessionFields } from './browserSession.fields';
 export { getCrawlSettingsFields } from './crawlSettings.fields';
 export { getOutputFilteringFields } from './outputFiltering.fields';
+export { getWebhookFields } from './webhook.fields';

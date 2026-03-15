@@ -1,6 +1,6 @@
 # Crawl4AI Plus for n8n
 
-> **Enhanced fork** targeting Crawl4AI v0.8.0 with 8 Basic Crawler operations, 7 Content Extractor operations, streaming crawl, async job submission, and comprehensive browser/session/LLM configuration.
+> **Enhanced fork** targeting Crawl4AI v0.8.0 with a progressive-disclosure two-node architecture: a Simple node (4 operations) for general users and an Advanced node (15 operations) for power users.
 
 ## Project History & Attribution
 
@@ -13,38 +13,45 @@ This is a maintained fork with enhanced features for Crawl4AI 0.8.0.
 
 All credit for the original implementation goes to **Heictor Hsiao** and **Matias Lopez**.
 
-> **v4.0.0 is a breaking change** — all field names, output shapes, and operation behaviour have changed from v3.x. Existing workflows will need rebuilding. See [CHANGELOG.md](CHANGELOG.md) for full details.
+> **v5.0.0 is a breaking change** — the 3-node architecture (BasicCrawler, ContentExtractor, SmartExtract) has been replaced with 2 new nodes. Existing workflows will need rebuilding. See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
 ## Features
 
-### Basic Crawler Node (8 operations)
+### Crawl4AI Plus — Simple Node (4 operations)
 
-- **Crawl Single URL** — Extract content from a single page with full browser and crawler configuration
-- **Crawl Multiple URLs** — Process multiple pages or use recursive keyword-driven discovery
-  - **Manual list** — comma-separated URLs crawled in parallel
-  - **Recursive Discovery** — BestFirst (recommended), BFS, or DFS strategies with seed URL and keyword query
-- **Crawl Stream** — Stream crawl results one-item-at-a-time via `/crawl/stream`; each result has its own timestamp
-- **Process Raw HTML** — Parse and extract content from raw HTML without a network request
-- **Discover Links** — Extract, filter, and score all links from a page (internal/external, include/exclude patterns)
-- **Submit Crawl Job** — Submit an async crawl job to `/crawl/job` and receive a `task_id` for large or long-running crawls; supports webhook callbacks
-- **Get Job Status** — Poll `/job/{task_id}` to check status; returns full result data when complete
-- **Health Check** — Query `/monitor/health` and `/monitor/endpoints/stats` to verify server reachability and resource usage
+Designed for general users with smart defaults and minimal configuration:
 
-### Content Extractor Node (7 operations)
+- **Get Page Content** — Crawl a URL and get markdown (single page, follow links, or full site via crawl scope)
+- **Ask Question** — Ask a question about a page using LLM extraction
+- **Extract Data** — Extract contact info, financial data, or custom structured data (regex presets + LLM)
+- **CSS Extractor** — Extract structured data using CSS selectors
 
-- **CSS Selector Extractor** — Structured extraction using `JsonCssExtractionStrategy` with field-level selectors and attribute extraction
+### Crawl4AI Plus Advanced — Advanced Node (15 operations in 3 groups)
+
+Full API control via 3 standardized collections (Browser & Session, Crawl Settings, Output & Filtering):
+
+**Crawling**
+- **Crawl URL** — Single URL with full browser/crawler/output configuration
+- **Crawl Multiple URLs** — Manual list or recursive discovery (BFS/DFS/BestFirst strategies)
+- **Stream Crawl** — Streaming via `/crawl/stream` for large URL sets
+- **Process Raw HTML** — Process pre-fetched HTML without a network request
+- **Discover Links** — Extract, filter, and score links (internal/external, include/exclude patterns)
+
+**Extraction**
 - **LLM Extractor** — AI-powered structured extraction with schema support
-  - Input formats: markdown (default), HTML, or fit_markdown
-  - Schema modes: simple fields or advanced JSON schema
-- **JSON Extractor** — Extract JSON from direct URLs, embedded `<script>` tags (CSS or XPath selector), or JSON-LD
-- **Regex Extractor** — Pattern-based extraction with 21 built-in patterns, custom regex, LLM-generated patterns, or quick presets (Contact Info, Financial Data)
-- **Cosine Similarity Extractor** — Semantic similarity clustering via `CosineStrategy`; requires `unclecode/crawl4ai:all` Docker image
-- **SEO Metadata Extractor** — Extract title, meta tags, Open Graph, Twitter Cards, JSON-LD, robots directives, and hreflang tags
-- **Submit LLM Job** — Submit an async LLM extraction job to `/llm/job` and receive a `task_id`
+- **CSS Extractor** — Structured extraction using `JsonCssExtractionStrategy`
+- **JSON Extractor** — Extract JSON from direct URLs, script tags, or JSON-LD
+- **Regex Extractor** — Pattern-based extraction with built-in, custom, or LLM-generated patterns
+- **Cosine Similarity** — Semantic clustering (requires `unclecode/crawl4ai:all` Docker image)
+- **SEO Metadata** — Meta tags, Open Graph, Twitter Cards, JSON-LD, robots, hreflang
 
-> **Table extraction** is available in the **Basic Crawler** node via the Table Extraction crawler option (LLM-based or default heuristics).
+**Jobs & Monitoring**
+- **Submit Crawl Job** — Async crawl via `/crawl/job` with webhook support
+- **Submit LLM Job** — Async LLM extraction via `/llm/job`
+- **Get Job Status** — Poll `/job/{task_id}` for results
+- **Health Check** — Server health and endpoint stats
 
 ---
 
@@ -58,6 +65,15 @@ All credit for the original implementation goes to **Heictor Hsiao** and **Matia
 ---
 
 ## Installation
+
+### Via n8n UI (recommended)
+
+1. Go to **Settings → Community Nodes**
+2. Click **Install a community node**
+3. Enter `n8n-nodes-crawl4ai-plus`
+4. Restart n8n
+
+### From source (development)
 
 ```bash
 # Install with pnpm (required — npm/yarn not supported)
@@ -80,19 +96,20 @@ Then restart your n8n instance. The nodes are declared in `package.json → "n8n
    - **LLM Settings** — Enable and configure a provider for AI-powered operations:
      - OpenAI, Anthropic, Groq, Ollama, or custom LiteLLM endpoint
 
-### Basic Crawler
+### Simple Node
 
-1. Add **Crawl4AI Plus: Basic Crawler** to your workflow
-2. Select an operation
-3. Configure the required fields (shown at top level — no digging through collapsed options for required parameters)
-4. Optional browser, crawler, and output options are in expandable collections
+1. Add **Crawl4AI Plus** to your workflow
+2. Select an operation (Get Page Content, Ask Question, Extract Data, or CSS Extractor)
+3. Configure the URL and required fields
+4. Optional settings are in a single flat Options collection
 
-### Content Extractor
+### Advanced Node
 
-1. Add **Crawl4AI Plus: Content Extractor** to your workflow
-2. Select an extraction strategy
-3. Enter the URL and strategy-specific configuration
-4. LLM-based strategies use the provider configured in credentials
+1. Add **Crawl4AI Plus Advanced** to your workflow
+2. Select an operation from one of the 3 groups (Crawling, Extraction, Jobs & Monitoring)
+3. Configure the URL/required fields
+4. Fine-tune via 3 standardized collections: Browser & Session, Crawl Settings, Output & Filtering
+5. LLM-based operations use the provider configured in credentials
 
 ---
 
@@ -191,9 +208,9 @@ All operations return a consistent output object:
 
 For large or long-running crawls, use the async pattern:
 
-1. **Submit Crawl Job** → returns `task_id`
-2. **Get Job Status** (poll with task_id) → returns `status: pending | processing | completed | failed`
-3. When `completed`, result fields are returned directly at top level alongside `task_id` and `status`
+1. **Submit Crawl Job** → returns `taskId`
+2. **Get Job Status** (poll with taskId) → returns `status: pending | processing | completed | failed`
+3. When `completed`, result fields are returned directly at top level alongside `taskId` and `status`
 
 Webhook callbacks are supported in Submit Crawl Job for push-based notification when the job finishes.
 
@@ -203,42 +220,56 @@ Webhook callbacks are supported in Submit Crawl Job for push-based notification 
 
 ```
 nodes/
-  ├── Crawl4aiPlusBasicCrawler/
-  │   ├── Crawl4aiPlusBasicCrawler.node.ts
+  ├── shared/                                 # Shared code used by both nodes
+  │   ├── apiClient.ts                        # Crawl4aiClient — all HTTP calls
+  │   ├── utils.ts                            # Config builders, LLM helpers, validation
+  │   ├── interfaces.ts                       # TypeScript types
+  │   ├── formatters.ts                       # formatCrawlResult, formatExtractionResult
+  │   └── descriptions/                       # Reusable n8n UI field definitions
+  │       ├── index.ts                        # Barrel export
+  │       ├── common.fields.ts                # urlField, urlsField, cacheModeField, etc.
+  │       ├── browserSession.fields.ts        # getBrowserSessionFields()
+  │       ├── crawlSettings.fields.ts         # getCrawlSettingsFields()
+  │       └── outputFiltering.fields.ts       # getOutputFilteringFields()
+  │
+  ├── Crawl4aiPlus/                           # Simple node (4 operations)
+  │   ├── Crawl4aiPlus.node.ts
   │   ├── crawl4aiplus.svg
   │   ├── actions/
-  │   │   ├── operations.ts                   # Operation list and UI aggregation
-  │   │   ├── router.ts                       # Dispatch to operation execute()
-  │   │   ├── crawlSingleUrl.operation.ts
-  │   │   ├── crawlMultipleUrls.operation.ts  # Manual list + recursive discovery
-  │   │   ├── crawlStream.operation.ts        # Streaming crawl via /crawl/stream
-  │   │   ├── processRawHtml.operation.ts
-  │   │   ├── discoverLinks.operation.ts
-  │   │   ├── submitCrawlJob.operation.ts     # Async job submission
-  │   │   ├── getJobStatus.operation.ts       # Async job polling
-  │   │   └── healthCheck.operation.ts
+  │   │   ├── operations.ts
+  │   │   ├── router.ts
+  │   │   ├── getPageContent.operation.ts
+  │   │   ├── askQuestion.operation.ts
+  │   │   ├── extractData.operation.ts
+  │   │   └── cssExtractor.operation.ts
   │   └── helpers/
-  │       ├── interfaces.ts
-  │       ├── utils.ts                        # createBrowserConfig, createCrawlerRunConfig, buildLlmConfig, etc.
-  │       ├── apiClient.ts                    # Crawl4aiClient — all HTTP calls
-  │       └── formatters.ts                   # formatCrawlResult, formatExtractionResult
+  │       ├── utils.ts                        # getSimpleDefaults, executeCrawl, deduplicateResults
+  │       └── formatters.ts                   # Simple node formatters
   │
-  └── Crawl4aiPlusContentExtractor/
-      ├── Crawl4aiPlusContentExtractor.node.ts
+  └── Crawl4aiPlusAdvanced/                   # Advanced node (15 operations, 3 groups)
+      ├── Crawl4aiPlusAdvanced.node.ts
       ├── crawl4aiplus.svg
       ├── actions/
-      │   ├── operations.ts
+      │   ├── operations.ts                   # 15 operations with groupName for UI grouping
       │   ├── router.ts
-      │   ├── cssExtractor.operation.ts
-      │   ├── llmExtractor.operation.ts
-      │   ├── jsonExtractor.operation.ts
-      │   ├── regexExtractor.operation.ts
-      │   ├── cosineExtractor.operation.ts
-      │   ├── seoExtractor.operation.ts
-      │   └── submitLlmJob.operation.ts       # Async LLM job submission
+      │   ├── crawlUrl.operation.ts           # ─┐
+      │   ├── crawlMultipleUrls.operation.ts  # │ Crawling group
+      │   ├── crawlStream.operation.ts        # │
+      │   ├── processRawHtml.operation.ts     # │
+      │   ├── discoverLinks.operation.ts      # ─┘
+      │   ├── llmExtractor.operation.ts       # ─┐
+      │   ├── cssExtractor.operation.ts       # │
+      │   ├── jsonExtractor.operation.ts      # │ Extraction group
+      │   ├── regexExtractor.operation.ts     # │
+      │   ├── cosineExtractor.operation.ts    # │
+      │   ├── seoExtractor.operation.ts       # ─┘
+      │   ├── submitCrawlJob.operation.ts     # ─┐
+      │   ├── submitLlmJob.operation.ts       # │ Jobs & Monitoring group
+      │   ├── getJobStatus.operation.ts       # │
+      │   └── healthCheck.operation.ts        # ─┘
       └── helpers/
-          ├── interfaces.ts
-          └── utils.ts                        # Re-exports from BasicCrawler + extractor-specific helpers
+          ├── interfaces.ts                   # Re-exports shared types
+          └── formatters.ts                   # Re-exports shared + formatJobSubmission()
 
 credentials/
   └── Crawl4aiApi.credentials.ts             # Docker URL, auth, LLM provider config

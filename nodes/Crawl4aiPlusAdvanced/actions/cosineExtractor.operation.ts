@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, ExtractionStrategy, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
@@ -23,6 +23,18 @@ import {
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
+	{
+		displayName: '',
+		name: 'cosineNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['cosineExtractor'],
+			},
+		},
+		description: 'This operation requires the crawl4ai:all Docker image. The standard latest image does not include torch/sentence-transformers.',
+	},
 	{
 		...urlField,
 		description: 'The URL to extract content from using semantic similarity clustering',
@@ -188,6 +200,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -211,7 +224,7 @@ export async function execute(
 			}
 
 			// Build CosineStrategy config inline (no shared helper exists)
-			const strategyParams: any = { semantic_filter: semanticFilter };
+			const strategyParams: Record<string, unknown> = { semantic_filter: semanticFilter };
 
 			if (co.wordCountThreshold !== undefined) strategyParams.word_count_threshold = Number(co.wordCountThreshold);
 			if (co.maxDist !== undefined) strategyParams.max_dist = Number(co.maxDist);
@@ -221,15 +234,14 @@ export async function execute(
 			if (co.modelName) strategyParams.model_name = String(co.modelName);
 			if (co.verbose !== undefined) strategyParams.verbose = Boolean(co.verbose);
 
-			const extractionStrategy = { type: 'CosineStrategy', params: strategyParams };
+			const extractionStrategy: ExtractionStrategy = { type: 'CosineStrategy', params: strategyParams };
 
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
 				extractionStrategy,
 			};
 
-			const crawler = await getCrawl4aiClient(this);
 			const fetchedAt = new Date().toISOString();
 			const result = await crawler.crawlUrl(url, config);
 

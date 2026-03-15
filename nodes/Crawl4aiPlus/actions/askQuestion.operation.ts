@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions } from '../../shared/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, FullCrawlConfig } from '../../shared/interfaces';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -124,9 +124,11 @@ export const description: INodeProperties[] = [
 				name: 'cacheMode',
 				type: 'options',
 				options: [
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
 					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
 					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
+					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
+					{ name: 'Read Only', value: 'READ_ONLY' },
+					{ name: 'Write Only', value: 'WRITE_ONLY' },
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
@@ -176,6 +178,13 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const client = await getCrawl4aiClient(this);
+	const credentials = (await this.getCredentials('crawl4aiPlusApi')) as unknown as Crawl4aiApiCredentials;
+	try {
+		validateLlmCredentials(credentials, 'Ask Question');
+	} catch (err) {
+		throw new NodeOperationError(this.getNode(), (err as Error).message);
+	}
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -193,10 +202,6 @@ export async function execute(
 				});
 			}
 
-			// Validate LLM credentials
-			const credentials = (await this.getCredentials('crawl4aiPlusApi')) as any;
-			validateLlmCredentials(credentials, 'Ask Question');
-
 			// Build LLM config and extraction strategy
 			const { provider, apiKey, baseUrl } = buildLlmConfig(credentials);
 			const instruction = `${SYSTEM_PROMPT}\n\nQuestion: ${question}`;
@@ -210,40 +215,48 @@ export async function execute(
 			);
 
 			// Build config
-			const config: IDataObject = {
+			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
-				cacheMode: options.cacheMode || 'ENABLED',
+				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 				extractionStrategy,
 			};
 
 			if (options.waitFor) {
-				config.waitFor = options.waitFor;
+				config.waitFor = String(options.waitFor);
 			}
-
-			const client = await getCrawl4aiClient(this);
 
 			const results = await executeCrawl(
 				client,
 				url,
 				crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
-				config as any,
+				config,
 				{
 					maxPages: options.maxPages as number | undefined,
 					excludePatterns: options.excludePatterns as string | undefined,
 				},
 			);
 
-			// Find first result with extracted content
-			const resultWithContent = results.find((r) => r.extracted_content) || results[0];
+			// Collect all pages with extracted content
+			const pagesWithContent = results.filter((r) => r.extracted_content);
 
-			if (resultWithContent) {
-				const formatted = formatQuestionResult(resultWithContent, question, results.length);
-
+			if (results.length === 0) {
 				allResults.push({
-					json: formatted,
+					json: { success: false, error: 'No results returned from crawl', url, question },
 					pairedItem: { item: i },
 				});
+				continue;
 			}
+
+			const formatted = formatQuestionResult(
+				pagesWithContent.length > 0 ? pagesWithContent : results,
+				question,
+				results.length,
+			);
+
+			allResults.push({
+				json: formatted,
+				pairedItem: { item: i },
+			});
 		} catch (error) {
 			if (this.continueOnFail()) {
 				allResults.push({

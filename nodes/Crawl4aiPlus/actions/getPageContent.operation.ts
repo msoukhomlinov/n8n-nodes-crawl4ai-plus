@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions } from '../../shared/interfaces';
+import type { Crawl4aiNodeOptions, FullCrawlConfig } from '../../shared/interfaces';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -77,9 +77,11 @@ export const description: INodeProperties[] = [
 				name: 'cacheMode',
 				type: 'options',
 				options: [
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
 					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
 					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
+					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
+					{ name: 'Read Only', value: 'READ_ONLY' },
+					{ name: 'Write Only', value: 'WRITE_ONLY' },
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
@@ -170,6 +172,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const client = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -182,17 +185,17 @@ export async function execute(
 			}
 
 			// Build config from simple defaults
-			const config: IDataObject = {
+			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
-				cacheMode: options.cacheMode || 'ENABLED',
+				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 			};
 
 			if (options.cssSelector) {
-				config.cssSelector = options.cssSelector;
+				config.cssSelector = String(options.cssSelector);
 			}
 
 			if (options.waitFor) {
-				config.waitFor = options.waitFor;
+				config.waitFor = String(options.waitFor);
 			}
 
 			// Apply content quality filter
@@ -205,22 +208,35 @@ export async function execute(
 				});
 			}
 
-			const client = await getCrawl4aiClient(this);
-
 			const results = await executeCrawl(
 				client,
 				url,
 				crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
-				config as any,
+				config,
 				{
 					maxPages: options.maxPages as number | undefined,
 					excludePatterns: options.excludePatterns as string | undefined,
 				},
 			);
 
+			// Guard against empty results (e.g., all pages deduplicated or filtered)
+			if (!results || results.length === 0) {
+				allResults.push({
+					json: {
+						success: false,
+						error: 'No results returned - all pages may have been deduplicated or filtered',
+						url,
+						crawlScope,
+					} as unknown as IDataObject,
+					pairedItem: { item: i },
+				});
+				continue;
+			}
+
 			const formatted = formatPageContentResult(results, {
 				includeHtml: options.includeHtml as boolean,
 				includeLinks: options.includeLinks !== false,
+				contentQuality: contentQuality,
 			});
 
 			allResults.push({

@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
@@ -153,6 +153,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -187,19 +188,18 @@ export async function execute(
 					name: field.name as string,
 					selector: field.selector as string,
 					type: field.fieldType as 'text' | 'attribute' | 'html',
-					attribute: field.attribute as string,
+					...(field.fieldType === 'attribute' ? { attribute: field.attribute as string } : {}),
 				})),
 			};
 
 			const extractionStrategy = createCssSelectorExtractionStrategy(schema);
 
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
 				extractionStrategy,
 			};
 
-			const crawler = await getCrawl4aiClient(this);
 			const fetchedAt = new Date().toISOString();
 			const result = await crawler.crawlUrl(url, config);
 

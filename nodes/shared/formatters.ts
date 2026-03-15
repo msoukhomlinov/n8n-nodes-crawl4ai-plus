@@ -16,6 +16,7 @@ export function formatCrawlResult(
     includeSslCertificate?: boolean;
     includeTables?: boolean;
     extractionStrategy?: string;
+    markdownOutput?: 'raw' | 'fit' | 'both';
     fetchedAt: string;
   }
 ): IDataObject {
@@ -38,14 +39,21 @@ export function formatCrawlResult(
     markdownFit = result.markdown;
   }
 
-  // Parse extracted_content JSON
-  let extractedJson: object | null = null;
-  if (result.extracted_content) {
-    try {
-      extractedJson = JSON.parse(result.extracted_content) as object;
-    } catch {
-      // Not valid JSON — leave null
-    }
+  // Trim markdown based on output preference
+  if (options.markdownOutput === 'fit') {
+    markdownRaw = '';
+  } else if (options.markdownOutput === 'raw') {
+    markdownFit = '';
+  }
+  // 'both' or undefined → keep both (default)
+
+  // Parse extracted_content JSON — surface parse errors instead of silently returning null
+  let extractedJson: IDataObject | null = parseExtractedJson(result);
+  if (extractedJson === null && result.extracted_content) {
+    extractedJson = {
+      _parseError: true,
+      _rawContent: result.extracted_content.substring(0, 500),
+    };
   }
 
   // Build base output
@@ -69,6 +77,7 @@ export function formatCrawlResult(
       ? { internal: (result.links?.internal ?? []) as Link[], external: (result.links?.external ?? []) as Link[] }
       : { internal: [], external: [] },
     metrics: {
+      crawlTime: result.crawl_time ?? null,
       durationMs: result.crawl_time != null ? Math.round(result.crawl_time * 1000) : null,
     },
   };
@@ -160,6 +169,7 @@ export function formatExtractionResult(
       ? { internal: (result.links?.internal ?? []) as Link[], external: (result.links?.external ?? []) as Link[] }
       : { internal: [], external: [] },
     metrics: {
+      crawlTime: result.crawl_time ?? null,
       durationMs: result.crawl_time != null ? Math.round(result.crawl_time * 1000) : null,
     },
   };

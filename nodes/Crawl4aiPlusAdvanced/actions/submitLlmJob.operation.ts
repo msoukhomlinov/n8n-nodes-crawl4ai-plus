@@ -6,14 +6,16 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
-import type { WebhookConfig } from '../../shared/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	isValidUrl,
 	buildLlmConfig,
+	validateLlmCredentials,
+	buildWebhookConfig,
 } from '../../shared/utils';
-import { urlField } from '../../shared/descriptions';
+import { urlField, getWebhookFields } from '../../shared/descriptions';
+import { formatJobSubmission } from '../helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -67,71 +69,13 @@ export const description: INodeProperties[] = [
 				displayName: 'Temperature',
 				name: 'temperature',
 				type: 'number',
-				default: 0,
-				typeOptions: { minValue: 0, maxValue: 2, numberPrecision: 2 },
-				description: 'Sampling temperature (0 = deterministic, higher = more creative)',
-			},
-		],
-	},
-	{
-		displayName: 'Webhook Config',
-		name: 'webhookConfig',
-		type: 'collection',
-		placeholder: 'Add Webhook',
-		default: {},
-		displayOptions: {
-			show: {
-				operation: ['submitLlmJob'],
-			},
-		},
-		options: [
-			{
-				displayName: 'Webhook URL',
-				name: 'webhookUrl',
-				type: 'string',
 				default: '',
-				placeholder: 'https://your-n8n.com/webhook/...',
-				description: 'URL to POST results to when the LLM job completes',
-			},
-			{
-				displayName: 'Include Data in Payload',
-				name: 'webhookDataInPayload',
-				type: 'boolean',
-				default: true,
-				description: 'Whether to include extraction result data in the webhook payload',
-			},
-			{
-				displayName: 'Webhook Headers',
-				name: 'webhookHeaders',
-				type: 'fixedCollection',
-				typeOptions: { multipleValues: true },
-				default: {},
-				description: 'Custom headers to send with the webhook request',
-				options: [
-					{
-						name: 'header',
-						displayName: 'Header',
-						values: [
-							{
-								displayName: 'Key',
-								name: 'key',
-								type: 'string',
-								default: '',
-								description: 'Header key',
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								description: 'Header value',
-							},
-						],
-					},
-				],
+				typeOptions: { minValue: 0, maxValue: 2, numberPrecision: 2 },
+				description: 'Sampling temperature (0 = deterministic, higher = more creative). Leave empty to use API default.',
 			},
 		],
 	},
+	...getWebhookFields(['submitLlmJob'], 'LLM'),
 ];
 
 // --- Execution Logic ---
@@ -141,6 +85,8 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
+	const credentials = await this.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -159,8 +105,11 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'Extraction Query cannot be empty.', { itemIndex: i });
 			}
 
-			const crawler = await getCrawl4aiClient(this);
-			const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
+			try {
+				validateLlmCredentials(credentials, 'Submit LLM Job');
+			} catch (err) {
+				throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+			}
 
 			// Build provider — use override if provided, else fall back to credentials
 			let provider: string | undefined;
@@ -172,37 +121,18 @@ export async function execute(
 			}
 
 			// Build webhook config if URL provided
-			let webhookConfig: WebhookConfig | undefined;
-			if (webhookConfigOptions.webhookUrl) {
-				const headers: Record<string, string> = {};
-				const webhookHeaders = webhookConfigOptions.webhookHeaders as any;
-				if (webhookHeaders?.header && Array.isArray(webhookHeaders.header)) {
-					for (const h of webhookHeaders.header) {
-						if (h.key && h.value) headers[h.key] = h.value;
-					}
-				}
-				webhookConfig = {
-					webhook_url: String(webhookConfigOptions.webhookUrl),
-					webhook_data_in_payload: webhookConfigOptions.webhookDataInPayload !== false,
-					...(Object.keys(headers).length > 0 ? { webhook_headers: headers } : {}),
-				};
-			}
+			const webhookConfig = buildWebhookConfig(webhookConfigOptions);
 
 			const taskId = await crawler.submitLlmJob({
 				url: url.trim(),
 				q: query.trim(),
 				...(provider ? { provider } : {}),
-				...(llmOptions.temperature !== undefined ? { temperature: Number(llmOptions.temperature) } : {}),
+				...(llmOptions.temperature !== undefined && llmOptions.temperature !== '' ? { temperature: Number(llmOptions.temperature) } : {}),
 				...(webhookConfig ? { webhook_config: webhookConfig } : {}),
 			});
 
 			allResults.push({
-				json: {
-					task_id: taskId,
-					submittedAt: new Date().toISOString(),
-					url: url.trim(),
-					message: 'LLM extraction job submitted. Use Get Job Status with the task_id to poll for results.',
-				} as IDataObject,
+				json: formatJobSubmission(taskId),
 				pairedItem: { item: i },
 			});
 		} catch (error) {

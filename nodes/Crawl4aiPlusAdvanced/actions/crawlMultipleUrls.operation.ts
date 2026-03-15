@@ -6,14 +6,12 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
 	createCrawlerRunConfig,
-	createMarkdownGenerator,
-	createTableExtractionStrategy,
-	buildLlmConfig,
+	applyOutputFilteringConfig,
 	isValidUrl,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
@@ -115,7 +113,7 @@ export const description: INodeProperties[] = [
 				options: [
 					{
 						name: 'Best-First (Recommended)',
-						value: 'BestFirstCrawlingStrategy',
+						value: 'BestFirstCrawlStrategy',
 						description: 'Visit highest-scoring pages first. Best for finding relevant content quickly.',
 					},
 					{
@@ -129,7 +127,7 @@ export const description: INodeProperties[] = [
 						description: 'Follow each path to its deepest point before backtracking',
 					},
 				],
-				default: 'BestFirstCrawlingStrategy',
+				default: 'BFSDeepCrawlStrategy',
 				description: 'Strategy for discovering and following links',
 			},
 			{
@@ -167,14 +165,21 @@ export const description: INodeProperties[] = [
 				displayName: 'Max Depth',
 				name: 'maxDepth',
 				type: 'number',
-				default: 2,
+				default: 3,
 				description: 'Maximum link-following depth (1-5)',
+			},
+			{
+				displayName: 'Max Links Per Page',
+				name: 'maxLinksPerPage',
+				type: 'number',
+				default: 50,
+				description: 'Maximum number of links to follow per page',
 			},
 			{
 				displayName: 'Max Pages',
 				name: 'maxPages',
 				type: 'number',
-				default: 50,
+				default: 100,
 				description: 'Maximum number of pages to crawl (1-200)',
 			},
 			{
@@ -214,6 +219,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -223,72 +229,22 @@ export async function execute(
 			const of = this.getNodeParameter('outputFiltering', i, {}) as IDataObject;
 
 			// Build config from shared collections
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
 				screenshot: of.screenshot as boolean,
 				pdf: of.pdf as boolean,
 				fetchSslCertificate: of.fetchSslCertificate as boolean,
+				...(of.verbose === true ? { verbose: true } : {}),
 			};
 
-			// Content filter -> markdown generator
-			if (of.contentFilter && of.contentFilter !== 'none') {
-				const filterConfig: IDataObject = { filterType: of.contentFilter };
-
-				if (of.contentFilter === 'pruning') {
-					if (of.threshold !== undefined) filterConfig.threshold = of.threshold;
-					if (of.thresholdType) filterConfig.thresholdType = of.thresholdType;
-					if (of.minWordThreshold !== undefined) filterConfig.minWordThreshold = of.minWordThreshold;
-				} else if (of.contentFilter === 'bm25') {
-					filterConfig.userQuery = of.userQuery || '';
-					if (of.bm25Threshold !== undefined) filterConfig.bm25Threshold = of.bm25Threshold;
-				} else if (of.contentFilter === 'llm') {
-					const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
-					if (!credentials.enableLlm) {
-						throw new NodeOperationError(
-							this.getNode(),
-							'LLM features must be enabled in Crawl4AI credentials to use LLM content filtering.',
-							{ itemIndex: i },
-						);
-					}
-					const { llmConfig } = buildLlmConfig(credentials);
-					filterConfig.llmConfig = llmConfig;
-					filterConfig.llmInstruction = of.llmInstruction || '';
-					if (of.chunkTokenThreshold !== undefined) filterConfig.chunkTokenThreshold = of.chunkTokenThreshold;
-					if (of.llmVerbose !== undefined) filterConfig.llmVerbose = of.llmVerbose;
-				}
-
-				config.markdownGenerator = createMarkdownGenerator(filterConfig);
+			// Apply content filter and table extraction from output filtering
+			const filteringConfig = await applyOutputFilteringConfig(of, this, i);
+			if (filteringConfig.markdownGenerator) {
+				config.markdownGenerator = filteringConfig.markdownGenerator;
 			}
-
-			// Table extraction
-			if (of.tableExtraction && of.tableExtraction !== 'none') {
-				const tableConfig: IDataObject = { strategyType: of.tableExtraction };
-
-				if (of.tableExtraction === 'default') {
-					if (of.tableScoreThreshold !== undefined) tableConfig.tableScoreThreshold = of.tableScoreThreshold;
-					if (of.tableVerbose !== undefined) tableConfig.verbose = of.tableVerbose;
-				} else if (of.tableExtraction === 'llm') {
-					const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
-					if (!credentials.enableLlm) {
-						throw new NodeOperationError(
-							this.getNode(),
-							'LLM features must be enabled in Crawl4AI credentials to use LLM table extraction.',
-							{ itemIndex: i },
-						);
-					}
-					const { llmConfig } = buildLlmConfig(credentials);
-					tableConfig.llmConfig = llmConfig;
-					if (of.tableCssSelector) tableConfig.cssSelector = of.tableCssSelector;
-					if (of.tableMaxTries !== undefined) tableConfig.maxTries = of.tableMaxTries;
-					if (of.tableEnableChunking !== undefined) tableConfig.enableChunking = of.tableEnableChunking;
-					if (of.tableChunkTokenThreshold !== undefined) tableConfig.chunkTokenThreshold = of.tableChunkTokenThreshold;
-					if (of.tableMinRowsPerChunk !== undefined) tableConfig.minRowsPerChunk = of.tableMinRowsPerChunk;
-					if (of.tableMaxParallelChunks !== undefined) tableConfig.maxParallelChunks = of.tableMaxParallelChunks;
-					if (of.tableLlmVerbose !== undefined) tableConfig.verbose = of.tableLlmVerbose;
-				}
-
-				config.tableExtraction = createTableExtractionStrategy(tableConfig);
+			if (filteringConfig.tableExtraction) {
+				config.tableExtraction = filteringConfig.tableExtraction;
 			}
 
 			let urls: string[] = [];
@@ -329,12 +285,14 @@ export async function execute(
 				if (!isValidUrl(seedUrl)) {
 					throw new NodeOperationError(this.getNode(), `Invalid Seed URL: ${seedUrl}`, { itemIndex: i });
 				}
-				if (!query) {
-					throw new NodeOperationError(this.getNode(), 'Discovery query cannot be empty.', { itemIndex: i });
+				const strategyType = String(ds.crawlStrategy ?? 'BFSDeepCrawlStrategy');
+
+				if (!query && strategyType === 'BestFirstCrawlStrategy') {
+					throw new NodeOperationError(this.getNode(), 'Discovery query is required for Best-First strategy.', { itemIndex: i });
 				}
 
-				const maxDepth = Math.min(Math.max(Number(ds.maxDepth ?? 2), 1), 5);
-				const maxPages = Math.min(Math.max(Number(ds.maxPages ?? 50), 1), 200);
+				const maxDepth = Math.min(Math.max(Number(ds.maxDepth ?? 3), 1), 5);
+				const maxPages = Math.min(Math.max(Number(ds.maxPages ?? 100), 1), 200);
 				const includeExternal = ds.includeExternal === true;
 
 				// Parse comma-separated patterns
@@ -385,11 +343,12 @@ export async function execute(
 					}
 					: undefined;
 
-				const strategyType = String(ds.crawlStrategy ?? 'BestFirstCrawlingStrategy');
+				const maxLinksPerPage = Number(ds.maxLinksPerPage ?? 50);
 
 				const strategyParams: IDataObject = {
 					max_depth: maxDepth,
 					max_pages: maxPages,
+					max_links: maxLinksPerPage,
 					include_external: includeExternal,
 					...(filters.length > 0
 						? {
@@ -404,7 +363,7 @@ export async function execute(
 
 				config.deepCrawlStrategy = {
 					type: strategyType,
-					params: strategyParams,
+					params: strategyParams as Record<string, unknown>,
 				};
 
 				if (ds.prefetch === true) {
@@ -414,7 +373,7 @@ export async function execute(
 				if (ds.resumeState && typeof ds.resumeState === 'string' && ds.resumeState.trim()) {
 					try {
 						const resumeObj = JSON.parse(ds.resumeState.trim());
-						(config.deepCrawlStrategy as any).params.resume_state = resumeObj;
+						config.deepCrawlStrategy!.params.resume_state = resumeObj;
 					} catch (e) {
 						throw new NodeOperationError(
 							this.getNode(),
@@ -428,16 +387,27 @@ export async function execute(
 				effectiveResultLimit = Math.max(Number(ds.resultLimit ?? 0), 0);
 			}
 
-			const crawler = await getCrawl4aiClient(this);
 			const results = await crawler.crawlMultipleUrls(urls, config);
 
 			const limitedResults = effectiveResultLimit > 0 ? results.slice(0, effectiveResultLimit) : results;
+
+			if (limitedResults.length === 0) {
+				allResults.push({
+					json: {
+						success: false,
+						error: 'Crawl returned no results. The URLs may be inaccessible or blocked.',
+					},
+					pairedItem: { item: i },
+				});
+				continue;
+			}
 
 			const fetchedAt = new Date().toISOString();
 			for (const result of limitedResults) {
 				const formattedResult = formatCrawlResult(result, {
 					cacheMode: cs.cacheMode as string | undefined,
-					includeHtml: of.verbose as boolean,
+					markdownOutput: (of.markdownOutput as 'raw' | 'fit' | 'both') || 'both',
+					includeHtml: of.includeHtml === true,
 					includeLinks: of.includeLinks !== false,
 					includeMedia: of.includeMedia as boolean,
 					includeScreenshot: of.screenshot as boolean,

@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, ExtractionStrategy, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
@@ -38,7 +38,7 @@ export const description: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		placeholder: 'data.items',
-		description: 'Path to the JSON data to extract (leave empty for entire JSON response)',
+		description: 'Dot-separated path to the JSON data to extract (e.g., "data.items"). Array indices are supported (e.g., "data.items.0.name"). Leave empty for entire JSON response.',
 		displayOptions: {
 			show: {
 				operation: ['jsonExtractor'],
@@ -149,6 +149,62 @@ export const description: INodeProperties[] = [
 	...getCrawlSettingsFields(['jsonExtractor']),
 ];
 
+/**
+ * Find the first valid JSON object or array in a string using brace-balancing.
+ * For each `{` or `[` found, walks forward counting matching open/close delimiters
+ * (respecting strings) and attempts JSON.parse on the balanced substring.
+ * Returns the parsed value on the first success, or null if none found.
+ */
+function extractFirstValidJson(text: string): IDataObject | IDataObject[] | null {
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (ch !== '{' && ch !== '[') continue;
+
+		const open = ch;
+		const close = ch === '{' ? '}' : ']';
+		let depth = 0;
+		let inString = false;
+		let escape = false;
+
+		for (let j = i; j < text.length; j++) {
+			const c = text[j];
+
+			if (escape) {
+				escape = false;
+				continue;
+			}
+
+			if (c === '\\' && inString) {
+				escape = true;
+				continue;
+			}
+
+			if (c === '"') {
+				inString = !inString;
+				continue;
+			}
+
+			if (inString) continue;
+
+			if (c === open) {
+				depth++;
+			} else if (c === close) {
+				depth--;
+				if (depth === 0) {
+					const candidate = text.substring(i, j + 1);
+					try {
+						return JSON.parse(candidate) as IDataObject | IDataObject[];
+					} catch {
+						// Not valid JSON despite balanced braces; try next start position
+						break;
+					}
+				}
+			}
+		}
+	}
+	return null;
+}
+
 // --- Execution Logic ---
 export async function execute(
 	this: IExecuteFunctions,
@@ -156,6 +212,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -200,10 +257,10 @@ export async function execute(
 			const baseSelector = sourceType === 'jsonld'
 				? (useXPath ? '//script[@type="application/ld+json"]' : 'script[type="application/ld+json"]')
 				: (scriptSelector || (useXPath ? '//body' : 'body'));
-			const fieldSelector = sourceType === 'jsonld' ? '' : (scriptSelector || (useXPath ? '//pre' : 'pre'));
+			const fieldSelector = '';  // empty selector = text content of the base element itself
 
-			const extractionStrategy = sourceType !== 'direct' ? {
-				type: strategyTypeName,
+			const extractionStrategy: ExtractionStrategy | undefined = sourceType !== 'direct' ? {
+				type: strategyTypeName as 'JsonCssExtractionStrategy' | 'JsonXPathExtractionStrategy',
 				params: {
 					schema: {
 						type: 'dict',
@@ -228,7 +285,7 @@ export async function execute(
 				browserConfigData.headers = headers;
 			}
 
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(browserConfigData),
 				...createCrawlerRunConfig(cs),
 			};
@@ -237,7 +294,6 @@ export async function execute(
 				config.extractionStrategy = extractionStrategy;
 			}
 
-			const crawler = await getCrawl4aiClient(this);
 			const result = await crawler.crawlUrl(url, config);
 
 			// Process result based on source type
@@ -252,13 +308,10 @@ export async function execute(
 							jsonData = JSON.parse(result.text) as IDataObject;
 						}
 					} catch {
-						const jsonMatch = result.text?.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-						if (jsonMatch) {
-							try {
-								jsonData = JSON.parse(jsonMatch[0]) as IDataObject;
-							} catch {
-								jsonData = { content: result.text };
-							}
+						// Fallback: find valid JSON by brace-balancing
+						jsonData = extractFirstValidJson(result.text || '');
+						if (!jsonData) {
+							jsonData = { content: result.text, _warning: 'No valid JSON found in the response. Returning raw text.' };
 						}
 					}
 				} else {
@@ -270,7 +323,7 @@ export async function execute(
 								jsonData = JSON.parse(content);
 							}
 						} catch {
-							jsonData = { error: 'Failed to parse JSON from script tag' };
+							jsonData = { _parseError: true, error: 'Failed to parse JSON from script tag' };
 						}
 					}
 				}
@@ -280,16 +333,27 @@ export async function execute(
 					const pathParts = jsonPath.split('.');
 					let currentData: any = jsonData;
 
+					let pathFailed = false;
+					let failedSegment = '';
 					for (const part of pathParts) {
 						if (currentData && typeof currentData === 'object' && part in currentData) {
 							currentData = currentData[part];
 						} else {
+							pathFailed = true;
+							failedSegment = part;
 							currentData = null;
 							break;
 						}
 					}
 
-					jsonData = currentData as IDataObject;
+					if (pathFailed) {
+						jsonData = {
+							_pathError: true,
+							error: `JSON path "${jsonPath}" failed at segment "${failedSegment}"`,
+						} as any;
+					} else {
+						jsonData = currentData as IDataObject;
+					}
 				}
 			}
 

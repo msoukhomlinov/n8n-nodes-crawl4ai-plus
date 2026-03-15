@@ -107,6 +107,13 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					description: 'Whether to generate a PDF of the page (returned as base64)',
 				},
 				{
+					displayName: 'Include HTML',
+					name: 'includeHtml',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to include the raw HTML content in the output',
+				},
+				{
 					displayName: 'Include Links',
 					name: 'includeLinks',
 					type: 'boolean',
@@ -124,7 +131,7 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 					displayName: 'Include Tables',
 					name: 'includeTables',
 					type: 'boolean',
-					default: false,
+					default: true,
 					description: 'Whether to include extracted tables in the output',
 				},
 				{
@@ -153,7 +160,7 @@ export function getOutputFilteringFields(operations: string[]): INodeProperties[
 						{ name: 'Fit Markdown', value: 'fit', description: 'Filtered/cleaned markdown (requires content filter)' },
 						{ name: 'Raw Markdown', value: 'raw', description: 'Full unfiltered markdown' },
 					],
-					default: 'raw',
+					default: 'both',
 					description: 'Which markdown format to include in the output',
 				},
 				{

@@ -32,7 +32,7 @@ function resolveDomain(url: string): string {
  */
 function buildMetrics(result: CrawlResult): IDataObject {
 	return {
-		durationMs: result.crawl_time != null ? Math.round(result.crawl_time * 1000) : null,
+		crawlTime: result.crawl_time ?? null,
 	};
 }
 
@@ -44,6 +44,7 @@ export function formatPageContentResult(
 	options: {
 		includeLinks?: boolean;
 		includeHtml?: boolean;
+		contentQuality?: string;
 	} = {},
 ): IDataObject {
 	const primaryUrl = results[0]?.url || '';
@@ -53,15 +54,17 @@ export function formatPageContentResult(
 	// Merge markdown from all pages
 	const markdownParts: string[] = [];
 	const allLinks: { internal: any[]; external: any[] } = { internal: [], external: [] };
-	let totalDurationMs = 0;
+	let totalCrawlTime = 0;
 	let hasValidDuration = false;
 
 	for (const result of results) {
 		const md = resolveMarkdown(result);
-		if (md.fit) {
-			markdownParts.push(md.fit);
-		} else if (md.raw) {
-			markdownParts.push(md.raw);
+		// When contentQuality is 'complete', prefer raw (unfiltered) markdown
+		const text = options.contentQuality === 'complete'
+			? (md.raw || md.fit)
+			: (md.fit || md.raw);
+		if (text) {
+			markdownParts.push(text);
 		}
 
 		if (options.includeLinks !== false && result.links) {
@@ -70,7 +73,7 @@ export function formatPageContentResult(
 		}
 
 		if (result.crawl_time != null) {
-			totalDurationMs += Math.round(result.crawl_time * 1000);
+			totalCrawlTime += result.crawl_time;
 			hasValidDuration = true;
 		}
 	}
@@ -87,7 +90,7 @@ export function formatPageContentResult(
 		pagesScanned: results.length,
 		fetchedAt,
 		metrics: {
-			durationMs: hasValidDuration ? totalDurationMs : null,
+			crawlTime: hasValidDuration ? totalCrawlTime : null,
 		},
 	};
 
@@ -95,34 +98,56 @@ export function formatPageContentResult(
 }
 
 /**
- * Format Ask Question result into a flat, user-friendly output
+ * Format Ask Question result into a flat, user-friendly output.
+ * Accepts an array of results and merges answers from all pages.
  */
 export function formatQuestionResult(
-	result: CrawlResult,
+	results: CrawlResult[],
 	question: string,
 	pagesScanned: number,
 ): IDataObject {
-	const domain = resolveDomain(result.url);
+	const primaryResult = results[0] || ({} as CrawlResult);
+	const domain = resolveDomain(primaryResult.url || '');
 	const fetchedAt = new Date().toISOString();
 
-	// Parse the extracted JSON for answer/details/source_quotes
-	const extractedData = parseExtractedJson(result);
+	// Parse extracted data from all results and merge
+	const allDetails: string[] = [];
+	const allSourceQuotes: string[] = [];
+	let bestAnswer = '';
 
-	const answer = extractedData?.answer ?? '';
-	const details = extractedData?.details ?? [];
-	const sourceQuotes = extractedData?.source_quotes ?? [];
+	for (const result of results) {
+		const extractedData = parseExtractedJson(result);
+		if (extractedData) {
+			if (extractedData.answer && !bestAnswer) {
+				bestAnswer = extractedData.answer as string;
+			}
+			if (Array.isArray(extractedData.details)) {
+				allDetails.push(...(extractedData.details as string[]));
+			}
+			if (Array.isArray(extractedData.source_quotes)) {
+				allSourceQuotes.push(...(extractedData.source_quotes as string[]));
+			}
+		}
+	}
+
+	// Fallback if no structured data parsed
+	if (!bestAnswer) {
+		bestAnswer = primaryResult.extracted_content || '';
+	}
 
 	return {
 		domain,
-		url: result.url,
+		url: primaryResult.url || '',
+		...(results.length > 1 ? { urls: results.map((r) => r.url) } : {}),
 		question,
-		answer,
-		details,
-		sourceQuotes,
-		success: result.success,
+		answer: bestAnswer,
+		details: [...new Set(allDetails)],
+		sourceQuotes: [...new Set(allSourceQuotes)],
+		success: results.some((r) => r.success),
 		pagesScanned,
+		pagesWithAnswers: results.filter((r) => r.extracted_content).length,
 		fetchedAt,
-		metrics: buildMetrics(result),
+		metrics: buildMetrics(primaryResult),
 	};
 }
 

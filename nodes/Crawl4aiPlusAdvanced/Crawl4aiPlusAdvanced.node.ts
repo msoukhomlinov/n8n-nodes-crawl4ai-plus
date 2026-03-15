@@ -22,6 +22,7 @@ export class Crawl4aiPlusAdvanced implements INodeType {
 		},
 		inputs: ['main'],
 		outputs: ['main'],
+		usableAsTool: true,
 		credentials: [
 			{
 				name: 'crawl4aiPlusApi',

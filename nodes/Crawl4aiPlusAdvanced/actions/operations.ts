@@ -133,14 +133,14 @@ export const description: INodeProperties[] = [
         groupName: 'Extraction',
       },
       {
-        name: 'Cosine Similarity',
+        name: 'Cosine Similarity Extractor',
         value: 'cosineExtractor',
         description: 'Extract content using semantic similarity clustering (requires crawl4ai:all image)',
         action: 'Extract with semantic clustering',
         groupName: 'Extraction',
       },
       {
-        name: 'SEO Metadata',
+        name: 'SEO Metadata Extractor',
         value: 'seoExtractor',
         description: 'Extract SEO metadata (title, meta tags, OG tags, JSON-LD)',
         // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased

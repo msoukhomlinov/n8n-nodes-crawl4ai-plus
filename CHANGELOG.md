@@ -2,209 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.0.0] - 2026-02-18
+## [5.0.0] - 2026-03-15
 
-> **BREAKING CHANGE** — Complete rewrite targeting Crawl4AI v0.8.0. All field names, output shapes, and operation behaviour have changed. Existing workflows built on v3.x will require rebuilding.
+### Breaking Changes
 
-### Breaking changes
-- Targets Crawl4AI REST API v0.8.0; incompatible with v0.7.x server deployments
-- All API field names are strict snake_case matching the upstream API — no legacy aliases or fallback handling
-- Output shape standardised across all operations: `domain`, `fetchedAt`, `statusCode`, `content.*`, `extracted.*`, `metrics.*` at top level; prior nested structures removed
-- `getJobStatus` result no longer nested under a `crawlResult` key — fields appear at top level, enabling direct field access after Submit → Poll chains
-- `jsonExtractor` option renamed from `includeFullContent` to `includeFullText` (consistent with all other extractors)
-- `seoExtractor` and `jsonExtractor` now emit the standard output shape instead of custom `{ seo: {...} }` / `{ data: {...} }` shapes
-
-### New operations
-- `crawlStream` (Basic Crawler) — streaming crawl; one output item per result chunk with individual `fetchedAt` timestamps
-- `submitCrawlJob` (Basic Crawler) — submit async crawl job, returns `task_id`
-- `getJobStatus` (Basic Crawler) — poll job by `task_id`; flat output compatible with downstream field references
-- `healthCheck` (Basic Crawler) — verify server reachability
-- `seoExtractor` (Content Extractor) — extract title, meta, OG tags, canonical URL, JSON-LD
-- `submitLlmJob` (Content Extractor) — submit async LLM extraction job
-
-### Added
-- `initScripts` browser option added to all six Content Extractor operations (was BasicCrawler-only)
-- `sessionOptions` (cookies, storageState, persistent context, managed browser) added to `jsonExtractor`, `regexExtractor`, `seoExtractor`
-- `cleanText` option added to `llmExtractor`, `regexExtractor`, `cosineExtractor` to normalise whitespace in extracted values
-- `cosineExtractor`: added `browserType`, `timeout`, `viewportWidth`, `viewportHeight` browser options
-- `crawlMultipleUrls`: added `browserType` selector (chromium / firefox / webkit)
-- `discoverLinks`: added `enableStealth`, `initScripts`, and `scoreLinks` toggle (previously always enabled)
-- `regexExtractor`: custom patterns now validated client-side — invalid regex surfaces a clear error before the API call
-
-### Fixed
-- `javaScriptEnabled` browser toggle was silently ignored across all operations due to field name mismatch
-- `cosineExtractor` `continueOnFail` error path now preserves the original input item per n8n conventions
-- `crawlStream` was stamping all results with the same `fetchedAt`; each result now has its own timestamp
-- Invalid `resumeState` JSON is now surfaced as a clear error instead of being silently dropped
-- Action label typos in BasicCrawler: `'Crawl multiple ur ls'` and `'Crawl ur ls via streaming'` corrected
-- `timeout` browser option silently had no effect in all Content Extractor operations — now correctly maps to `page_timeout` in API requests
-- Structured cookies (fixedCollection format) were silently dropped in `cosineExtractor`, `jsonExtractor`, and `seoExtractor`; authenticated crawls now work correctly
-- `api_token: null` was sent to the API for Ollama LLM extraction (no API key required) — now omitted when blank
-- `seoExtractor` was missing `enableStealth` and `extraArgs` browser options present in all other operations
-- 12 `CrawlerRunConfig` fields were captured by the UI but never serialized into the API request body — all silently had no effect: `screenshot`, `pdf`, `fetch_ssl_certificate`, `request_timeout`, `magic`, `simulate_user`, `override_navigator`, `exclude_social_media_links`, `exclude_external_images`, `delay_before_return_html`, `verbose`, and `markdown_generator` (content filter)
-- `deep_crawl_strategy` was written to the flat params object and then redundantly spread again inside the typed wrapper when both an extraction strategy and a deep crawl strategy were active
-- Credential documentation link pointed to `n8n-nodes-crawl4ai` (wrong repo) instead of `n8n-nodes-crawl4ai-plus`
-- Default authentication type in credentials was `token`, causing immediate request failures for new users running Crawl4AI with no authentication; default is now `none`
-- `submitCrawlJob` sent `undefined` for `browser_config` / `crawler_config` when no options were set, inconsistent with all other operations which send `{}`; corrected to always send `{}`
-- `createBrowserConfig()` was assigning both camelCase and snake_case variants of each browser field (`browser_type` / `browserType`, etc.), doubling the object size with dead assignments; redundant duplicates removed
-
-### Changed
-- LLM config building centralised into `buildLlmConfig()` / `validateLlmCredentials()` utilities; inline provider switch-cases removed from `crawlSingleUrl`, `crawlMultipleUrls`, `llmExtractor`, `regexExtractor`
-- `crawlMultipleUrls` internal `resultLimit` no longer smuggled via a magic `__resultLimit` property on the config object
-
----
-
-## [3.0.0] - 2026-01-06
+- **Two-node architecture**: Replaced 3 old nodes (`Crawl4aiPlusBasicCrawler`, `Crawl4aiPlusContentExtractor`, `Crawl4aiPlusSmartExtract`) with 2 new nodes:
+  - **Crawl4AI Plus** (Simple) — 4 operations for general users (Get Page Content, Ask Question, Extract Data, CSS Extractor)
+  - **Crawl4AI Plus Advanced** — 15 operations in 3 groups (Crawling, Extraction, Jobs & Monitoring)
+- Old node names are not backward-compatible. Workflows using v4.x nodes must be reconfigured.
+- Async job output fields use camelCase (`taskId`) instead of snake_case (`task_id`).
 
 ### Added
 
-#### Basic Crawler Node
-- **Link Discovery Operation**: Dedicated operation for extracting and filtering links from web pages
-  - Filter by internal/external link types
-  - Include/exclude URL patterns with wildcard support
-  - Exclude social media domains and file types
-  - Grouped or split output formats for workflow flexibility
-  - Link deduplication and metadata extraction (text, title attributes)
-- **Shallow Crawl with Extraction**: Extraction strategy support in discovery mode
-  - Apply CSS selector or LLM extraction to each discovered page
-  - Enables keyword-driven shallow crawling (depth 1-2) with structured data extraction
-  - Supports both CSS schema and LLM-based extraction during recursive discovery
-
-#### Content Extractor Node
-- **SEO Metadata Extractor**: Comprehensive SEO metadata extraction operation
-  - Basic meta tags (title, description, keywords, canonical URL, author, viewport)
-  - Open Graph tags (OG title, description, image, type, URL, site name, locale)
-  - Twitter Cards metadata
-  - JSON-LD structured data extraction
-  - Robots and indexing directives
-  - Language and locale information (HTML lang, hreflang tags)
-  - Optional raw HTML head section output
-- **Regex Extractor Presets**: Quick-start presets for common extraction tasks
-  - **Contact Info Preset**: Extracts emails, phone numbers (US & international), Twitter handles, and URLs
-  - **Financial Data Preset**: Extracts currencies, credit cards, IBANs, percentages, and numbers
-
-#### Core Infrastructure
-- **Shared LLM Configuration Helpers**: Centralised LLM config building utilities
-  - `buildLlmConfig()`: Unified LLM provider/API key configuration
-  - `validateLlmCredentials()`: Credential validation with clear error messages
-  - `createLlmExtractionStrategy()`: LLM extraction strategy builder
-  - `createCssSelectorExtractionStrategy()`: CSS extraction strategy builder
-  - `cleanExtractedData()`: Recursive data cleaning utility
-  - Eliminates code duplication across operations
-
-### Changed
-
-#### Documentation
-- **README Updates**: Corrected extraction strategy count and operation listings
-  - Removed "Table Extractor" from Content Extractor operations list (it's a Basic Crawler option)
-  - Updated extraction strategy count to reflect new SEO Metadata Extractor
-  - Added documentation for new operations and presets
-
-#### Code Quality
-- **Refactoring**: Extracted duplicated LLM configuration logic to shared helpers
-  - Reduced code duplication in `crawlSingleUrl`, `crawlMultipleUrls`, `llmExtractor`, and `regexExtractor` operations
-  - Improved maintainability and consistency across operations
+- Shared description factory functions (`getBrowserSessionFields`, `getCrawlSettingsFields`, `getOutputFilteringFields`) for consistent UI across Advanced operations.
+- Progressive disclosure: Simple node hides browser complexity with smart defaults; Advanced node exposes full API control via 3 standardized collections.
+- Deep crawl support in Simple node via Crawl Scope (Single Page / Follow Links / Full Site) with BFS strategy, same-domain filtering, and smart deduplication.
+- 6 extraction operations in Advanced node: LLM, CSS, JSON, Regex, Cosine Similarity, SEO Metadata.
+- Async job operations: Submit Crawl Job, Submit LLM Job, Get Job Status, Health Check.
+- Streaming crawl support via `/crawl/stream` endpoint.
+- `usableAsTool: true` on both nodes for n8n AI agent compatibility.
+- pnpm enforcement via `preinstall` hook.
 
 ### Fixed
 
-- **Documentation Accuracy**: Fixed README to accurately reflect that table extraction is a Basic Crawler option, not a standalone Content Extractor operation
+- **Browser config propagation**: Simple node defaults (`viewport: 1280x800`, `javaScriptEnabled: true`) were silently ignored because `getSimpleDefaults()` used camelCase flat keys that `formatBrowserConfig()` never reads. Now uses the correct field format.
+- **Textarea fields silently dropped**: `extraArgs` and `initScripts` in Browser & Session collection are textarea inputs (strings), but `createBrowserConfig()` only checked `Array.isArray()`. Added string-to-array conversion (newline-split).
+- **Duplicate `waitUntil` assignment**: `createCrawlerRunConfig()` set `waitUntil` twice due to copy-paste drift. Removed duplicate.
+- **Silent item drop in Ask Question**: When crawl returned empty results, the operation produced no output item instead of throwing an error, violating n8n's item contract. Now throws `NodeOperationError`.
+- **`streamUrls` field name**: Renamed to `urls` to follow the spec's consistent field naming rule.
+- **Dead `formatJobSubmission` helper**: Job submission operations built output inline instead of using the shared formatter. Now both `submitCrawlJob` and `submitLlmJob` use `formatJobSubmission()`.
+- **Spec defaults mismatches**: Viewport defaults `1024x768` -> `1280x800`, `maxRetries` `0` -> `3`, `includeTables` `false` -> `true`.
+- **Extract Data description**: Changed from "using LLM" to "Extract emails, financial data, or custom structured data" since 2/3 presets are regex-based.
+- **`prepublishOnly` script**: Used `npm run` instead of `pnpm run` and referenced non-existent `.eslintrc.prepublish.js`.
+- **`getCrawl4aiClient` return type**: Changed from `Promise<any>` to `Promise<Crawl4aiClient>` for type safety.
+- **7 browser config fields silently dropped**: `formatBrowserConfig()` was missing handling for `cookies`, `headers`, `storage_state`, `user_agent_mode`, `user_agent_generator_config`, `use_persistent_context`, and `user_data_dir`. These fields were set by `createBrowserConfig()` but never forwarded to the API. Now all are properly mapped with appropriate dict wrappers where needed.
+- **`crawlStream()` missing error handling**: The streaming crawl method lacked try/catch around the initial POST request. HTTP errors (401, 429, connection refused) now get the same user-friendly error formatting as all other API methods.
+- **Empty results violating n8n item contract**: `crawlMultipleUrls`, `crawlStream`, and `getJobStatus` could emit zero output items for an input item when the API returned empty results. Now all throw or emit a fallback item.
+- **Missing LLM credential validation**: `submitLlmJob` and `regexExtractor` (LLM pattern mode) did not validate LLM credentials before making API calls, producing opaque errors on misconfigured credentials. Now both use `validateLlmCredentials()`.
 
----
+### Fixed (pre-release sweep)
 
-## [2.1.0] - 2026-01-06
+- **`BestFirstCrawlingStrategy` → `BestFirstCrawlStrategy`**: Wrong API type name in `crawlMultipleUrls` deep crawl strategy would cause silent API failures. Fixed all 3 occurrences.
+- **`crawlMultipleUrls` spec defaults**: Strategy default changed from BestFirst to BFS, Max Depth from 2 to 3, Max Pages from 50 to 100 (all per spec).
+- **Missing `maxLinksPerPage` field**: Added to `crawlMultipleUrls` Discovery Strategy collection (maps to `max_links`, default 50).
+- **`metrics.durationMs` → `metrics.crawlTime`**: Simple node output metrics used milliseconds integer instead of spec's float seconds. Fixed across all 4 operations.
+- **Cache Mode missing options**: All 4 Simple node operations were missing "Read Only" and "Write Only" cache mode options.
+- **Missing `pageTimeout: 30000`** in Simple node `getSimpleDefaults()`. Crawls had no explicit timeout instead of spec's 30s.
+- **`fullSite` default maxPages**: Was 50, spec says 10. Fixed.
+- **Ask Question JSON fallback**: When LLM response couldn't be parsed as JSON, `answer` was set to empty string instead of the raw extracted text (per spec).
+- **`extractData` field ordering**: Crawl Scope field was positioned before Custom-specific fields instead of after (per spec).
+- **`getJobStatus` output field naming**: Used `task_id` (snake_case) inconsistent with CHANGELOG's declared `taskId` (camelCase). Standardized to `taskId`.
+- **Operation display names**: "Cosine Similarity" → "Cosine Similarity Extractor", "SEO Metadata" → "SEO Metadata Extractor" (per spec).
+- **`package.json` `files` array missing `index.js`**: Would cause npm publish to produce a broken package since the `main` entry point wouldn't be included.
+- **LLM credential error message**: Updated to match spec: "This operation requires LLM features. Configure an LLM provider in your Crawl4AI Plus credentials."
+- **Dead pipeline code removed**: `excludeSocialMediaLinks`, `excludeExternalImages` (no UI fields, not in spec), duplicate camelCase writes for `usePersistentContext`/`userDataDir`, unused `ignoreLinks`/`ignoreCache` in `createMarkdownGenerator()`.
+- **Router dead code**: Both Simple and Advanced routers read `options` at item 0 (never used by operations). Removed.
+- **Stale comment**: "ContentExtractor" reference in shared/utils.ts updated.
+- **README**: Added end-user installation instructions, fixed `task_id` → `taskId` references.
 
-### Added
+### Removed
 
-#### Core Infrastructure
-- **Unified API Client**: Standardized all operations to use `crawlUrl()` method for consistency
-- **Enhanced Error Handling**: Comprehensive error parsing with actionable messages for network, HTTP, and API errors
-- **Standardized Configuration**: Unified config building pattern using `createCrawlerRunConfig()` across all operations
+- Old v4.x node directories (`Crawl4aiPlusBasicCrawler`, `Crawl4aiPlusContentExtractor`, `Crawl4aiPlusSmartExtract`).
+- Unused interfaces: `Crawl4aiOutput`, `LlmSchema`, `LlmSchemaField`.
+- Unused devDependencies: `@types/express`, `@types/request`, `@types/request-promise-native`.
 
-#### Basic Crawler Node
-- **Recursive Deep Crawling**: Keyword-driven recursive crawling with multiple strategies (BestFirst, BFS, DFS)
-  - Seed URL and query-based discovery
-  - Configurable depth and page limits
-  - Domain and URL pattern filtering
-  - Keyword relevance scoring
-- **Output Formats**: Screenshot, PDF, and SSL certificate extraction
-- **Content Filtering**: Pruning and BM25 content filters with configurable thresholds
-- **Structured Output Options**: Raw/fit markdown variants and structured link extraction
-- **Anti-Bot Features**: Magic mode, user simulation, and navigator override
-- **Link/Media Filtering**: Exclude social media links and external images
-- **Timing Controls**: Delay before return HTML and wait_until options
-- **Session & Authentication**: Browser storage state, cookies, and persistent contexts
-  - Storage state (JSON) for n8n Cloud compatibility
-  - User data directory for self-hosted deployments
-  - Managed browser mode support
+### Improved
 
-#### Content Extractor Node
-- **Cosine Similarity Extractor**: Semantic similarity-based content extraction with clustering
-  - Configurable linkage methods (ward, complete, average, single)
-  - Custom embedding model support
-  - Similarity thresholds and distance limits
-- **Table Extraction**: LLM-based and default table extraction strategies
-  - Support for complex table structures
-  - Chunking for large tables
-- **LLM Content Filter**: Intelligent markdown generation using LLM
-  - Configurable chunking thresholds
-  - Cache control options
-  - Custom instruction support
-- **LLM Pattern Generation**: Natural language to regex pattern conversion
-  - Automatic sample URL analysis
-  - LLM-assisted pattern generation
-- **Extraction Input Formats**: Support for markdown, HTML, and fit_markdown input formats for LLM extraction
-- **Session & Authentication**: Full session management support across all extractors
-
-### Changed
-
-#### Breaking Changes
-- **Removed "Direct" Connection Mode**: Credentials now support Docker REST API only (removed unimplemented direct mode)
-- **API Field Names**: All API interactions now use official Crawl4AI 0.7.4 snake_case field names exclusively
-  - `status_code` (not `statusCode`)
-  - `pageTimeout` (not `timeout`)
-- **No Backward Compatibility**: v1.0 release - removed all legacy field handling and fallback logic
-
-#### Improvements
-- **Error Messages**: More specific and actionable error messages with suggested fixes
-- **Code Organization**: Standardized config building and API client usage across all operations
-- **Type Safety**: Improved TypeScript interfaces and type definitions
-- **Documentation**: Enhanced field descriptions with examples and use cases
-
-### Fixed
-
-- **Raw HTML Processing**: Fixed `raw://` URL scheme to use correct `raw:` prefix per official SDK
-- **Config Building**: Removed duplicate config building logic, unified through helpers
-- **Error Handling**: Fixed generic error messages to provide specific API error details
-- **Import Cleanup**: Removed unused `createBrowserConfig` imports from extractor operations
-
-### Technical Details
-
-#### API Client Improvements
-- Unified `crawlUrl()` and `arun()` methods (arun now delegates to crawlUrl)
-- Comprehensive error parsing for Axios errors and API responses
-- Dynamic timeout calculation based on operation type (5 minutes for deep crawl, 2 minutes default)
-- Proper handling of API response structures
-
-#### Configuration Standardization
-- All operations now use `createCrawlerRunConfig()` helper
-- Browser and session options merged consistently
-- Extraction strategies passed via standardized config structure
-- Type/params wrapper only used when extraction strategies present
-
-#### Feature Coverage
-- **95%+ API Coverage**: Comprehensive support for Crawl4AI 0.7.4 REST API features
-- **All Extraction Strategies**: CSS, LLM, JSON, Regex, Cosine, Table extraction fully supported
-- **All Content Filters**: Pruning, BM25, LLM content filters implemented
-- **All Output Formats**: Screenshot, PDF, SSL certificate, markdown variants supported
-
-### Known Limitations
-
-- **Streaming Support**: `/crawl/stream` endpoint flag is set but full NDJSON streaming response handling not yet implemented (n8n output model expects complete results)
-- **CosineStrategy Requirements**: Requires `unclecode/crawl4ai:all` Docker image (includes torch + transformers dependencies)
-- **SDK-Only Features**: Hooks, dispatchers, and chunking strategies are Python SDK-only and not available via REST API
-
----
-
-## Previous Versions
-
-For versions prior to 2.1.0, please refer to the git history.
+- **Content filter boilerplate extracted**: ~55 lines of duplicated content filter / table extraction logic across `crawlUrl`, `crawlMultipleUrls`, and `processRawHtml` replaced with shared `applyOutputFilteringConfig()` helper.
+- **README**: Updated project structure to reflect v5.0.0 two-node architecture.

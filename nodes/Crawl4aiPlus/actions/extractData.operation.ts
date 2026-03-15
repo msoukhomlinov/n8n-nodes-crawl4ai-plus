@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlResult } from '../../shared/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -62,10 +62,6 @@ function extractWithRegex(
 			} else if (typeof result.markdown === 'string') {
 				text = result.markdown;
 			}
-			if (result.html) {
-				text += ' ' + result.html;
-			}
-
 			for (const regex of regexList) {
 				// Reset regex lastIndex for global patterns
 				regex.lastIndex = 0;
@@ -162,35 +158,6 @@ export const description: INodeProperties[] = [
 		},
 	},
 	{
-		displayName: 'Crawl Scope',
-		name: 'crawlScope',
-		type: 'options',
-		options: [
-			{
-				name: 'Single Page',
-				value: 'singlePage',
-				description: 'Extract from just this one page',
-			},
-			{
-				name: 'Follow Links',
-				value: 'followLinks',
-				description: 'Extract across this page and linked pages (depth 1)',
-			},
-			{
-				name: 'Full Site',
-				value: 'fullSite',
-				description: 'Extract across the entire website (depth 3)',
-			},
-		],
-		default: 'singlePage',
-		description: 'How many pages to extract data from',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-			},
-		},
-	},
-	{
 		displayName: 'Extraction Instructions',
 		name: 'instruction',
 		type: 'string',
@@ -272,6 +239,35 @@ export const description: INodeProperties[] = [
 		},
 	},
 	{
+		displayName: 'Crawl Scope',
+		name: 'crawlScope',
+		type: 'options',
+		options: [
+			{
+				name: 'Single Page',
+				value: 'singlePage',
+				description: 'Extract from just this one page',
+			},
+			{
+				name: 'Follow Links',
+				value: 'followLinks',
+				description: 'Extract across this page and linked pages (depth 1)',
+			},
+			{
+				name: 'Full Site',
+				value: 'fullSite',
+				description: 'Extract across the entire website (depth 3)',
+			},
+		],
+		default: 'singlePage',
+		description: 'How many pages to extract data from',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+			},
+		},
+	},
+	{
 		displayName: 'Options',
 		name: 'options',
 		type: 'collection',
@@ -288,9 +284,11 @@ export const description: INodeProperties[] = [
 				name: 'cacheMode',
 				type: 'options',
 				options: [
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
 					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
 					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
+					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
+					{ name: 'Read Only', value: 'READ_ONLY' },
+					{ name: 'Write Only', value: 'WRITE_ONLY' },
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
@@ -340,6 +338,8 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const client = await getCrawl4aiClient(this);
+	const credentials = (await this.getCredentials('crawl4aiPlusApi')) as unknown as Crawl4aiApiCredentials;
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -353,19 +353,22 @@ export async function execute(
 			}
 
 			// Build base config
-			const config: IDataObject = {
+			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
-				cacheMode: options.cacheMode || 'ENABLED',
+				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 			};
 
 			if (options.waitFor) {
-				config.waitFor = options.waitFor;
+				config.waitFor = String(options.waitFor);
 			}
 
 			// For customLlm, build LLM extraction strategy
 			if (extractionType === 'customLlm') {
-				const credentials = (await this.getCredentials('crawl4aiPlusApi')) as any;
-				validateLlmCredentials(credentials, 'Custom extraction');
+				try {
+					validateLlmCredentials(credentials, 'Custom extraction');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				}
 
 				const instruction = this.getNodeParameter('instruction', i, '') as string;
 				if (!instruction) {
@@ -422,13 +425,11 @@ export async function execute(
 				);
 			}
 
-			const client = await getCrawl4aiClient(this);
-
 			const results = await executeCrawl(
 				client,
 				url,
 				crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
-				config as any,
+				config,
 				{
 					maxPages: options.maxPages as number | undefined,
 					excludePatterns: options.excludePatterns as string | undefined,
@@ -445,6 +446,7 @@ export async function execute(
 			} else {
 				// customLlm — parse extracted JSON from each result and merge
 				const extractedItems: IDataObject[] = [];
+				let parseFailures = 0;
 				for (const result of results) {
 					if (result.extracted_content) {
 						try {
@@ -453,7 +455,7 @@ export async function execute(
 								extractedItems.push(parsed);
 							}
 						} catch {
-							// Skip unparseable results
+							parseFailures++;
 						}
 					}
 				}
@@ -463,7 +465,15 @@ export async function execute(
 				} else if (extractedItems.length === 1) {
 					data = extractedItems[0];
 				} else {
-					data = {};
+					data = {
+						extractionSuccess: false,
+						warning: 'Failed to parse extracted content as JSON',
+					};
+				}
+
+				// Surface parse failures so users know some pages' data was lost
+				if (parseFailures > 0 && typeof data === 'object' && !Array.isArray(data)) {
+					(data as IDataObject)._parseWarning = `${parseFailures} page(s) returned content that could not be parsed as JSON`;
 				}
 			}
 

@@ -6,13 +6,11 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createCrawlerRunConfig,
-	createMarkdownGenerator,
-	createTableExtractionStrategy,
-	buildLlmConfig,
+	applyOutputFilteringConfig,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
 import {
@@ -22,6 +20,18 @@ import {
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
+	{
+		displayName: '',
+		name: 'processRawHtmlNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['processRawHtml'],
+			},
+		},
+		description: 'Screenshot and PDF output options have no effect when processing raw HTML, as no browser navigation occurs',
+	},
 	{
 		displayName: 'HTML Content',
 		name: 'html',
@@ -62,6 +72,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -75,78 +86,35 @@ export async function execute(
 			}
 
 			// Build config from crawl settings (no browser session for raw HTML)
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createCrawlerRunConfig(cs),
+				// Output options from outputFiltering
+				screenshot: of.screenshot as boolean,
+				pdf: of.pdf as boolean,
+				fetchSslCertificate: of.fetchSslCertificate as boolean,
+				...(of.verbose === true ? { verbose: true } : {}),
 			};
 
-			// Content filter -> markdown generator
-			if (of.contentFilter && of.contentFilter !== 'none') {
-				const filterConfig: IDataObject = { filterType: of.contentFilter };
-
-				if (of.contentFilter === 'pruning') {
-					if (of.threshold !== undefined) filterConfig.threshold = of.threshold;
-					if (of.thresholdType) filterConfig.thresholdType = of.thresholdType;
-					if (of.minWordThreshold !== undefined) filterConfig.minWordThreshold = of.minWordThreshold;
-				} else if (of.contentFilter === 'bm25') {
-					filterConfig.userQuery = of.userQuery || '';
-					if (of.bm25Threshold !== undefined) filterConfig.bm25Threshold = of.bm25Threshold;
-				} else if (of.contentFilter === 'llm') {
-					const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
-					if (!credentials.enableLlm) {
-						throw new NodeOperationError(
-							this.getNode(),
-							'LLM features must be enabled in Crawl4AI credentials to use LLM content filtering.',
-							{ itemIndex: i },
-						);
-					}
-					const { llmConfig } = buildLlmConfig(credentials);
-					filterConfig.llmConfig = llmConfig;
-					filterConfig.llmInstruction = of.llmInstruction || '';
-					if (of.chunkTokenThreshold !== undefined) filterConfig.chunkTokenThreshold = of.chunkTokenThreshold;
-					if (of.llmVerbose !== undefined) filterConfig.llmVerbose = of.llmVerbose;
-				}
-
-				config.markdownGenerator = createMarkdownGenerator(filterConfig);
+			// Apply content filter and table extraction from output filtering
+			const filteringConfig = await applyOutputFilteringConfig(of, this, i);
+			if (filteringConfig.markdownGenerator) {
+				config.markdownGenerator = filteringConfig.markdownGenerator;
+			}
+			if (filteringConfig.tableExtraction) {
+				config.tableExtraction = filteringConfig.tableExtraction;
 			}
 
-			// Table extraction
-			if (of.tableExtraction && of.tableExtraction !== 'none') {
-				const tableConfig: IDataObject = { strategyType: of.tableExtraction };
-
-				if (of.tableExtraction === 'default') {
-					if (of.tableScoreThreshold !== undefined) tableConfig.tableScoreThreshold = of.tableScoreThreshold;
-					if (of.tableVerbose !== undefined) tableConfig.verbose = of.tableVerbose;
-				} else if (of.tableExtraction === 'llm') {
-					const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
-					if (!credentials.enableLlm) {
-						throw new NodeOperationError(
-							this.getNode(),
-							'LLM features must be enabled in Crawl4AI credentials to use LLM table extraction.',
-							{ itemIndex: i },
-						);
-					}
-					const { llmConfig } = buildLlmConfig(credentials);
-					tableConfig.llmConfig = llmConfig;
-					if (of.tableCssSelector) tableConfig.cssSelector = of.tableCssSelector;
-					if (of.tableMaxTries !== undefined) tableConfig.maxTries = of.tableMaxTries;
-					if (of.tableEnableChunking !== undefined) tableConfig.enableChunking = of.tableEnableChunking;
-					if (of.tableChunkTokenThreshold !== undefined) tableConfig.chunkTokenThreshold = of.tableChunkTokenThreshold;
-					if (of.tableMinRowsPerChunk !== undefined) tableConfig.minRowsPerChunk = of.tableMinRowsPerChunk;
-					if (of.tableMaxParallelChunks !== undefined) tableConfig.maxParallelChunks = of.tableMaxParallelChunks;
-					if (of.tableLlmVerbose !== undefined) tableConfig.verbose = of.tableLlmVerbose;
-				}
-
-				config.tableExtraction = createTableExtractionStrategy(tableConfig);
-			}
-
-			const crawler = await getCrawl4aiClient(this);
 			const fetchedAt = new Date().toISOString();
 			const result = await crawler.processRawHtml(html, baseUrl, config);
 
 			const formattedResult = formatCrawlResult(result, {
-				includeHtml: of.verbose as boolean,
+				markdownOutput: (of.markdownOutput as 'raw' | 'fit' | 'both') || 'both',
+				includeHtml: of.includeHtml === true,
 				includeLinks: of.includeLinks !== false,
 				includeMedia: of.includeMedia as boolean,
+				includeScreenshot: of.screenshot as boolean,
+				includePdf: of.pdf as boolean,
+				includeSslCertificate: of.fetchSslCertificate as boolean,
 				includeTables: of.includeTables as boolean,
 				fetchedAt,
 			});

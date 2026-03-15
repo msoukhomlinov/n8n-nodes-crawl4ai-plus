@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CssSelectorSchema } from '../../shared/interfaces';
+import type { Crawl4aiNodeOptions, CssSelectorSchema, FullCrawlConfig } from '../../shared/interfaces';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -142,9 +142,11 @@ export const description: INodeProperties[] = [
 				name: 'cacheMode',
 				type: 'options',
 				options: [
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
 					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
 					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
+					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
+					{ name: 'Read Only', value: 'READ_ONLY' },
+					{ name: 'Write Only', value: 'WRITE_ONLY' },
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
@@ -184,6 +186,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const client = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -214,7 +217,7 @@ export async function execute(
 					name: field.name as string,
 					selector: field.selector as string,
 					type: field.fieldType as 'text' | 'attribute' | 'html',
-					attribute: field.attribute as string,
+					...(field.fieldType === 'attribute' ? { attribute: field.attribute as string } : {}),
 				})),
 			};
 
@@ -222,18 +225,17 @@ export async function execute(
 			const extractionStrategy = createCssSelectorExtractionStrategy(schema);
 
 			// Build config
-			const config: IDataObject = {
+			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
-				cacheMode: options.cacheMode || 'ENABLED',
+				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 				extractionStrategy,
 			};
 
 			if (options.waitFor) {
-				config.waitFor = options.waitFor;
+				config.waitFor = String(options.waitFor);
 			}
 
 			// Execute crawl
-			const client = await getCrawl4aiClient(this);
 			const result = await client.crawlUrl(url, config);
 
 			// Parse extracted JSON
@@ -255,6 +257,18 @@ export async function execute(
 			}
 
 			const formatted = formatCssExtractorResult(result, items_extracted);
+
+			// Include original page text if requested
+			if (options.includeOriginalText) {
+				const markdown = result.markdown;
+				if (typeof markdown === 'object' && markdown !== null) {
+					formatted.originalText = markdown.raw_markdown || markdown.fit_markdown || '';
+				} else if (typeof markdown === 'string') {
+					formatted.originalText = markdown;
+				} else {
+					formatted.originalText = '';
+				}
+			}
 
 			allResults.push({
 				json: formatted,

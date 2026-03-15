@@ -1,13 +1,23 @@
-import { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import { Crawl4aiApiCredentials, BrowserConfig, CrawlerRunConfig } from './interfaces';
-import { createCrawlerInstance } from './apiClient';
+import { IExecuteFunctions, IDataObject, NodeOperationError } from 'n8n-workflow';
+import {
+  Crawl4aiApiCredentials,
+  BrowserConfig,
+  CrawlerRunConfig,
+  DeepCrawlStrategy,
+  FullCrawlConfig,
+  WebhookConfig,
+  MarkdownGeneratorConfig,
+  TableExtractionStrategy,
+  ExtractionStrategy,
+} from './interfaces';
+import { Crawl4aiClient, createCrawlerInstance } from './apiClient';
 
 /**
  * Get Crawl4AI client instance from context
  */
 export async function getCrawl4aiClient(
   executeFunctions: IExecuteFunctions,
-): Promise<any> {
+): Promise<Crawl4aiClient> {
   // Get credentials
   const credentials = await executeFunctions.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
 
@@ -24,11 +34,11 @@ export async function getCrawl4aiClient(
  * @param options Node options from n8n
  * @returns Browser configuration for Crawl4AI
  */
-export function createBrowserConfig(options: IDataObject): BrowserConfig {
-  const config: BrowserConfig = {};
+export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
+  const config: FullCrawlConfig = {};
 
   if (options.browserType) {
-    (config as any).browserType = String(options.browserType);
+    config.browserType = String(options.browserType);
   }
 
   if (options.headless === false) {
@@ -37,24 +47,8 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
     config.headless = true;
   }
 
-  if (options.browserMode) {
-    (config as any).browserMode = String(options.browserMode);
-  }
-
   if (options.useManagedBrowser === true) {
-    (config as any).useManagedBrowser = true;
-  }
-
-  if (options.debuggingPort !== undefined) {
-    (config as any).debuggingPort = Number(options.debuggingPort);
-  }
-
-  if (options.chromeChannel) {
-    (config as any).chromeChannel = String(options.chromeChannel);
-  }
-
-  if (options.channel) {
-    config.channel = String(options.channel);
+    config.useManagedBrowser = true;
   }
 
   if (options.viewportWidth !== undefined || options.viewportHeight !== undefined) {
@@ -81,7 +75,17 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
   }
 
   if (options.cookies) {
-    if (Array.isArray(options.cookies) && options.cookies.length > 0) {
+    if (typeof options.cookies === 'string' && options.cookies.trim()) {
+      // type: 'json' fields may pass the value as a raw JSON string
+      try {
+        const parsed = JSON.parse(options.cookies);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          config.cookies = parsed as Array<object>;
+        }
+      } catch (e) {
+        throw new Error(`Invalid cookies JSON: ${(e as Error).message}. Please check the cookie format.`);
+      }
+    } else if (Array.isArray(options.cookies) && options.cookies.length > 0) {
       // Raw array (from type: 'json' input in cssExtractor / llmExtractor)
       config.cookies = options.cookies as Array<object>;
     } else if (typeof options.cookies === 'object') {
@@ -93,8 +97,19 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
     }
   }
 
-  if (options.headers && typeof options.headers === 'object' && Object.keys(options.headers as object).length > 0) {
-    config.headers = options.headers as object;
+  if (options.headers) {
+    if (typeof options.headers === 'string' && options.headers.trim()) {
+      try {
+        const parsed = JSON.parse(options.headers);
+        if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length > 0) {
+          config.headers = parsed as object;
+        }
+      } catch (e) {
+        throw new Error(`Invalid headers JSON: ${(e as Error).message}`);
+      }
+    } else if (typeof options.headers === 'object' && Object.keys(options.headers as object).length > 0) {
+      config.headers = options.headers as object;
+    }
   }
 
   if (options.textMode === true) {
@@ -105,8 +120,13 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
     config.light_mode = true;
   }
 
-  if (options.extraArgs && Array.isArray(options.extraArgs) && options.extraArgs.length > 0) {
-    config.extra_args = options.extraArgs as string[];
+  if (options.extraArgs) {
+    if (typeof options.extraArgs === 'string') {
+      const args = (options.extraArgs as string).split('\n').map(a => a.trim()).filter(a => a.length > 0);
+      if (args.length > 0) config.extra_args = args;
+    } else if (Array.isArray(options.extraArgs) && options.extraArgs.length > 0) {
+      config.extra_args = options.extraArgs as string[];
+    }
   }
 
   if (options.enableStealth === true) {
@@ -122,6 +142,12 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
       if (scripts.length > 0) {
         config.init_scripts = scripts;
       }
+    } else if (typeof initScripts === 'string') {
+      // Handle textarea string input (newline-separated scripts)
+      const scripts = (initScripts as string).split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+      if (scripts.length > 0) {
+        config.init_scripts = scripts;
+      }
     } else if (Array.isArray(initScripts)) {
       const scripts = (initScripts as string[]).filter((v) => v);
       if (scripts.length > 0) {
@@ -131,23 +157,24 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
   }
 
   // proxy_config (replaces deprecated proxy string field)
-  if (options.proxyConfig && typeof options.proxyConfig === 'object') {
-    const pc = options.proxyConfig as any;
-    if (pc.server) {
+  if (options.proxyConfig) {
+    let pc: any = options.proxyConfig;
+    if (typeof pc === 'string' && pc.trim()) {
+      try {
+        pc = JSON.parse(pc);
+      } catch (e) {
+        throw new Error(`Invalid proxyConfig JSON: ${(e as Error).message}`);
+      }
+    }
+    if (typeof pc === 'object' && pc !== null) {
+      if (!pc.server) {
+        throw new Error('proxyConfig requires a "server" field (e.g., {"server":"http://proxy:8080"}).');
+      }
       const proxyObj: any = { server: pc.server };
       if (pc.username) proxyObj.username = pc.username;
       if (pc.password) proxyObj.password = pc.password;
       config.proxy_config = proxyObj;
     }
-  }
-
-  // User agent mode and generator
-  if (options.userAgentMode) {
-    config.user_agent_mode = String(options.userAgentMode);
-  }
-
-  if (options.userAgentGeneratorConfig && typeof options.userAgentGeneratorConfig === 'object') {
-    config.user_agent_generator_config = options.userAgentGeneratorConfig as object;
   }
 
   // Session and authentication options
@@ -157,21 +184,30 @@ export function createBrowserConfig(options: IDataObject): BrowserConfig {
       try {
         config.storage_state = JSON.parse(options.storageState.trim());
       } catch (e) {
-        // If parsing fails, pass as-is (might be a file path)
-        config.storage_state = options.storageState.trim();
+        // Only treat as file path if it looks like one
+        const trimmed = options.storageState.trim();
+        if (trimmed.startsWith('/') || trimmed.match(/^[a-zA-Z]:/) || trimmed.startsWith('./') || trimmed.startsWith('..')) {
+          config.storage_state = trimmed;
+        } else {
+          throw new Error(`Invalid storageState JSON: ${(e as Error).message}. If this is a file path, use an absolute path.`);
+        }
       }
     } else if (typeof options.storageState === 'object') {
       config.storage_state = options.storageState;
     }
   }
 
+  // sessionId lives in the Browser & Session UI collection but is a CrawlerRunConfig param.
+  // Pass it through so it survives the merge into the final config object.
+  if (options.sessionId) {
+    config.sessionId = String(options.sessionId);
+  }
+
   if (options.usePersistentContext === true) {
-    (config as any).usePersistentContext = true;
     config.use_persistent_context = true;
   }
 
   if (options.userDataDir && typeof options.userDataDir === 'string' && options.userDataDir.trim() !== '') {
-    (config as any).userDataDir = String(options.userDataDir).trim();
     config.user_data_dir = String(options.userDataDir).trim();
   }
 
@@ -197,7 +233,7 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
   if (options.pageTimeout !== undefined) {
     config.pageTimeout = Number(options.pageTimeout);
   } else if (options.timeout !== undefined) {
-    // 'timeout' is the UI field name used by all ContentExtractor browser options
+    // 'timeout' is the UI field name used in Browser & Session collection
     config.pageTimeout = Number(options.timeout);
   }
 
@@ -266,12 +302,12 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
   }
 
   if (options.deepCrawlStrategy) {
-    let strategy = options.deepCrawlStrategy as Record<string, any>;
+    const strategy = options.deepCrawlStrategy as DeepCrawlStrategy;
     // Inject resume_state into strategy object if provided
     if (options.resumeState && typeof options.resumeState === 'string' && options.resumeState.trim()) {
       try {
         const resumeObj = JSON.parse(options.resumeState.trim());
-        strategy = { ...strategy, resume_state: resumeObj };
+        (strategy.params as Record<string, unknown>).resume_state = resumeObj;
       } catch (e) {
         throw new Error(`Invalid Resume State JSON: ${(e as Error).message}`);
       }
@@ -281,6 +317,10 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
 
   if (options.prefetch === true) {
     config.prefetch = true;
+  }
+
+  if (options.scoreLinks !== undefined) {
+    config.scoreLinks = Boolean(options.scoreLinks);
   }
 
   if (options.preserveHttpsForInternalLinks === true) {
@@ -298,15 +338,6 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
 
   if (options.fetchSslCertificate === true) {
     config.fetchSslCertificate = true;
-  }
-
-  // Link and media filtering
-  if (options.excludeSocialMediaLinks === true) {
-    config.excludeSocialMediaLinks = true;
-  }
-
-  if (options.excludeExternalImages === true) {
-    config.excludeExternalImages = true;
   }
 
   // Anti-bot and simulation features
@@ -327,10 +358,6 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
     config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml);
   }
 
-  if (options.waitUntil) {
-    config.waitUntil = String(options.waitUntil);
-  }
-
   // Verbose/debug mode
   if (options.verbose === true) {
     config.verbose = true;
@@ -338,7 +365,7 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
 
   // Markdown generator with content filters
   if (options.markdownGenerator) {
-    config.markdownGenerator = options.markdownGenerator;
+    config.markdownGenerator = options.markdownGenerator as MarkdownGeneratorConfig;
   }
 
   return config;
@@ -349,10 +376,10 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
  * @param filterConfig Content filter configuration
  * @returns Markdown generator configuration
  */
-export function createMarkdownGenerator(filterConfig: IDataObject): any {
-  const generator: any = {
+export function createMarkdownGenerator(filterConfig: IDataObject): MarkdownGeneratorConfig {
+  const generator: MarkdownGeneratorConfig = {
     type: 'DefaultMarkdownGenerator',
-    params: {}
+    params: {},
   };
 
   if (filterConfig.filterType && filterConfig.filterType !== 'none') {
@@ -384,21 +411,11 @@ export function createMarkdownGenerator(filterConfig: IDataObject): any {
           instruction: filterConfig.llmInstruction || '',
           ...(filterConfig.chunkTokenThreshold !== undefined ?
             { chunk_token_threshold: Number(filterConfig.chunkTokenThreshold) } : {}),
-          ...(filterConfig.ignoreCache !== undefined ?
-            { ignore_cache: Boolean(filterConfig.ignoreCache) } : {}),
           ...(filterConfig.llmVerbose !== undefined ?
             { verbose: Boolean(filterConfig.llmVerbose) } : {})
         }
       };
     }
-  }
-
-  // Markdown generation options
-  if (filterConfig.ignoreLinks === true) {
-    generator.params.options = {
-      ...(generator.params.options || {}),
-      ignore_links: true
-    };
   }
 
   return generator;
@@ -409,7 +426,7 @@ export function createMarkdownGenerator(filterConfig: IDataObject): any {
  * @param strategyConfig Table extraction configuration
  * @returns Table extraction strategy configuration
  */
-export function createTableExtractionStrategy(strategyConfig: IDataObject): any {
+export function createTableExtractionStrategy(strategyConfig: IDataObject): TableExtractionStrategy | undefined {
   const strategyType = strategyConfig.strategyType;
 
   if (!strategyType || strategyType === 'none') {
@@ -447,6 +464,82 @@ export function createTableExtractionStrategy(strategyConfig: IDataObject): any 
   }
 
   return undefined;
+}
+
+/**
+ * Apply output filtering config (content filter + table extraction) to a CrawlerRunConfig.
+ * Extracts the duplicated boilerplate from crawlUrl, crawlMultipleUrls, and processRawHtml.
+ *
+ * @param of The outputFiltering IDataObject from n8n parameters
+ * @param context The IExecuteFunctions context (needed for credential access if LLM filter/table is used)
+ * @param itemIndex The current item index (for error reporting)
+ * @returns Object with optional markdownGenerator and tableExtraction properties
+ */
+export async function applyOutputFilteringConfig(
+  of: IDataObject,
+  context: IExecuteFunctions,
+  itemIndex: number,
+): Promise<{ markdownGenerator?: MarkdownGeneratorConfig; tableExtraction?: TableExtractionStrategy }> {
+  const result: { markdownGenerator?: MarkdownGeneratorConfig; tableExtraction?: TableExtractionStrategy } = {};
+
+  // Hoist credential fetch for LLM features (avoids double fetch when both are active)
+  let credentials: Crawl4aiApiCredentials | undefined;
+  if (of.contentFilter === 'llm' || of.tableExtraction === 'llm') {
+    credentials = await context.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
+    if (!credentials.enableLlm) {
+      throw new NodeOperationError(
+        context.getNode(),
+        'LLM features must be enabled in Crawl4AI credentials to use LLM content filtering or table extraction.',
+        { itemIndex },
+      );
+    }
+  }
+
+  // Content filter -> markdown generator
+  if (of.contentFilter && of.contentFilter !== 'none') {
+    const filterConfig: IDataObject = { filterType: of.contentFilter };
+
+    if (of.contentFilter === 'pruning') {
+      if (of.threshold !== undefined) filterConfig.threshold = of.threshold;
+      if (of.thresholdType) filterConfig.thresholdType = of.thresholdType;
+      if (of.minWordThreshold !== undefined) filterConfig.minWordThreshold = of.minWordThreshold;
+    } else if (of.contentFilter === 'bm25') {
+      filterConfig.userQuery = of.userQuery || '';
+      if (of.bm25Threshold !== undefined) filterConfig.bm25Threshold = of.bm25Threshold;
+    } else if (of.contentFilter === 'llm') {
+      const { llmConfig } = buildLlmConfig(credentials!);
+      filterConfig.llmConfig = llmConfig;
+      filterConfig.llmInstruction = of.llmInstruction || '';
+      if (of.chunkTokenThreshold !== undefined) filterConfig.chunkTokenThreshold = of.chunkTokenThreshold;
+      if (of.llmVerbose !== undefined) filterConfig.llmVerbose = of.llmVerbose;
+    }
+
+    result.markdownGenerator = createMarkdownGenerator(filterConfig);
+  }
+
+  // Table extraction
+  if (of.tableExtraction && of.tableExtraction !== 'none') {
+    const tableConfig: IDataObject = { strategyType: of.tableExtraction };
+
+    if (of.tableExtraction === 'default') {
+      if (of.tableScoreThreshold !== undefined) tableConfig.tableScoreThreshold = of.tableScoreThreshold;
+      if (of.tableVerbose !== undefined) tableConfig.verbose = of.tableVerbose;
+    } else if (of.tableExtraction === 'llm') {
+      const { llmConfig } = buildLlmConfig(credentials!);
+      tableConfig.llmConfig = llmConfig;
+      if (of.tableCssSelector) tableConfig.cssSelector = of.tableCssSelector;
+      if (of.tableMaxTries !== undefined) tableConfig.maxTries = of.tableMaxTries;
+      if (of.tableEnableChunking !== undefined) tableConfig.enableChunking = of.tableEnableChunking;
+      if (of.tableChunkTokenThreshold !== undefined) tableConfig.chunkTokenThreshold = of.tableChunkTokenThreshold;
+      if (of.tableMinRowsPerChunk !== undefined) tableConfig.minRowsPerChunk = of.tableMinRowsPerChunk;
+      if (of.tableMaxParallelChunks !== undefined) tableConfig.maxParallelChunks = of.tableMaxParallelChunks;
+      if (of.tableLlmVerbose !== undefined) tableConfig.verbose = of.tableLlmVerbose;
+    }
+
+    result.tableExtraction = createTableExtractionStrategy(tableConfig);
+  }
+
+  return result;
 }
 
 /**
@@ -488,7 +581,7 @@ export interface LlmConfigResult {
   provider: string;
   apiKey: string;
   baseUrl?: string;
-  llmConfig: any;
+  llmConfig: { type: 'LLMConfig'; params: Record<string, unknown> };
 }
 
 /**
@@ -497,7 +590,7 @@ export interface LlmConfigResult {
  * @param credentials Crawl4AI credentials object
  * @returns LLM config result with provider, apiKey, and formatted llmConfig
  */
-export function buildLlmConfig(credentials: any): LlmConfigResult {
+export function buildLlmConfig(credentials: Crawl4aiApiCredentials): LlmConfigResult {
   let provider = 'openai/gpt-4o';
   let apiKey = '';
   let baseUrl: string | undefined;
@@ -526,13 +619,13 @@ export function buildLlmConfig(credentials: any): LlmConfigResult {
   }
 
   // Build the llmConfig object for API requests
-  const llmConfig: any = {
+  const llmConfig: LlmConfigResult['llmConfig'] = {
     type: 'LLMConfig',
     params: {
       provider,
       ...(apiKey ? { api_token: apiKey } : {}),
       ...(baseUrl ? { api_base: baseUrl } : {}),
-    }
+    },
   };
 
   return {
@@ -549,10 +642,10 @@ export function buildLlmConfig(credentials: any): LlmConfigResult {
  * @param context Context string for error message (e.g., "LLM extraction", "content filtering")
  * @throws Error if LLM is not enabled or API key is missing
  */
-export function validateLlmCredentials(credentials: any, context: string = 'LLM features'): void {
+export function validateLlmCredentials(credentials: Crawl4aiApiCredentials, context: string = 'This operation'): void {
   if (!credentials.enableLlm) {
     throw new Error(
-      `LLM features must be enabled in Crawl4AI credentials to use ${context}.`
+      `${context} requires LLM features. Configure an LLM provider in your Crawl4AI Plus credentials.`
     );
   }
 
@@ -581,16 +674,20 @@ export function validateLlmCredentials(credentials: any, context: string = 'LLM 
  * @param apiKey API key for the provider
  * @param baseUrl Optional base URL for the API
  * @param inputFormat Optional input format ('markdown', 'html', 'fit_markdown')
+ * @param maxTokens Optional maximum tokens for the LLM response
+ * @param temperature Optional temperature for the LLM (0-1)
  * @returns LLM extraction strategy configuration object
  */
 export function createLlmExtractionStrategy(
-  schema: any,
+  schema: Record<string, unknown>,
   instruction: string,
   provider?: string,
   apiKey?: string,
   baseUrl?: string,
-  inputFormat?: 'markdown' | 'html' | 'fit_markdown'
-): any {
+  inputFormat?: 'markdown' | 'html' | 'fit_markdown',
+  maxTokens?: number,
+  temperature?: number,
+): ExtractionStrategy {
   return {
     type: 'LLMExtractionStrategy',
     params: {
@@ -606,6 +703,8 @@ export function createLlmExtractionStrategy(
       instruction,
       extraction_type: 'schema',
       ...(inputFormat ? { input_format: inputFormat } : {}),
+      ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+      ...(temperature !== undefined ? { temperature } : {}),
     },
   };
 }
@@ -615,7 +714,7 @@ export function createLlmExtractionStrategy(
  * @param schema CSS selector schema with baseSelector and fields
  * @returns CSS extraction strategy configuration object
  */
-export function createCssSelectorExtractionStrategy(schema: any): any {
+export function createCssSelectorExtractionStrategy(schema: { name?: string; baseSelector: string; fields: unknown[] }): ExtractionStrategy {
   return {
     type: 'JsonCssExtractionStrategy',
     params: {
@@ -628,6 +727,33 @@ export function createCssSelectorExtractionStrategy(schema: any): any {
         },
       },
     },
+  };
+}
+
+/**
+ * Build a WebhookConfig from the n8n webhookConfig collection options.
+ * Returns undefined if no webhook URL is provided.
+ *
+ * @param webhookConfigOptions The IDataObject from getNodeParameter('webhookConfig', i, {})
+ * @returns WebhookConfig or undefined
+ */
+export function buildWebhookConfig(webhookConfigOptions: IDataObject): WebhookConfig | undefined {
+  if (!webhookConfigOptions.webhookUrl) {
+    return undefined;
+  }
+
+  const headers: Record<string, string> = {};
+  const webhookHeaders = webhookConfigOptions.webhookHeaders as any;
+  if (webhookHeaders?.header && Array.isArray(webhookHeaders.header)) {
+    for (const h of webhookHeaders.header) {
+      if (h.key && h.value) headers[h.key] = h.value;
+    }
+  }
+
+  return {
+    webhook_url: String(webhookConfigOptions.webhookUrl),
+    webhook_data_in_payload: webhookConfigOptions.webhookDataInPayload !== false,
+    ...(Object.keys(headers).length > 0 ? { webhook_headers: headers } : {}),
   };
 }
 

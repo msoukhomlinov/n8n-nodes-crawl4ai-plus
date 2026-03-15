@@ -26,10 +26,12 @@
     "format": "prettier --write \"nodes/**/*.ts\" \"credentials/**/*.ts\"",
     "lint": "eslint --quiet --fix \"nodes/**/*.ts\" \"credentials/**/*.ts\"",
     "lintfix": "eslint . --fix",
-    "prepublishOnly": "npm run build && npm run lint -c ./.eslintrc.prepublish.js"
+    "preinstall": "npx only-allow pnpm",
+    "prepublishOnly": "pnpm run build && pnpm run lint"
   },
   "files": [
-    "dist"
+    "dist",
+    "index.js"
   ],
   "n8n": {
     "n8nNodesApiVersion": 1,
@@ -42,10 +44,7 @@
     ]
   },
   "devDependencies": {
-    "@types/express": "^5.0.1",
     "@types/node": "^22.14.1",
-    "@types/request": "^2.48.12",
-    "@types/request-promise-native": "^1.0.21",
     "@typescript-eslint/eslint-plugin": "^7.15.0",
     "@typescript-eslint/parser": "^7.15.0",
     "eslint": "^8.56.0",

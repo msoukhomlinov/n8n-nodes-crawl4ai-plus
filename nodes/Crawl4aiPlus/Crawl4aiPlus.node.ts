@@ -51,7 +51,7 @@ export class Crawl4aiPlus implements INodeType {
 					{
 						name: 'Extract Data',
 						value: 'extractData',
-						description: 'Extract structured data from a webpage using LLM',
+						description: 'Extract emails, financial data, or custom structured data from a webpage',
 						action: 'Extract structured data',
 					},
 					{

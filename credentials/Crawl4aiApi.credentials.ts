@@ -223,14 +223,5 @@ export class Crawl4aiApi implements ICredentialType {
 				},
 			},
 		},
-		// Cache Settings
-		{
-			displayName: 'Cache Directory',
-			name: 'cacheDir',
-			type: 'string',
-			default: '',
-			placeholder: '/path/to/cache',
-			description: 'The directory to store cache files (leave empty for default)',
-		},
 	];
 }

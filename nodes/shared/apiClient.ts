@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Crawl4aiApiCredentials, CrawlerRunConfig, CrawlResult, CrawlJobRequest, JobStatusResponse, MonitorHealth, LlmJobRequest } from './interfaces';
+import { Crawl4aiApiCredentials, FullCrawlConfig, CrawlResult, CrawlJobRequest, JobStatusResponse, MonitorHealth, LlmJobRequest } from './interfaces';
 
 /**
  * Creates a client for communicating with the Crawl4AI API
@@ -42,7 +42,7 @@ export class Crawl4aiClient {
   /**
    * Get appropriate timeout based on config
    */
-  private getTimeout(config: CrawlerRunConfig): number {
+  private getTimeout(config: FullCrawlConfig): number {
     if (config.deepCrawlStrategy) {
       return 300000; // 5 minutes for deep crawl
     }
@@ -96,7 +96,7 @@ export class Crawl4aiClient {
   /**
    * Crawl a single URL
    */
-  async crawlUrl(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
+  async crawlUrl(url: string, config: FullCrawlConfig): Promise<CrawlResult> {
     try {
       const response = await this.apiClient.post('/crawl', {
         urls: [url],
@@ -116,6 +116,7 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API. The API responded but did not return any crawl results.',
       };
     } catch (error) {
+      if (!axios.isAxiosError(error)) throw error;
       return {
         url,
         success: false,
@@ -127,7 +128,7 @@ export class Crawl4aiClient {
   /**
    * Crawl multiple URLs
    */
-  async crawlMultipleUrls(urls: string[], config: CrawlerRunConfig): Promise<CrawlResult[]> {
+  async crawlMultipleUrls(urls: string[], config: FullCrawlConfig): Promise<CrawlResult[]> {
     try {
       const response = await this.apiClient.post('/crawl', {
         urls,
@@ -147,6 +148,7 @@ export class Crawl4aiClient {
         error_message: 'No results returned from Crawl4AI API. The API responded but did not return any crawl results.',
       }));
     } catch (error) {
+      if (!axios.isAxiosError(error)) throw error;
       const errorMessage = this.parseApiError(error, 'crawlMultiple');
       return urls.map(url => ({
         url,
@@ -159,22 +161,29 @@ export class Crawl4aiClient {
   /**
    * Stream crawl via POST /crawl/stream — buffers all NDJSON chunks and returns full results
    */
-  async crawlStream(urls: string[], config: CrawlerRunConfig): Promise<CrawlResult[]> {
+  async crawlStream(urls: string[], config: FullCrawlConfig): Promise<{ results: CrawlResult[]; parseErrors: number }> {
     const readline = await import('readline');
 
-    const response = await this.apiClient.post('/crawl/stream', {
-      urls,
-      browser_config: this.formatBrowserConfig(config),
-      crawler_config: this.formatCrawlerConfig(config),
-    }, {
-      responseType: 'stream',
-      timeout: 300000, // 5 minutes for streaming
-    });
+    let response: any;
+    try {
+      response = await this.apiClient.post('/crawl/stream', {
+        urls,
+        browser_config: this.formatBrowserConfig(config),
+        crawler_config: this.formatCrawlerConfig(config),
+      }, {
+        responseType: 'stream',
+        timeout: 300000, // 5 minutes for streaming
+      });
+    } catch (error) {
+      if (!axios.isAxiosError(error)) throw error;
+      throw new Error(this.parseApiError(error, 'crawlStream'));
+    }
 
-    return new Promise<CrawlResult[]>((resolve, reject) => {
+    return new Promise<{ results: CrawlResult[]; parseErrors: number }>((resolve, reject) => {
       const results: CrawlResult[] = [];
       const rl = readline.createInterface({ input: response.data, crlfDelay: Infinity });
 
+      let parseErrors = 0;
       rl.on('line', (line: string) => {
         const trimmed = line.trim();
         if (!trimmed) return;
@@ -184,11 +193,11 @@ export class Crawl4aiClient {
           if (parsed.status === 'completed' || parsed.status === 'processing') return;
           results.push(parsed as CrawlResult);
         } catch {
-          // Ignore non-JSON lines
+          parseErrors++;
         }
       });
 
-      rl.on('close', () => resolve(results));
+      rl.on('close', () => resolve({ results, parseErrors }));
       rl.on('error', (err: Error) => reject(err));
       response.data.on('error', (err: Error) => reject(err));
     });
@@ -265,7 +274,7 @@ export class Crawl4aiClient {
   /**
    * Process raw HTML content
    */
-  async processRawHtml(html: string, baseUrl: string, config: CrawlerRunConfig): Promise<CrawlResult> {
+  async processRawHtml(html: string, baseUrl: string, config: FullCrawlConfig): Promise<CrawlResult> {
     try {
       const htmlSizeBytes = new TextEncoder().encode(html).length;
       const MAX_HTML_SIZE = 5 * 1024 * 1024; // 5MB
@@ -278,13 +287,18 @@ export class Crawl4aiClient {
       }
 
       const rawUrl = `raw:${html}`;
+      const formattedCrawlerConfig = this.formatCrawlerConfig(config);
+      // When extractionStrategy/deepCrawlStrategy/tableExtraction is present,
+      // formatCrawlerConfig returns { type: 'CrawlerRunConfig', params: {...} }.
+      // base_url must go inside params, not at the wrapper level.
+      const crawlerConfigWithBase = formattedCrawlerConfig?.type === 'CrawlerRunConfig'
+        ? { ...formattedCrawlerConfig, params: { ...formattedCrawlerConfig.params, base_url: baseUrl } }
+        : { ...formattedCrawlerConfig, base_url: baseUrl };
+
       const response = await this.apiClient.post('/crawl', {
         urls: [rawUrl],
         browser_config: this.formatBrowserConfig(config),
-        crawler_config: {
-          ...this.formatCrawlerConfig(config),
-          base_url: baseUrl,
-        },
+        crawler_config: crawlerConfigWithBase,
       }, {
         timeout: this.getTimeout(config),
       });
@@ -299,6 +313,7 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API. The API responded but did not return any crawl results.',
       };
     } catch (error) {
+      if (!axios.isAxiosError(error)) throw error;
       return {
         url: baseUrl,
         success: false,
@@ -310,34 +325,21 @@ export class Crawl4aiClient {
   /**
    * Run an advanced operation (used for Content Extractor operations)
    */
-  async arun(url: string, config: CrawlerRunConfig): Promise<CrawlResult> {
+  async arun(url: string, config: FullCrawlConfig): Promise<CrawlResult> {
     return this.crawlUrl(url, config);
   }
 
   /**
    * Format browser config for the API (public for use by job-submission operations)
    */
-  formatBrowserConfig(config: CrawlerRunConfig): any {
+  formatBrowserConfig(config: FullCrawlConfig): any {
     const params: any = {};
-    const cfg = config as any;
 
-    if (cfg.browserType) {
-      params.browser_type = cfg.browserType;
+    if (config.browserType) {
+      params.browser_type = config.browserType;
     }
-    if (cfg.browserMode) {
-      params.browser_mode = cfg.browserMode;
-    }
-    if (cfg.useManagedBrowser) {
+    if (config.useManagedBrowser) {
       params.use_managed_browser = true;
-    }
-    if (cfg.debuggingPort !== undefined) {
-      params.debugging_port = cfg.debuggingPort;
-    }
-    if (cfg.chromeChannel) {
-      params.chrome_channel = cfg.chromeChannel;
-    }
-    if (cfg.channel) {
-      params.channel = cfg.channel;
     }
     if (config.headless !== undefined) {
       params.headless = config.headless;
@@ -351,35 +353,53 @@ export class Crawl4aiClient {
         },
       };
     }
-    if (cfg.java_script_enabled !== undefined) {
-      params.java_script_enabled = cfg.java_script_enabled;
+    if (config.java_script_enabled !== undefined) {
+      params.java_script_enabled = config.java_script_enabled;
     }
-    if (cfg.user_agent) {
-      params.user_agent = cfg.user_agent;
+    if (config.user_agent) {
+      params.user_agent = config.user_agent;
     }
-    if (cfg.ignore_https_errors !== undefined) {
-      params.ignore_https_errors = cfg.ignore_https_errors;
+    if (config.ignore_https_errors !== undefined) {
+      params.ignore_https_errors = config.ignore_https_errors;
     }
-    if (cfg.text_mode === true) {
+    if (config.text_mode === true) {
       params.text_mode = true;
     }
-    if (cfg.light_mode === true) {
+    if (config.light_mode === true) {
       params.light_mode = true;
     }
-    if (cfg.enable_stealth === true) {
+    if (config.enable_stealth === true) {
       params.enable_stealth = true;
     }
-    if (cfg.extra_args && Array.isArray(cfg.extra_args) && cfg.extra_args.length > 0) {
-      params.extra_args = cfg.extra_args;
+    if (config.extra_args && Array.isArray(config.extra_args) && config.extra_args.length > 0) {
+      params.extra_args = config.extra_args;
     }
-    if (cfg.init_scripts && Array.isArray(cfg.init_scripts) && cfg.init_scripts.length > 0) {
-      params.init_scripts = cfg.init_scripts;
+    if (config.init_scripts && Array.isArray(config.init_scripts) && config.init_scripts.length > 0) {
+      params.init_scripts = config.init_scripts;
     }
-    if (cfg.proxy_config && typeof cfg.proxy_config === 'object' && Object.keys(cfg.proxy_config).length > 0) {
+    if (config.proxy_config && typeof config.proxy_config === 'object' && Object.keys(config.proxy_config).length > 0) {
       params.proxy_config = {
         type: 'dict',
-        value: cfg.proxy_config,
+        value: config.proxy_config,
       };
+    }
+    if (config.cookies && Array.isArray(config.cookies) && config.cookies.length > 0) {
+      params.cookies = config.cookies;
+    }
+    if (config.headers && typeof config.headers === 'object' && Object.keys(config.headers).length > 0) {
+      params.headers = {
+        type: 'dict',
+        value: config.headers,
+      };
+    }
+    if (config.storage_state !== undefined) {
+      params.storage_state = config.storage_state;
+    }
+    if (config.use_persistent_context === true) {
+      params.use_persistent_context = true;
+    }
+    if (config.user_data_dir) {
+      params.user_data_dir = config.user_data_dir;
     }
 
     return Object.keys(params).length > 0 ? params : {};
@@ -388,7 +408,7 @@ export class Crawl4aiClient {
   /**
    * Format crawler config for the API (public for use by job-submission operations)
    */
-  formatCrawlerConfig(config: CrawlerRunConfig): any {
+  formatCrawlerConfig(config: FullCrawlConfig): any {
     const params: any = {};
 
     if (config.cacheMode) {
@@ -439,6 +459,9 @@ export class Crawl4aiClient {
     if (config.preserveHttpsForInternalLinks === true) {
       params.preserve_https_for_internal_links = true;
     }
+    if (config.scoreLinks !== undefined) {
+      params.score_links = config.scoreLinks;
+    }
     if (config.screenshot === true) params.screenshot = true;
     if (config.pdf === true) params.pdf = true;
     if (config.fetchSslCertificate === true) params.fetch_ssl_certificate = true;
@@ -446,8 +469,6 @@ export class Crawl4aiClient {
     if (config.magic === true) params.magic = true;
     if (config.simulateUser === true) params.simulate_user = true;
     if (config.overrideNavigator === true) params.override_navigator = true;
-    if (config.excludeSocialMediaLinks === true) params.exclude_social_media_links = true;
-    if (config.excludeExternalImages === true) params.exclude_external_images = true;
     if (config.delayBeforeReturnHtml !== undefined) params.delay_before_return_html = config.delayBeforeReturnHtml;
     if (config.verbose === true) params.verbose = true;
     if (config.markdownGenerator) params.markdown_generator = config.markdownGenerator;

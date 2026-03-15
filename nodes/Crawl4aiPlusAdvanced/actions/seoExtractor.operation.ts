@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, ExtractionStrategy, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
@@ -110,6 +110,13 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'Include Original Text',
+				name: 'includeFullText',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to include the original webpage text in output',
+			},
+			{
 				displayName: 'Include Raw HTML',
 				name: 'includeRawHtml',
 				type: 'boolean',
@@ -129,6 +136,7 @@ export async function execute(
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -159,8 +167,8 @@ export async function execute(
 			}
 
 			// Build CSS extraction strategy inline for meta tags
-			const extractionStrategy: any = fields.length > 0 ? {
-				type: 'JsonCssExtractionStrategy',
+			const extractionStrategy: ExtractionStrategy | null = fields.length > 0 ? {
+				type: 'JsonCssExtractionStrategy' as const,
 				params: {
 					schema: {
 						type: 'dict',
@@ -178,7 +186,7 @@ export async function execute(
 				},
 			} : null;
 
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
 			};
@@ -187,7 +195,6 @@ export async function execute(
 				config.extractionStrategy = extractionStrategy;
 			}
 
-			const crawler = await getCrawl4aiClient(this);
 			const result = await crawler.crawlUrl(url, config);
 
 			if (!result.success) {
@@ -210,15 +217,19 @@ export async function execute(
 						seoData = { ...seoData, ...parsed };
 					}
 				} catch {
-					// Ignore parse errors, continue with other extractions
+					seoData._cssParseError = true;
+					seoData._rawContent = result.extracted_content.substring(0, 500);
 				}
 			}
 
 			// Extract JSON-LD if requested
 			if (metadataTypes.includes('jsonLd')) {
-				const jsonLdData = extractJsonLd(result.html || result.cleaned_html || '');
+				const { data: jsonLdData, parseErrors: jsonLdParseErrors } = extractJsonLd(result.html || result.cleaned_html || '');
 				if (jsonLdData.length > 0) {
 					seoData.jsonLd = jsonLdData;
+				}
+				if (jsonLdParseErrors > 0) {
+					seoData._jsonLdParseErrors = jsonLdParseErrors;
 				}
 			}
 
@@ -234,11 +245,12 @@ export async function execute(
 			const formattedResult = formatExtractionResult(result, seoData as any, {
 				fetchedAt,
 				extractionStrategy: 'SeoExtractor',
+				includeFullText: options.includeFullText as boolean,
 				includeLinks: false,
 			});
 
 			if (options.includeRawHtml) {
-				(formattedResult as any).rawHtml = extractHead(result.html || '');
+				formattedResult.rawHtml = result.html ? extractHead(result.html) : null;
 			}
 
 			allResults.push({
@@ -265,8 +277,9 @@ export async function execute(
 
 // --- Helper Functions ---
 
-function extractJsonLd(html: string): any[] {
+function extractJsonLd(html: string): { data: any[]; parseErrors: number } {
 	const jsonLdData: any[] = [];
+	let parseErrors = 0;
 	const scriptTagRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 	let match;
 
@@ -275,31 +288,30 @@ function extractJsonLd(html: string): any[] {
 			const data = JSON.parse(match[1].trim());
 			jsonLdData.push(data);
 		} catch {
-			// Skip invalid JSON-LD blocks
+			parseErrors++;
 		}
 	}
 
-	return jsonLdData;
+	return { data: jsonLdData, parseErrors };
 }
 
 function extractHreflang(html: string): Array<{ lang: string; href: string }> {
 	const hreflangTags: Array<{ lang: string; href: string }> = [];
-	const patternA = /<link[^>]*rel=["']alternate["'][^>]*hreflang=["']([^"']+)["'][^>]*href=["']([^"']+)["'][^>]*\/?>/gi;
-	const patternB = /<link[^>]*hreflang=["']([^"']+)["'][^>]*rel=["']alternate["'][^>]*href=["']([^"']+)["'][^>]*\/?>/gi;
-	const patternC = /<link[^>]*href=["']([^"']+)["'][^>]*hreflang=["']([^"']+)["'][^>]*rel=["']alternate["'][^>]*\/?>/gi;
 
-	let match;
+	// Step 1: Match all <link> tags that contain rel="alternate" (any attribute order)
+	const linkTagPattern = /<link[^>]*rel=["']alternate["'][^>]*\/?>/gi;
+	let tagMatch;
 
-	while ((match = patternA.exec(html)) !== null) {
-		hreflangTags.push({ lang: match[1], href: match[2] });
-	}
+	while ((tagMatch = linkTagPattern.exec(html)) !== null) {
+		const tag = tagMatch[0];
 
-	while ((match = patternB.exec(html)) !== null) {
-		hreflangTags.push({ lang: match[1], href: match[2] });
-	}
+		// Step 2: Extract hreflang and href independently from the matched tag
+		const hreflangMatch = tag.match(/hreflang=["']([^"']+)["']/i);
+		const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
 
-	while ((match = patternC.exec(html)) !== null) {
-		hreflangTags.push({ lang: match[2], href: match[1] });
+		if (hreflangMatch && hrefMatch) {
+			hreflangTags.push({ lang: hreflangMatch[1], href: hrefMatch[1] });
+		}
 	}
 
 	// Remove duplicates

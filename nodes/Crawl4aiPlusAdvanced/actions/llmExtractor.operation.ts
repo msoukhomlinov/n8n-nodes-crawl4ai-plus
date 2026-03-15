@@ -6,7 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiNodeOptions, CrawlerRunConfig } from '../helpers/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
@@ -220,7 +220,7 @@ export const description: INodeProperties[] = [
 					maxValue: 1,
 					numberPrecision: 1,
 				},
-				default: 0,
+				default: '',
 				description: 'Controls randomness: 0 for deterministic results, higher for more creativity',
 			},
 		],
@@ -401,16 +401,16 @@ export async function execute(
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
 
-	// Validate LLM credentials upfront (once for all items)
-	const credentials = await this.getCredentials('crawl4aiPlusApi') as any;
-	try {
-		validateLlmCredentials(credentials, 'LLM extraction');
-	} catch (err) {
-		throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: 0 });
-	}
+	const credentials = await this.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
+	const crawler = await getCrawl4aiClient(this);
 
 	for (let i = 0; i < items.length; i++) {
 		try {
+			try {
+				validateLlmCredentials(credentials, 'LLM extraction');
+			} catch (err) {
+				throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+			}
 			const url = this.getNodeParameter('url', i, '') as string;
 			const instruction = this.getNodeParameter('instruction', i, '') as string;
 			const schemaMode = this.getNodeParameter('schemaMode', i, 'simple') as string;
@@ -487,16 +487,17 @@ export async function execute(
 			// Build LLM config and extraction strategy
 			const { provider, apiKey, baseUrl } = buildLlmConfig(credentials);
 			const inputFormat = llmOptions.inputFormat as 'markdown' | 'html' | 'fit_markdown' | undefined;
-			const extractionStrategy = createLlmExtractionStrategy(schema, instruction, provider, apiKey, baseUrl, inputFormat);
+			const maxTokens = llmOptions.maxTokens !== undefined ? Number(llmOptions.maxTokens) : undefined;
+			const temperature = llmOptions.temperature !== undefined && llmOptions.temperature !== '' ? Number(llmOptions.temperature) : undefined;
+			const extractionStrategy = createLlmExtractionStrategy(schema, instruction, provider, apiKey, baseUrl, inputFormat, maxTokens, temperature);
 
 			// Build combined config
-			const config: CrawlerRunConfig = {
+			const config: FullCrawlConfig = {
 				...createBrowserConfig(bs),
 				...createCrawlerRunConfig(cs),
 				extractionStrategy,
 			};
 
-			const crawler = await getCrawl4aiClient(this);
 			const fetchedAt = new Date().toISOString();
 			const result = await crawler.crawlUrl(url, config);
 
