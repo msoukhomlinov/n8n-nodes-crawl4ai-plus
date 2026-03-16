@@ -14,25 +14,28 @@
   ],
   "license": "MIT",
   "homepage": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus",
-  "author": "Max Soukhomlinov",
+  "author": {
+    "name": "Max Soukhomlinov"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus.git"
   },
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "rimraf ./dist && tsc && gulp build:icons",
-    "dev": "tsc --watch",
+    "build": "n8n-node build",
+    "build:watch": "tsc --watch",
+    "dev": "n8n-node dev",
     "format": "prettier --write \"nodes/**/*.ts\" \"credentials/**/*.ts\"",
-    "lint": "eslint --quiet --fix \"nodes/**/*.ts\" \"credentials/**/*.ts\"",
-    "lintfix": "eslint . --fix",
+    "lint": "n8n-node lint",
+    "lint:fix": "n8n-node lint --fix",
     "preinstall": "npx only-allow pnpm",
     "prepublishOnly": "pnpm run build && pnpm run lint"
   },
-  "files": [
-    "dist",
-    "index.js"
-  ],
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
@@ -44,19 +47,13 @@
     ]
   },
   "devDependencies": {
-    "@types/node": "^22.14.1",
-    "@typescript-eslint/eslint-plugin": "^7.15.0",
-    "@typescript-eslint/parser": "^7.15.0",
-    "eslint": "^8.56.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-n8n-nodes-base": "^1.16.3",
-    "eslint-plugin-prettier": "^5.0.0",
-    "gulp": "^4.0.2",
-    "n8n-core": "^1.79.1",
-    "n8n-workflow": "^1.82.0",
+    "@n8n/node-cli": ">=0.17.0",
+    "eslint": "^9.0.0",
     "prettier": "^3.1.0",
-    "rimraf": "^5.0.10",
     "typescript": "~5.5.4"
+  },
+  "peerDependencies": {
+    "n8n-workflow": ">=1.60.0"
   },
   "dependencies": {
     "axios": "^1.7.9"
