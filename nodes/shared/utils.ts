@@ -90,7 +90,7 @@ export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
       config.cookies = options.cookies as Array<object>;
     } else if (typeof options.cookies === 'object') {
       // fixedCollection format used by cosineExtractor, jsonExtractor, seoExtractor
-      const cookiesObj = options.cookies as any;
+      const cookiesObj = options.cookies as IDataObject;
       if (cookiesObj.cookieValues && Array.isArray(cookiesObj.cookieValues) && cookiesObj.cookieValues.length > 0) {
         config.cookies = cookiesObj.cookieValues as Array<object>;
       }
@@ -135,10 +135,10 @@ export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
 
   // init_scripts: pre-page-load JS injection (0.8.0)
   if (options.initScripts) {
-    const initScripts = options.initScripts as any;
+    const initScripts = options.initScripts as IDataObject;
     // Handle fixedCollection format: { scripts: [{ value: '...' }, ...] }
     if (initScripts.scripts && Array.isArray(initScripts.scripts)) {
-      const scripts = initScripts.scripts.map((s: any) => s.value).filter((v: string) => v);
+      const scripts = (initScripts.scripts as IDataObject[]).map((s) => String(s.value)).filter((v) => v);
       if (scripts.length > 0) {
         config.init_scripts = scripts;
       }
@@ -158,7 +158,7 @@ export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
 
   // proxy_config (replaces deprecated proxy string field)
   if (options.proxyConfig) {
-    let pc: any = options.proxyConfig;
+    let pc: unknown = options.proxyConfig;
     if (typeof pc === 'string' && pc.trim()) {
       try {
         pc = JSON.parse(pc);
@@ -167,12 +167,13 @@ export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
       }
     }
     if (typeof pc === 'object' && pc !== null) {
-      if (!pc.server) {
+      const pcObj = pc as Record<string, unknown>;
+      if (!pcObj.server) {
         throw new Error('proxyConfig requires a "server" field (e.g., {"server":"http://proxy:8080"}).');
       }
-      const proxyObj: any = { server: pc.server };
-      if (pc.username) proxyObj.username = pc.username;
-      if (pc.password) proxyObj.password = pc.password;
+      const proxyObj: Record<string, unknown> = { server: pcObj.server };
+      if (pcObj.username) proxyObj.username = pcObj.username;
+      if (pcObj.password) proxyObj.password = pcObj.password;
       config.proxy_config = proxyObj;
     }
   }
@@ -545,10 +546,10 @@ export async function applyOutputFilteringConfig(
 /**
  * Safely parse JSON
  */
-export function safeJsonParse(jsonString: string, defaultValue: any = null): any {
+export function safeJsonParse(jsonString: string, defaultValue: unknown = null): unknown {
   try {
     return JSON.parse(jsonString);
-  } catch (error) {
+  } catch {
     return defaultValue;
   }
 }
@@ -569,7 +570,7 @@ export function isValidUrl(url: string): boolean {
   try {
     new URL(url);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -743,7 +744,7 @@ export function buildWebhookConfig(webhookConfigOptions: IDataObject): WebhookCo
   }
 
   const headers: Record<string, string> = {};
-  const webhookHeaders = webhookConfigOptions.webhookHeaders as any;
+  const webhookHeaders = webhookConfigOptions.webhookHeaders as IDataObject;
   if (webhookHeaders?.header && Array.isArray(webhookHeaders.header)) {
     for (const h of webhookHeaders.header) {
       if (h.key && h.value) headers[h.key] = h.value;
@@ -762,7 +763,7 @@ export function buildWebhookConfig(webhookConfigOptions: IDataObject): WebhookCo
  * @param data Extracted data object or array
  * @returns Cleaned data with normalized whitespace
  */
-export function cleanExtractedData(data: any): any {
+export function cleanExtractedData(data: unknown): unknown {
   if (typeof data === 'string') {
     return cleanText(data);
   }
@@ -772,7 +773,7 @@ export function cleanExtractedData(data: any): any {
   }
 
   if (typeof data === 'object' && data !== null) {
-    const cleaned: any = {};
+    const cleaned: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
       cleaned[key] = cleanExtractedData(value);
     }

@@ -184,6 +184,7 @@ const SOCIAL_MEDIA_DOMAINS = [
 export async function execute(
 	this: IExecuteFunctions,
 	items: INodeExecutionData[],
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
@@ -346,7 +347,7 @@ export async function execute(
 				allResults.push({
 					json: items[i].json,
 					error: new NodeOperationError(this.getNode(), (error as Error).message, {
-						itemIndex: (error as any).itemIndex ?? i,
+						itemIndex: i,
 					}),
 					pairedItem: { item: i },
 				});

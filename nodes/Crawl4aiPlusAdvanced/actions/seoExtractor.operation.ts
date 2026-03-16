@@ -133,6 +133,7 @@ export const description: INodeProperties[] = [
 export async function execute(
 	this: IExecuteFunctions,
 	items: INodeExecutionData[],
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
@@ -242,7 +243,7 @@ export async function execute(
 			}
 
 			const fetchedAt = new Date().toISOString();
-			const formattedResult = formatExtractionResult(result, seoData as any, {
+			const formattedResult = formatExtractionResult(result, seoData as IDataObject, {
 				fetchedAt,
 				extractionStrategy: 'SeoExtractor',
 				includeFullText: options.includeFullText as boolean,
@@ -262,7 +263,7 @@ export async function execute(
 				allResults.push({
 					json: items[i].json,
 					error: new NodeOperationError(this.getNode(), (error as Error).message, {
-						itemIndex: (error as any).itemIndex ?? i,
+						itemIndex: i,
 					}),
 					pairedItem: { item: i },
 				});
@@ -277,15 +278,15 @@ export async function execute(
 
 // --- Helper Functions ---
 
-function extractJsonLd(html: string): { data: any[]; parseErrors: number } {
-	const jsonLdData: any[] = [];
+function extractJsonLd(html: string): { data: IDataObject[]; parseErrors: number } {
+	const jsonLdData: IDataObject[] = [];
 	let parseErrors = 0;
 	const scriptTagRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 	let match;
 
 	while ((match = scriptTagRegex.exec(html)) !== null) {
 		try {
-			const data = JSON.parse(match[1].trim());
+			const data = JSON.parse(match[1].trim()) as IDataObject;
 			jsonLdData.push(data);
 		} catch {
 			parseErrors++;

@@ -1,9 +1,16 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import { ICredentialTestRequest, ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class Crawl4aiApi implements ICredentialType {
 	name = 'crawl4aiPlusApi';
 	displayName = 'Crawl4AI Plus API';
 	documentationUrl = 'https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus';
+	icon = 'file:crawl4aiplus.svg' as const;
+	test: ICredentialTestRequest = {
+		request: {
+			baseURL: '={{$credentials.dockerUrl}}',
+			url: '/health',
+		},
+	};
 	properties: INodeProperties[] = [
 		// Docker REST API Settings
 		{

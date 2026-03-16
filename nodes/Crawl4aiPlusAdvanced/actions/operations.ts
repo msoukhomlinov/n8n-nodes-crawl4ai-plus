@@ -1,4 +1,4 @@
-import type { INodeProperties, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { INodeProperties, INodePropertyOptions, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type { Crawl4aiNodeOptions } from '../helpers/interfaces';
 
 // Import definitions for each operation — Crawling group
@@ -71,7 +71,6 @@ export const description: INodeProperties[] = [
         name: 'Crawl Multiple URLs',
         value: 'crawlMultipleUrls',
         description: 'Crawl multiple URLs with deep/recursive crawl support',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Crawl multiple URLs',
         groupName: 'Crawling',
       },
@@ -79,7 +78,6 @@ export const description: INodeProperties[] = [
         name: 'Stream Crawl',
         value: 'crawlStream',
         description: 'Crawl URLs via the streaming endpoint — one output item per page result',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Crawl URLs via streaming',
         groupName: 'Crawling',
       },
@@ -87,7 +85,6 @@ export const description: INodeProperties[] = [
         name: 'Process Raw HTML',
         value: 'processRawHtml',
         description: 'Process provided HTML content without crawling',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Process raw HTML',
         groupName: 'Crawling',
       },
@@ -104,7 +101,6 @@ export const description: INodeProperties[] = [
         name: 'LLM Extractor',
         value: 'llmExtractor',
         description: 'Extract structured content using LLM models',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Extract with LLM',
         groupName: 'Extraction',
       },
@@ -112,7 +108,6 @@ export const description: INodeProperties[] = [
         name: 'CSS Extractor',
         value: 'cssExtractor',
         description: 'Extract structured content using CSS selectors',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Extract with CSS selectors',
         groupName: 'Extraction',
       },
@@ -120,7 +115,6 @@ export const description: INodeProperties[] = [
         name: 'JSON Extractor',
         value: 'jsonExtractor',
         description: 'Extract JSON data from a webpage',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Extract with JSON path',
         groupName: 'Extraction',
       },
@@ -128,7 +122,6 @@ export const description: INodeProperties[] = [
         name: 'Regex Extractor',
         value: 'regexExtractor',
         description: 'Extract data using regex patterns',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Extract with regex',
         groupName: 'Extraction',
       },
@@ -143,7 +136,6 @@ export const description: INodeProperties[] = [
         name: 'SEO Metadata Extractor',
         value: 'seoExtractor',
         description: 'Extract SEO metadata (title, meta tags, OG tags, JSON-LD)',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Extract SEO metadata',
         groupName: 'Extraction',
       },
@@ -160,7 +152,6 @@ export const description: INodeProperties[] = [
         name: 'Submit LLM Job',
         value: 'submitLlmJob',
         description: 'Submit an async LLM extraction job and receive a task_id',
-        // eslint-disable-next-line n8n-nodes-base/node-param-operation-option-action-miscased
         action: 'Submit async LLM job',
         groupName: 'Jobs & Monitoring',
       },
@@ -178,7 +169,7 @@ export const description: INodeProperties[] = [
         action: 'Check server health',
         groupName: 'Jobs & Monitoring',
       },
-    ] as any,
+    ] as unknown as INodePropertyOptions[],
     default: 'crawlUrl',
   },
 

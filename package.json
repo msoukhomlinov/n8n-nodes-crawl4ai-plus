@@ -14,18 +14,14 @@
   ],
   "license": "MIT",
   "homepage": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus",
-  "author": {
-    "name": "Max Soukhomlinov"
-  },
+  "author": { "name": "Max Soukhomlinov" },
   "repository": {
     "type": "git",
     "url": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus.git"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "n8n-node build",
     "build:watch": "tsc --watch",
@@ -38,13 +34,12 @@
   },
   "n8n": {
     "n8nNodesApiVersion": 1,
-    "credentials": [
-      "dist/credentials/Crawl4aiApi.credentials.js"
-    ],
+    "credentials": ["dist/credentials/Crawl4aiApi.credentials.js"],
     "nodes": [
       "dist/nodes/Crawl4aiPlus/Crawl4aiPlus.node.js",
       "dist/nodes/Crawl4aiPlusAdvanced/Crawl4aiPlusAdvanced.node.js"
-    ]
+    ],
+    "strict": false
   },
   "devDependencies": {
     "@n8n/node-cli": ">=0.17.0",
@@ -52,10 +47,6 @@
     "prettier": "^3.1.0",
     "typescript": "~5.5.4"
   },
-  "peerDependencies": {
-    "n8n-workflow": ">=1.60.0"
-  },
-  "dependencies": {
-    "axios": "^1.7.9"
-  }
+  "peerDependencies": { "n8n-workflow": ">=1.60.0" },
+  "dependencies": { "axios": "^1.7.9" }
 }

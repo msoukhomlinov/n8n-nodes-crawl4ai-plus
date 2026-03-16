@@ -1,5 +1,5 @@
 import { IDataObject } from 'n8n-workflow';
-import { CrawlResult } from '../../shared/interfaces';
+import { CrawlResult, Link } from '../../shared/interfaces';
 import { parseExtractedJson } from '../../shared/formatters';
 
 /**
@@ -53,7 +53,7 @@ export function formatPageContentResult(
 
 	// Merge markdown from all pages
 	const markdownParts: string[] = [];
-	const allLinks: { internal: any[]; external: any[] } = { internal: [], external: [] };
+	const allLinks: { internal: Link[]; external: Link[] } = { internal: [], external: [] };
 	let totalCrawlTime = 0;
 	let hasValidDuration = false;
 

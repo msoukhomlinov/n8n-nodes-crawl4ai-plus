@@ -207,7 +207,7 @@ export interface CrawlResult {
 	tables?: TableResult[];
 	error_message?: string;
 	crawl_time?: number;
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 // SSL Certificate interface
@@ -248,7 +248,7 @@ export interface TableResult {
 		columnCount: number;
 		hasRowspan?: boolean;
 		hasColspan?: boolean;
-		[key: string]: any;
+		[key: string]: unknown;
 	};
 }
 
@@ -277,8 +277,8 @@ export interface WebhookConfig {
 // Crawl job request (POST /crawl/job)
 export interface CrawlJobRequest {
 	urls: string[];
-	browser_config?: any;
-	crawler_config?: any;
+	browser_config?: Record<string, unknown>;
+	crawler_config?: Record<string, unknown>;
 	webhook_config?: WebhookConfig;
 }
 
@@ -297,7 +297,7 @@ export interface MonitorHealth {
 	cpu_percent: number;
 	uptime_seconds: number;
 	active_requests: number;
-	pool_info?: Record<string, any>;
+	pool_info?: Record<string, unknown>;
 }
 
 // LLM async job request (POST /llm/job)

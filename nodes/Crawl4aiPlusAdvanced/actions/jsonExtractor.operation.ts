@@ -209,6 +209,7 @@ function extractFirstValidJson(text: string): IDataObject | IDataObject[] | null
 export async function execute(
 	this: IExecuteFunctions,
 	items: INodeExecutionData[],
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_nodeOptions: Crawl4aiNodeOptions,
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
@@ -331,13 +332,13 @@ export async function execute(
 				// Apply JSON path if provided
 				if (jsonPath && jsonData) {
 					const pathParts = jsonPath.split('.');
-					let currentData: any = jsonData;
+					let currentData: unknown = jsonData;
 
 					let pathFailed = false;
 					let failedSegment = '';
 					for (const part of pathParts) {
 						if (currentData && typeof currentData === 'object' && part in currentData) {
-							currentData = currentData[part];
+							currentData = (currentData as Record<string, unknown>)[part];
 						} else {
 							pathFailed = true;
 							failedSegment = part;
@@ -350,7 +351,7 @@ export async function execute(
 						jsonData = {
 							_pathError: true,
 							error: `JSON path "${jsonPath}" failed at segment "${failedSegment}"`,
-						} as any;
+						} as IDataObject;
 					} else {
 						jsonData = currentData as IDataObject;
 					}
@@ -362,7 +363,7 @@ export async function execute(
 				? (extractionType === 'xpath' ? 'JsonXPathExtractionStrategy' : 'JsonCssExtractionStrategy')
 				: 'JsonExtractor';
 
-			const formattedResult = formatExtractionResult(result, jsonData as any, {
+			const formattedResult = formatExtractionResult(result, jsonData as IDataObject | null, {
 				fetchedAt,
 				extractionStrategy: strategyName,
 				includeFullText: options.includeFullText as boolean,
@@ -378,7 +379,7 @@ export async function execute(
 				allResults.push({
 					json: items[i].json,
 					error: new NodeOperationError(this.getNode(), (error as Error).message, {
-						itemIndex: (error as any).itemIndex ?? i,
+						itemIndex: i,
 					}),
 					pairedItem: { item: i },
 				});

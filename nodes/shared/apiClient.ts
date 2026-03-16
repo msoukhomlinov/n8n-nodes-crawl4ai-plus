@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { Crawl4aiApiCredentials, FullCrawlConfig, CrawlResult, CrawlJobRequest, JobStatusResponse, MonitorHealth, LlmJobRequest } from './interfaces';
 
 /**
@@ -52,45 +52,53 @@ export class Crawl4aiClient {
   /**
    * Parse API error response and return actionable error message
    */
-  private parseApiError(error: any, context: string = 'crawl'): string {
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      return `Cannot connect to Crawl4AI API at ${this.apiClient.defaults.baseURL}. Check that the Docker container is running and the URL is correct.`;
+  private parseApiError(error: unknown): string {
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        return `Cannot connect to Crawl4AI API at ${this.apiClient.defaults.baseURL}. Check that the Docker container is running and the URL is correct.`;
+      }
+
+      if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+        return `Request timed out. The crawl operation took longer than the configured timeout. Consider increasing the timeout or simplifying the crawl configuration.`;
+      }
+
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data as Record<string, unknown> | undefined;
+        const detail = data?.detail || data?.error || data?.message;
+
+        if (status === 400) {
+          return `Invalid request (400): ${detail || 'Bad request format'}. Check your configuration parameters.`;
+        }
+        if (status === 401) {
+          return `Authentication failed (401): ${detail || 'Invalid credentials'}. Check your API token or username/password in credentials.`;
+        }
+        if (status === 403) {
+          return `Access forbidden (403): ${detail || 'Insufficient permissions'}. Check your authentication credentials.`;
+        }
+        if (status === 404) {
+          return `Endpoint not found (404): ${detail || 'The requested endpoint does not exist'}. Verify the Crawl4AI API version.`;
+        }
+        if (status === 422) {
+          return `Validation error (422): ${detail || 'Invalid configuration parameters'}. Review your browser_config or crawler_config settings.`;
+        }
+        if (status === 429) {
+          return `Rate limit exceeded (429): ${detail || 'Too many requests'}. Please wait before retrying.`;
+        }
+        if (status >= 500) {
+          return `Server error (${status}): ${detail || 'Crawl4AI API encountered an internal error'}. The server may be overloaded or experiencing issues.`;
+        }
+        return `API error (${status}): ${detail || error.response.statusText || 'Unknown error'}`;
+      }
+
+      return error.message || 'Unknown error occurred';
     }
 
-    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      return `Request timed out. The crawl operation took longer than the configured timeout. Consider increasing the timeout or simplifying the crawl configuration.`;
+    if (error instanceof Error) {
+      return error.message;
     }
 
-    if (error.response) {
-      const status = error.response.status;
-      const data = error.response.data;
-      const detail = data?.detail || data?.error || data?.message;
-
-      if (status === 400) {
-        return `Invalid request (400): ${detail || 'Bad request format'}. Check your configuration parameters.`;
-      }
-      if (status === 401) {
-        return `Authentication failed (401): ${detail || 'Invalid credentials'}. Check your API token or username/password in credentials.`;
-      }
-      if (status === 403) {
-        return `Access forbidden (403): ${detail || 'Insufficient permissions'}. Check your authentication credentials.`;
-      }
-      if (status === 404) {
-        return `Endpoint not found (404): ${detail || 'The requested endpoint does not exist'}. Verify the Crawl4AI API version.`;
-      }
-      if (status === 422) {
-        return `Validation error (422): ${detail || 'Invalid configuration parameters'}. Review your browser_config or crawler_config settings.`;
-      }
-      if (status === 429) {
-        return `Rate limit exceeded (429): ${detail || 'Too many requests'}. Please wait before retrying.`;
-      }
-      if (status >= 500) {
-        return `Server error (${status}): ${detail || 'Crawl4AI API encountered an internal error'}. The server may be overloaded or experiencing issues.`;
-      }
-      return `API error (${status}): ${detail || error.response.statusText || 'Unknown error'}`;
-    }
-
-    return error instanceof Error ? error.message : 'Unknown error occurred';
+    return 'Unknown error occurred';
   }
 
   /**
@@ -120,7 +128,7 @@ export class Crawl4aiClient {
       return {
         url,
         success: false,
-        error_message: this.parseApiError(error, 'crawl'),
+        error_message: this.parseApiError(error),
       };
     }
   }
@@ -149,7 +157,7 @@ export class Crawl4aiClient {
       }));
     } catch (error) {
       if (!axios.isAxiosError(error)) throw error;
-      const errorMessage = this.parseApiError(error, 'crawlMultiple');
+      const errorMessage = this.parseApiError(error);
       return urls.map(url => ({
         url,
         success: false,
@@ -164,7 +172,7 @@ export class Crawl4aiClient {
   async crawlStream(urls: string[], config: FullCrawlConfig): Promise<{ results: CrawlResult[]; parseErrors: number }> {
     const readline = await import('readline');
 
-    let response: any;
+    let response: AxiosResponse;
     try {
       response = await this.apiClient.post('/crawl/stream', {
         urls,
@@ -176,7 +184,7 @@ export class Crawl4aiClient {
       });
     } catch (error) {
       if (!axios.isAxiosError(error)) throw error;
-      throw new Error(this.parseApiError(error, 'crawlStream'));
+      throw new Error(this.parseApiError(error));
     }
 
     return new Promise<{ results: CrawlResult[]; parseErrors: number }>((resolve, reject) => {
@@ -215,7 +223,7 @@ export class Crawl4aiClient {
       }
       return String(taskId);
     } catch (error) {
-      throw new Error(this.parseApiError(error, 'submitCrawlJob'));
+      throw new Error(this.parseApiError(error));
     }
   }
 
@@ -227,7 +235,7 @@ export class Crawl4aiClient {
       const response = await this.apiClient.get(`/job/${taskId}`);
       return response.data as JobStatusResponse;
     } catch (error) {
-      throw new Error(this.parseApiError(error, 'getJobStatus'));
+      throw new Error(this.parseApiError(error));
     }
   }
 
@@ -239,19 +247,19 @@ export class Crawl4aiClient {
       const response = await this.apiClient.get('/monitor/health');
       return response.data as MonitorHealth;
     } catch (error) {
-      throw new Error(this.parseApiError(error, 'getMonitorHealth'));
+      throw new Error(this.parseApiError(error));
     }
   }
 
   /**
    * Get endpoint stats — GET /monitor/endpoints/stats
    */
-  async getEndpointStats(): Promise<Record<string, any>> {
+  async getEndpointStats(): Promise<Record<string, unknown>> {
     try {
       const response = await this.apiClient.get('/monitor/endpoints/stats');
-      return response.data as Record<string, any>;
+      return response.data as Record<string, unknown>;
     } catch (error) {
-      throw new Error(this.parseApiError(error, 'getEndpointStats'));
+      throw new Error(this.parseApiError(error));
     }
   }
 
@@ -267,7 +275,7 @@ export class Crawl4aiClient {
       }
       return String(taskId);
     } catch (error) {
-      throw new Error(this.parseApiError(error, 'submitLlmJob'));
+      throw new Error(this.parseApiError(error));
     }
   }
 
@@ -292,7 +300,7 @@ export class Crawl4aiClient {
       // formatCrawlerConfig returns { type: 'CrawlerRunConfig', params: {...} }.
       // base_url must go inside params, not at the wrapper level.
       const crawlerConfigWithBase = formattedCrawlerConfig?.type === 'CrawlerRunConfig'
-        ? { ...formattedCrawlerConfig, params: { ...formattedCrawlerConfig.params, base_url: baseUrl } }
+        ? { ...formattedCrawlerConfig, params: { ...(formattedCrawlerConfig.params as Record<string, unknown>), base_url: baseUrl } }
         : { ...formattedCrawlerConfig, base_url: baseUrl };
 
       const response = await this.apiClient.post('/crawl', {
@@ -317,7 +325,7 @@ export class Crawl4aiClient {
       return {
         url: baseUrl,
         success: false,
-        error_message: this.parseApiError(error, 'processRawHtml'),
+        error_message: this.parseApiError(error),
       };
     }
   }
@@ -332,8 +340,8 @@ export class Crawl4aiClient {
   /**
    * Format browser config for the API (public for use by job-submission operations)
    */
-  formatBrowserConfig(config: FullCrawlConfig): any {
-    const params: any = {};
+  formatBrowserConfig(config: FullCrawlConfig): Record<string, unknown> {
+    const params: Record<string, unknown> = {};
 
     if (config.browserType) {
       params.browser_type = config.browserType;
@@ -408,8 +416,8 @@ export class Crawl4aiClient {
   /**
    * Format crawler config for the API (public for use by job-submission operations)
    */
-  formatCrawlerConfig(config: FullCrawlConfig): any {
-    const params: any = {};
+  formatCrawlerConfig(config: FullCrawlConfig): Record<string, unknown> {
+    const params: Record<string, unknown> = {};
 
     if (config.cacheMode) {
       params.cache_mode = config.cacheMode;
@@ -492,13 +500,13 @@ export class Crawl4aiClient {
   /**
    * Generate regex pattern using LLM
    */
-  async generateRegexPattern(payload: any): Promise<any> {
+  async generateRegexPattern(payload: Record<string, unknown>): Promise<unknown> {
     try {
       const response = await this.apiClient.post('/generate_pattern', payload);
       return response.data;
-    } catch (error: any) {
-      const errorMessage = this.parseApiError(error, 'generatePattern');
-      if (error.response?.status === 401 || error.response?.status === 403) {
+    } catch (error: unknown) {
+      const errorMessage = this.parseApiError(error);
+      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
         throw new Error(`${errorMessage} Check your LLM credentials in the node settings.`);
       }
       throw new Error(errorMessage);
