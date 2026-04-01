@@ -1,4 +1,4 @@
-import { IExecuteFunctions, IDataObject, NodeOperationError } from 'n8n-workflow';
+import { IExecuteFunctions, ISupplyDataFunctions, IDataObject, NodeOperationError } from 'n8n-workflow';
 import {
   Crawl4aiApiCredentials,
   BrowserConfig,
@@ -16,7 +16,7 @@ import { Crawl4aiClient, createCrawlerInstance } from './apiClient';
  * Get Crawl4AI client instance from context
  */
 export async function getCrawl4aiClient(
-  executeFunctions: IExecuteFunctions,
+  executeFunctions: IExecuteFunctions | ISupplyDataFunctions,
 ): Promise<Crawl4aiClient> {
   // Get credentials
   const credentials = await executeFunctions.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;

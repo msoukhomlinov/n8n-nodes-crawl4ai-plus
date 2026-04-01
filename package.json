@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-crawl4ai-plus",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "description": "n8n nodes for Crawl4AI v0.8.0 web crawler and data extraction with enhanced features",
   "keywords": [
     "n8n",
@@ -37,6 +37,7 @@
     "credentials": ["dist/credentials/Crawl4aiApi.credentials.js"],
     "nodes": [
       "dist/nodes/Crawl4aiPlus/Crawl4aiPlus.node.js",
+      "dist/nodes/Crawl4aiPlus/Crawl4aiPlusAiTools.node.js",
       "dist/nodes/Crawl4aiPlusAdvanced/Crawl4aiPlusAdvanced.node.js"
     ],
     "strict": false
@@ -47,6 +48,6 @@
     "prettier": "^3.1.0",
     "typescript": "~5.5.4"
   },
-  "peerDependencies": { "n8n-workflow": ">=1.60.0" },
-  "dependencies": { "axios": "^1.7.9" }
+  "peerDependencies": { "n8n-workflow": ">=1.60.0", "@langchain/core": ">=0.3.0" },
+  "dependencies": { "axios": "^1.7.9", "zod": "^3.22.0" }
 }

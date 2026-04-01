@@ -19,52 +19,8 @@ import {
 	getBrowserSessionFields,
 	getCrawlSettingsFields,
 } from '../../shared/descriptions';
-
-// --- SEO Field Definitions ---
-
-interface SeoField {
-	name: string;
-	selector: string;
-	type: 'text' | 'attribute' | 'html';
-	attribute?: string;
-}
-
-const SEO_FIELDS: Record<string, SeoField[]> = {
-	basic: [
-		{ name: 'title', selector: 'title', type: 'text' },
-		{ name: 'metaDescription', selector: 'meta[name="description"]', type: 'attribute', attribute: 'content' },
-		{ name: 'metaKeywords', selector: 'meta[name="keywords"]', type: 'attribute', attribute: 'content' },
-		{ name: 'canonicalUrl', selector: 'link[rel="canonical"]', type: 'attribute', attribute: 'href' },
-		{ name: 'author', selector: 'meta[name="author"]', type: 'attribute', attribute: 'content' },
-		{ name: 'viewport', selector: 'meta[name="viewport"]', type: 'attribute', attribute: 'content' },
-	],
-	openGraph: [
-		{ name: 'ogTitle', selector: 'meta[property="og:title"]', type: 'attribute', attribute: 'content' },
-		{ name: 'ogDescription', selector: 'meta[property="og:description"]', type: 'attribute', attribute: 'content' },
-		{ name: 'ogImage', selector: 'meta[property="og:image"]', type: 'attribute', attribute: 'content' },
-		{ name: 'ogType', selector: 'meta[property="og:type"]', type: 'attribute', attribute: 'content' },
-		{ name: 'ogUrl', selector: 'meta[property="og:url"]', type: 'attribute', attribute: 'content' },
-		{ name: 'ogSiteName', selector: 'meta[property="og:site_name"]', type: 'attribute', attribute: 'content' },
-		{ name: 'ogLocale', selector: 'meta[property="og:locale"]', type: 'attribute', attribute: 'content' },
-	],
-	twitter: [
-		{ name: 'twitterCard', selector: 'meta[name="twitter:card"]', type: 'attribute', attribute: 'content' },
-		{ name: 'twitterTitle', selector: 'meta[name="twitter:title"]', type: 'attribute', attribute: 'content' },
-		{ name: 'twitterDescription', selector: 'meta[name="twitter:description"]', type: 'attribute', attribute: 'content' },
-		{ name: 'twitterImage', selector: 'meta[name="twitter:image"]', type: 'attribute', attribute: 'content' },
-		{ name: 'twitterSite', selector: 'meta[name="twitter:site"]', type: 'attribute', attribute: 'content' },
-		{ name: 'twitterCreator', selector: 'meta[name="twitter:creator"]', type: 'attribute', attribute: 'content' },
-	],
-	robots: [
-		{ name: 'robots', selector: 'meta[name="robots"]', type: 'attribute', attribute: 'content' },
-		{ name: 'googlebot', selector: 'meta[name="googlebot"]', type: 'attribute', attribute: 'content' },
-		{ name: 'bingbot', selector: 'meta[name="bingbot"]', type: 'attribute', attribute: 'content' },
-	],
-	language: [
-		{ name: 'htmlLang', selector: 'html', type: 'attribute', attribute: 'lang' },
-		{ name: 'contentLanguage', selector: 'meta[http-equiv="content-language"]', type: 'attribute', attribute: 'content' },
-	],
-};
+import { SEO_FIELDS, extractJsonLd, extractHreflang, extractHead } from '../../shared/seo-helpers';
+import type { SeoField } from '../../shared/seo-helpers';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -276,56 +232,4 @@ export async function execute(
 	return allResults;
 }
 
-// --- Helper Functions ---
-
-function extractJsonLd(html: string): { data: IDataObject[]; parseErrors: number } {
-	const jsonLdData: IDataObject[] = [];
-	let parseErrors = 0;
-	const scriptTagRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-	let match;
-
-	while ((match = scriptTagRegex.exec(html)) !== null) {
-		try {
-			const data = JSON.parse(match[1].trim()) as IDataObject;
-			jsonLdData.push(data);
-		} catch {
-			parseErrors++;
-		}
-	}
-
-	return { data: jsonLdData, parseErrors };
-}
-
-function extractHreflang(html: string): Array<{ lang: string; href: string }> {
-	const hreflangTags: Array<{ lang: string; href: string }> = [];
-
-	// Step 1: Match all <link> tags that contain rel="alternate" (any attribute order)
-	const linkTagPattern = /<link[^>]*rel=["']alternate["'][^>]*\/?>/gi;
-	let tagMatch;
-
-	while ((tagMatch = linkTagPattern.exec(html)) !== null) {
-		const tag = tagMatch[0];
-
-		// Step 2: Extract hreflang and href independently from the matched tag
-		const hreflangMatch = tag.match(/hreflang=["']([^"']+)["']/i);
-		const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
-
-		if (hreflangMatch && hrefMatch) {
-			hreflangTags.push({ lang: hreflangMatch[1], href: hrefMatch[1] });
-		}
-	}
-
-	// Remove duplicates
-	const seen = new Set<string>();
-	return hreflangTags.filter(tag => {
-		const key = `${tag.lang}:${tag.href}`;
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
-}
-
-function extractHead(html: string): string {
-	const match = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-	return match ? match[1] : '';
-}
+// SEO helper functions (extractJsonLd, extractHreflang, extractHead) imported from ../../shared/seo-helpers

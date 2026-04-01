@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.1.0
+
+### Added
+
+- **AI Tools node** (`Crawl4aiPlusAiTools`): New node exposing Crawl4AI as AI tools for n8n AI Agent and MCP Trigger. Supports 7 operations: crawl, askQuestion, extractWithLlm, extractWithCss, extractSeo, discoverLinks, healthCheck.
+- **Shared SEO helpers** (`nodes/shared/seo-helpers.ts`): Extracted `SEO_FIELDS`, `extractJsonLd()`, `extractHreflang()`, `extractHead()` from `seoExtractor.operation.ts` for reuse across nodes.
+
 ## 5.0.1
 
 ### Fixed
