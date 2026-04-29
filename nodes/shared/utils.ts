@@ -625,7 +625,7 @@ export function buildLlmConfig(credentials: Crawl4aiApiCredentials): LlmConfigRe
     params: {
       provider,
       ...(apiKey ? { api_token: apiKey } : {}),
-      ...(baseUrl ? { api_base: baseUrl } : {}),
+      ...(baseUrl ? { base_url: baseUrl } : {}),
     },
   };
 
@@ -697,7 +697,7 @@ export function createLlmExtractionStrategy(
         params: {
           provider: provider || 'openai/gpt-4o',
           ...(apiKey ? { api_token: apiKey } : {}),
-          ...(baseUrl ? { api_base: baseUrl } : {}),
+          ...(baseUrl ? { base_url: baseUrl } : {}),
         }
       },
       schema: { type: 'dict', value: schema },
