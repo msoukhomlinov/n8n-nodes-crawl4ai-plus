@@ -198,3 +198,27 @@ export function parseExtractedJson(result: CrawlResult): IDataObject | null {
     return null;
   }
 }
+
+/**
+ * Check if extracted_content contains only LLM error items.
+ * Crawl4AI LLM extraction returns an array of chunk results; each failed chunk
+ * has { error: true, content: "<error message>" }. When ALL chunks errored,
+ * the extraction failed entirely — return the first error message so callers
+ * can surface it as a NodeOperationError. Returns null when extraction succeeded
+ * or content is not an error array.
+ */
+export function checkLlmExtractionError(result: CrawlResult): string | null {
+  if (!result.extracted_content) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.extracted_content);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const items = parsed as Array<{ error?: boolean; content?: string }>;
+  if (items.every((item) => item.error === true)) {
+    return items[0].content || 'LLM extraction failed';
+  }
+  return null;
+}

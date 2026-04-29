@@ -116,16 +116,19 @@ export function formatQuestionResult(
 	let bestAnswer = '';
 
 	for (const result of results) {
-		const extractedData = parseExtractedJson(result);
-		if (extractedData) {
-			if (extractedData.answer && !bestAnswer) {
-				bestAnswer = extractedData.answer as string;
+		const parsed = parseExtractedJson(result);
+		// LLM extraction returns an array of chunk results; handle both array and object
+		const items = Array.isArray(parsed) ? (parsed as IDataObject[]) : (parsed ? [parsed] : []);
+		for (const item of items) {
+			if (item.error) continue;
+			if (item.answer && !bestAnswer) {
+				bestAnswer = item.answer as string;
 			}
-			if (Array.isArray(extractedData.details)) {
-				allDetails.push(...(extractedData.details as string[]));
+			if (Array.isArray(item.details)) {
+				allDetails.push(...(item.details as string[]));
 			}
-			if (Array.isArray(extractedData.source_quotes)) {
-				allSourceQuotes.push(...(extractedData.source_quotes as string[]));
+			if (Array.isArray(item.source_quotes)) {
+				allSourceQuotes.push(...(item.source_quotes as string[]));
 			}
 		}
 	}

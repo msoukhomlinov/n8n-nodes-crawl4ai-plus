@@ -7,6 +7,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
+import { checkLlmExtractionError } from '../../shared/formatters';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -450,10 +451,18 @@ export async function execute(
 				let parseFailures = 0;
 				for (const result of results) {
 					if (result.extracted_content) {
+						const llmError = checkLlmExtractionError(result);
+						if (llmError) {
+							throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmError}`, { itemIndex: i });
+						}
 						try {
-							const parsed = JSON.parse(result.extracted_content) as IDataObject;
-							if (parsed) {
-								extractedItems.push(parsed);
+							const parsed = JSON.parse(result.extracted_content) as IDataObject | IDataObject[];
+							// LLM extraction returns an array of chunk results; flatten and skip error items
+							const items = Array.isArray(parsed) ? parsed : [parsed];
+							for (const item of items) {
+								if (item && !item.error) {
+									extractedItems.push(item);
+								}
 							}
 						} catch {
 							parseFailures++;

@@ -7,6 +7,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, FullCrawlConfig } from '../../shared/interfaces';
+import { checkLlmExtractionError } from '../../shared/formatters';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -239,6 +240,14 @@ export async function execute(
 
 			// Collect all pages with extracted content
 			const pagesWithContent = results.filter((r) => r.extracted_content);
+
+			// Surface LLM errors as NodeOperationError rather than passing raw error JSON as the answer
+			for (const result of pagesWithContent) {
+				const llmError = checkLlmExtractionError(result);
+				if (llmError) {
+					throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmError}`, { itemIndex: i });
+				}
+			}
 
 			if (results.length === 0) {
 				allResults.push({
