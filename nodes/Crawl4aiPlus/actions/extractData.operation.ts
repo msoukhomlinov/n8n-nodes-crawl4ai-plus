@@ -21,7 +21,6 @@ import {
 	resolveRequestHeaders,
 } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -211,6 +210,109 @@ function selectLocationRelevantPages(pages: CrawlResult[]): CrawlResult[] {
     const withScore = scored.filter((x) => x.s > 0);
     // Take up to 8 location-relevant pages; if none scored, take top 3 by score
     return (withScore.length > 0 ? withScore.slice(0, 8) : scored.slice(0, 3)).map((x) => x.r);
+}
+
+const JSON_LD_LOCATION_TYPES = new Set([
+    'AutoDealer', 'AutomotiveBusiness', 'ChildCare', 'Corporation',
+    'DryCleaningOrLaundry', 'EducationalOrganization', 'EmergencyService',
+    'EmploymentAgency', 'EntertainmentBusiness', 'FinancialService',
+    'FoodEstablishment', 'GovernmentOffice', 'HealthAndBeautyBusiness',
+    'HomeAndConstructionBusiness', 'LegalService', 'LocalBusiness',
+    'LodgingBusiness', 'MedicalBusiness', 'Organization', 'Place',
+    'ProfessionalService', 'RealEstateAgent', 'RecyclingCenter',
+    'SelfStorage', 'ShoppingCenter', 'SportsActivityLocation', 'Store',
+    'TouristInformationCenter', 'TravelAgency',
+]);
+
+function mapJsonLdPostalAddress(
+    orgName: string | undefined,
+    addr: IDataObject,
+    telephone: string | undefined,
+    includePhones: boolean,
+): IDataObject | null {
+    const street = String(addr.streetAddress || '').trim();
+    const city = String(addr.addressLocality || '').trim();
+    const country = String(addr.addressCountry || '').trim();
+    // Require at least a street or a city — pure country-only entries are noise
+    if (!street && !city) return null;
+    const state = String(addr.addressRegion || '').trim();
+    const postcode = String(addr.postalCode || '').trim();
+    const fullAddress = city
+        ? (street ? `${street}, ${city}${state ? ` ${state}` : ''}${postcode ? ` ${postcode}` : ''}` : `${city}${state ? `, ${state}` : ''}${postcode ? ` ${postcode}` : ''}`)
+        : [street, state, postcode].filter(Boolean).join(', ');
+    const loc: IDataObject = {
+        name: orgName || (city ? `${city} Location` : 'Location'),
+        address: fullAddress,
+        city,
+        country,
+        confidence: 'high',
+        source: 'json-ld',
+    };
+    if (state) loc.state = state;
+    if (postcode) loc.postcode = postcode;
+    if (includePhones && telephone) loc.phone = telephone;
+    return loc;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function extractLocationsFromJsonLd(html: string, includePhones: boolean): IDataObject[] {
+    if (!html) return [];
+    const { data } = extractJsonLd(html);
+    const locations: IDataObject[] = [];
+
+    function processNode(node: IDataObject): void {
+        // Walk @graph arrays recursively
+        if (Array.isArray(node['@graph'])) {
+            for (const child of node['@graph'] as IDataObject[]) {
+                processNode(child);
+            }
+        }
+
+        const rawType = node['@type'];
+        const types: string[] = Array.isArray(rawType)
+            ? (rawType as string[])
+            : rawType ? [String(rawType)] : [];
+
+        const isLocationNode = types.some(
+            (t) => JSON_LD_LOCATION_TYPES.has(t) || t.endsWith('Business') || t.endsWith('Store'),
+        );
+        if (!isLocationNode) return;
+
+        const orgName = node.name ? String(node.name) : undefined;
+        const telephone = node.telephone ? String(node.telephone) : undefined;
+        const rawAddress = node.address;
+        if (!rawAddress) return;
+
+        // address can be a single PostalAddress object or an array (multi-location)
+        const addrs = Array.isArray(rawAddress)
+            ? (rawAddress as IDataObject[])
+            : [rawAddress as IDataObject];
+
+        for (const addr of addrs) {
+            if (typeof addr !== 'object' || !addr) continue;
+            // Accept PostalAddress nodes; also accept plain objects with streetAddress
+            const addrTypes = Array.isArray(addr['@type'])
+                ? (addr['@type'] as string[])
+                : addr['@type'] ? [String(addr['@type'])] : [];
+            if (addrTypes.length > 0 && !addrTypes.includes('PostalAddress')) continue;
+            const loc = mapJsonLdPostalAddress(orgName, addr, telephone, includePhones);
+            if (loc) locations.push(loc);
+        }
+
+        // Walk hasPOS (point-of-sale) and location arrays for chain stores
+        if (Array.isArray(node.hasPOS)) {
+            for (const pos of node.hasPOS as IDataObject[]) processNode(pos);
+        }
+        if (Array.isArray(node.location)) {
+            for (const loc of node.location as IDataObject[]) processNode(loc);
+        }
+        if (Array.isArray(node.containsPlace)) {
+            for (const place of node.containsPlace as IDataObject[]) processNode(place);
+        }
+    }
+
+    for (const item of data) processNode(item);
+    return locations;
 }
 
 function buildLocationsSchema(includePhones: boolean): IDataObject {
