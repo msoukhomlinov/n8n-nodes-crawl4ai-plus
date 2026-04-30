@@ -202,7 +202,6 @@ function scorePageForLocations(result: CrawlResult): number {
     return score;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function selectLocationRelevantPages(pages: CrawlResult[]): CrawlResult[] {
     if (pages.length <= 2) return pages;
     const scored = pages.map((r) => ({ r, s: scorePageForLocations(r) }));
@@ -254,7 +253,6 @@ function mapJsonLdPostalAddress(
     return loc;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function extractLocationsFromJsonLd(html: string, includePhones: boolean): IDataObject[] {
     if (!html) return [];
     const { data } = extractJsonLd(html);
@@ -334,7 +332,6 @@ const ADDRESS_ABBREVIATIONS: Array<[RegExp, string]> = [
     [/\bgrv\.?\b/gi, 'grove'],
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function canonicalizeAddress(address: string, postcode?: string): string {
     let s = address.toLowerCase();
     for (const [pattern, replacement] of ADDRESS_ABBREVIATIONS) {
@@ -421,6 +418,113 @@ Input: "Visit our Sydney showroom at 42 George Street, Sydney. Open weekdays 9â€
 Output: {"locations":[{"name":"Sydney Showroom","address":"42 George Street, Sydney","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney."${phoneFewShot ? phoneFewShot.replace(/"\+61.*?"/, '"(not stated)"') : ''}}]}`;
 }
 
+function mergeLocationsIntoMap(
+	locations: IDataObject[],
+	locationMap: Map<string, IDataObject>,
+): void {
+	for (const loc of locations) {
+		if (!loc || (loc as IDataObject & { error?: unknown }).error) continue;
+		const key = canonicalizeAddress(
+			String(loc.address || ''),
+			loc.postcode as string | undefined,
+		);
+		if (!key) continue;
+		if (!locationMap.has(key)) {
+			locationMap.set(key, { ...loc });
+		} else {
+			const existing = locationMap.get(key)!;
+			for (const [k, value] of Object.entries(loc)) {
+				if (value !== null && value !== undefined && value !== '' && !existing[k]) {
+					existing[k] = value;
+				}
+			}
+			const rank = { high: 3, medium: 2, low: 1 };
+			const existingRank = rank[existing.confidence as keyof typeof rank] ?? 0;
+			const newRank = rank[loc.confidence as keyof typeof rank] ?? 0;
+			if (newRank > existingRank) existing.confidence = loc.confidence;
+		}
+	}
+}
+
+async function extractLocationsFromPage(
+	result: CrawlResult,
+	includePhones: boolean,
+	provider: string,
+	apiKey: string,
+	baseUrl: string | undefined,
+	crawler: Crawl4aiClient,
+): Promise<{ jsonLdLocations: IDataObject[]; llmLocations: IDataObject[]; error?: string }> {
+	const jsonLdLocations = extractLocationsFromJsonLd(result.html || '', includePhones);
+
+	const text =
+		(typeof result.markdown === 'object' && result.markdown !== null
+			? result.markdown.raw_markdown || result.markdown.fit_markdown
+			: typeof result.markdown === 'string'
+				? result.markdown
+				: '') || '';
+
+	if (!text.trim()) return { jsonLdLocations, llmLocations: [] };
+
+	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			buildLocationsSchema(includePhones),
+			buildLocationsInstruction(includePhones, result.url),
+			provider,
+			apiKey,
+			baseUrl,
+		),
+	};
+
+	let llmResult: CrawlResult;
+	try {
+		llmResult = await crawler.crawlUrl(rawUrl, config);
+	} catch (err) {
+		return { jsonLdLocations, llmLocations: [], error: (err as Error).message };
+	}
+
+	if (!llmResult.success) {
+		return { jsonLdLocations, llmLocations: [], error: llmResult.error_message || 'crawl request failed' };
+	}
+	const llmErr = checkLlmExtractionError(llmResult);
+	if (llmErr) return { jsonLdLocations, llmLocations: [], error: llmErr };
+	if (!llmResult.extracted_content) return { jsonLdLocations, llmLocations: [] };
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(llmResult.extracted_content);
+	} catch {
+		return { jsonLdLocations, llmLocations: [], error: 'failed to parse extracted_content as JSON' };
+	}
+
+	const chunks = Array.isArray(parsed) ? (parsed as IDataObject[]) : [(parsed as IDataObject)];
+	const textLower = text.toLowerCase().replace(/\s+/g, ' ');
+	const llmLocations: IDataObject[] = [];
+
+	for (const chunk of chunks) {
+		if (chunk.error) continue;
+		const rawLocs = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
+		for (const loc of rawLocs) {
+			const snippet = String(loc.sourceSnippet || '').trim();
+			if (snippet) {
+				const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
+				let found = textLower.includes(normSnippet);
+				if (!found && normSnippet.length > 30) {
+					found = textLower.includes(normSnippet.slice(0, 30));
+				}
+				if (!found) continue;
+			}
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { sourceSnippet: _ss, ...cleanLoc } = loc as Record<string, unknown>;
+			llmLocations.push({ ...(cleanLoc as IDataObject), source: 'llm' });
+		}
+	}
+
+	return { jsonLdLocations, llmLocations };
+}
+
 async function runLocationsExtraction(
 	this: IExecuteFunctions,
 	results: CrawlResult[],
@@ -431,86 +535,41 @@ async function runLocationsExtraction(
 	itemIndex: number,
 ): Promise<IDataObject[]> {
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
-
-	// Concatenate all pages into one payload so a single LLM pass sees all content
-	const textParts: string[] = [];
-	for (const result of results) {
-		let text = '';
-		if (typeof result.markdown === 'object' && result.markdown !== null) {
-			text = result.markdown.raw_markdown || '';
-		} else if (typeof result.markdown === 'string') {
-			text = result.markdown;
-		}
-		if (text) textParts.push(text);
-	}
-	if (textParts.length === 0) return [];
-
-	const combinedText = textParts.join('\n\n---\n\n');
-	const escaped = combinedText
-		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	const rawUrl = `raw:<pre>${escaped}</pre>`;
-
-	const config: FullCrawlConfig = {
-		extractionStrategy: createLlmExtractionStrategy(
-			buildLocationsSchema(includePhones),
-			buildLocationsInstruction(includePhones),
-			provider,
-			apiKey,
-			baseUrl,
-		),
-	};
-
-	const llmResult = await crawler.crawlUrl(rawUrl, config);
-	if (!llmResult.success) {
-		throw new NodeOperationError(
-			this.getNode(),
-			`Locations extraction failed: ${llmResult.error_message || 'crawl request failed'}`,
-			{ itemIndex },
-		);
-	}
-
-	const llmError = checkLlmExtractionError(llmResult);
-	if (llmError) {
-		throw new NodeOperationError(
-			this.getNode(),
-			`Locations extraction failed: ${llmError}`,
-			{ itemIndex },
-		);
-	}
-
-	if (!llmResult.extracted_content) return [];
-
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(llmResult.extracted_content);
-	} catch {
-		return [];
-	}
-	const chunks = Array.isArray(parsed)
-		? (parsed as IDataObject[])
-		: [(parsed as IDataObject)];
-
 	const locationMap = new Map<string, IDataObject>();
+	const errors: string[] = [];
 
-	for (const chunk of chunks) {
-		if (chunk.error) continue;
-		const locations = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
-		for (const loc of locations) {
-			const normalizedAddr = String(loc.address || '').toLowerCase().replace(/\s+/g, ' ').trim();
-			if (!normalizedAddr) continue;
-			if (!locationMap.has(normalizedAddr)) {
-				locationMap.set(normalizedAddr, { ...loc });
-			} else {
-				// Merge non-empty fields from later chunks to avoid data loss when the same
-				// location appears across multiple chunks with varying detail levels
-				const existing = locationMap.get(normalizedAddr)!;
-				for (const [key, value] of Object.entries(loc)) {
-					if (value !== null && value !== undefined && value !== '' && !existing[key]) {
-						existing[key] = value;
-					}
-				}
-			}
+	const candidates = selectLocationRelevantPages(results);
+	const pagesToProcess = candidates.length > 0 ? candidates : results.slice(0, 8);
+
+	for (const result of pagesToProcess) {
+		const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
+			result, includePhones, provider, apiKey, baseUrl, crawler,
+		);
+		if (error) errors.push(error);
+		mergeLocationsIntoMap(jsonLdLocations, locationMap);
+		mergeLocationsIntoMap(llmLocations, locationMap);
+	}
+
+	if (locationMap.size === 0 && pagesToProcess.length < results.length) {
+		const remaining = results
+			.filter((r) => !pagesToProcess.includes(r))
+			.slice(0, 5);
+		for (const result of remaining) {
+			const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
+				result, includePhones, provider, apiKey, baseUrl, crawler,
+			);
+			if (error) errors.push(error);
+			mergeLocationsIntoMap(jsonLdLocations, locationMap);
+			mergeLocationsIntoMap(llmLocations, locationMap);
 		}
+	}
+
+	if (locationMap.size === 0 && errors.length > 0) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`Locations extraction failed on all pages: ${errors[0]}`,
+			{ itemIndex },
+		);
 	}
 
 	return [...locationMap.values()];
