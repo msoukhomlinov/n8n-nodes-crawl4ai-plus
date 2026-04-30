@@ -617,9 +617,16 @@ export function buildLlmConfig(
     provider = `ollama/${model}`;
     baseUrl = credentials.ollamaUrl || 'http://localhost:11434';
   } else if (credentials.llmProvider === 'other') {
-    // For LiteLLM/custom: model IDs from /models are full routing strings
-    // (e.g. "azure_ai/gpt-oss-120b"). Use override as-is when provided.
-    provider = modelOverride || credentials.customProvider || 'custom/model';
+    if (modelOverride) {
+      if (modelOverride.includes('/')) {
+        provider = modelOverride;
+      } else {
+        const prefix = (credentials.customProvider || '').split('/')[0];
+        provider = prefix ? `${prefix}/${modelOverride}` : modelOverride;
+      }
+    } else {
+      provider = credentials.customProvider || 'custom/model';
+    }
     apiKey = credentials.customApiKey || '';
     baseUrl = credentials.customBaseUrl || undefined;
   }
