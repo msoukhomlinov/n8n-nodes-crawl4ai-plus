@@ -44,6 +44,22 @@ export function getCrawlSettingsFields(operations: string[]): INodeProperties[] 
 					default: false,
 					description: 'Whether to simulate realistic user behavior (mouse movements, scrolling)',
 				},
+				// --- Avoid Ads ---
+				{
+					displayName: 'Avoid Ads',
+					name: 'avoidAds',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to block ad-related network requests during crawl (reduces noise, speeds up page load)',
+				},
+				// --- Avoid CSS ---
+				{
+					displayName: 'Avoid CSS',
+					name: 'avoidCss',
+					type: 'boolean',
+					default: false,
+					description: 'Whether to block CSS resource requests during crawl (faster for text-only extraction)',
+				},
 				// --- Cache Mode ---
 				{
 					displayName: 'Cache Mode',

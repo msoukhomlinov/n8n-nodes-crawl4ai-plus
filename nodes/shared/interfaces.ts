@@ -159,6 +159,10 @@ export interface CrawlerRunConfig {
 
 	// 0.8.0: Fast URL discovery pre-fetch mode
 	prefetch?: boolean;
+
+	// 0.8.5: Resource filtering
+	avoidAds?: boolean;
+	avoidCss?: boolean;
 }
 
 /**
