@@ -617,15 +617,18 @@ export function buildLlmConfig(
     provider = `ollama/${model}`;
     baseUrl = credentials.ollamaUrl || 'http://localhost:11434';
   } else if (credentials.llmProvider === 'other') {
+    const hasBaseUrl = !!(credentials.customBaseUrl);
+    // For OpenAI-compatible proxies (LiteLLM, LM Studio, etc.) with a base_url,
+    // LiteLLM SDK requires "openai/model-name" format. Auto-prefix when no slash present.
+    const ensurePrefix = (model: string) => {
+      if (model.includes('/')) return model;
+      return hasBaseUrl ? `openai/${model}` : model;
+    };
     if (modelOverride) {
-      if (modelOverride.includes('/')) {
-        provider = modelOverride;
-      } else {
-        const prefix = (credentials.customProvider || '').split('/')[0];
-        provider = prefix ? `${prefix}/${modelOverride}` : modelOverride;
-      }
+      provider = ensurePrefix(modelOverride);
     } else {
-      provider = credentials.customProvider || 'custom/model';
+      provider = ensurePrefix(credentials.customProvider || '');
+      if (!provider) provider = 'openai/';
     }
     apiKey = credentials.customApiKey || '';
     baseUrl = credentials.customBaseUrl || undefined;

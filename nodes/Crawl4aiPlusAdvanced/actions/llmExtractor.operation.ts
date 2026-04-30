@@ -17,7 +17,7 @@ import {
 	cleanExtractedData,
 	isValidUrl,
 } from '../../shared/utils';
-import { formatExtractionResult, parseExtractedJson } from '../../shared/formatters';
+import { checkLlmExtractionError, formatExtractionResult, parseExtractedJson } from '../../shared/formatters';
 import {
 	urlField,
 	getBrowserSessionFields,
@@ -512,6 +512,11 @@ export async function execute(
 
 			const fetchedAt = new Date().toISOString();
 			const result = await crawler.crawlUrl(url, config);
+
+			const llmError = checkLlmExtractionError(result);
+			if (llmError) {
+				throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmError}`, { itemIndex: i });
+			}
 
 			let extractedData = parseExtractedJson(result);
 
