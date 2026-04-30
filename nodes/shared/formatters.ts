@@ -216,9 +216,9 @@ export function checkLlmExtractionError(result: CrawlResult): string | null {
     return null;
   }
   if (!Array.isArray(parsed) || parsed.length === 0) return null;
-  const items = parsed as Array<{ error?: boolean; content?: string }>;
-  if (items.every((item) => item.error === true)) {
-    return items[0].content || 'LLM extraction failed';
+  const items = parsed as Array<{ error?: boolean; content?: unknown }>;
+  if (items.every((item) => item.error === true && typeof item.content === 'string')) {
+    return (items[0].content as string) || 'LLM extraction failed';
   }
   return null;
 }
