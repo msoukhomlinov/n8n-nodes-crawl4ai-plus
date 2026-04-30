@@ -7,6 +7,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, FullCrawlConfig } from '../../shared/interfaces';
+import { checkLlmExtractionError } from '../../shared/formatters';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -250,6 +251,14 @@ export async function execute(
 
 			// Collect all pages with extracted content
 			const pagesWithContent = results.filter((r) => r.extracted_content);
+
+			// Only fail when every page with extracted content has LLM errors (no usable data at all)
+			const llmErrors = pagesWithContent
+				.map((r) => checkLlmExtractionError(r))
+				.filter((e): e is string => e !== null);
+			if (llmErrors.length > 0 && llmErrors.length === pagesWithContent.length) {
+				throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmErrors[0]}`, { itemIndex: i });
+			}
 
 			if (results.length === 0) {
 				allResults.push({

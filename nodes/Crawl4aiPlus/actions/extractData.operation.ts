@@ -7,6 +7,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
+import { checkLlmExtractionError } from '../../shared/formatters';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -464,17 +465,34 @@ export async function execute(
 				// customLlm — parse extracted JSON from each result and merge
 				const extractedItems: IDataObject[] = [];
 				let parseFailures = 0;
+				const llmPageErrors: string[] = [];
+				let pagesWithContent = 0;
 				for (const result of results) {
 					if (result.extracted_content) {
-						try {
-							const parsed = JSON.parse(result.extracted_content) as IDataObject;
-							if (parsed) {
-								extractedItems.push(parsed);
+						pagesWithContent++;
+						const llmError = checkLlmExtractionError(result);
+						if (llmError) {
+							llmPageErrors.push(llmError);
+						} else {
+							try {
+								const parsed = JSON.parse(result.extracted_content) as IDataObject | IDataObject[];
+								// LLM extraction returns an array of chunk results; flatten and skip error envelopes
+								const items = Array.isArray(parsed) ? parsed : [parsed];
+								for (const item of items) {
+									// Skip Crawl4AI error envelopes (error:true + string content + tags array)
+									if (item && !(item.error === true && typeof item.content === 'string' && Array.isArray(item.tags))) {
+										extractedItems.push(item);
+									}
+								}
+							} catch {
+								parseFailures++;
 							}
-						} catch {
-							parseFailures++;
 						}
 					}
+				}
+				// Only throw when every page with content returned LLM errors (no usable data at all)
+				if (llmPageErrors.length > 0 && llmPageErrors.length === pagesWithContent) {
+					throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmPageErrors[0]}`, { itemIndex: i });
 				}
 
 				if (extractedItems.length > 1) {
