@@ -396,7 +396,7 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 
 function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): string {
 	const phoneStep = includePhones
-		? '\n4. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
+		? '\n5. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
 		: '';
 	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
 	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
