@@ -589,37 +589,48 @@ export interface LlmConfigResult {
  * Build LLM configuration from credentials
  * Centralises the duplicated LLM config building logic
  * @param credentials Crawl4AI credentials object
+ * @param modelOverride Optional override for the model to use
  * @returns LLM config result with provider, apiKey, and formatted llmConfig
  */
-export function buildLlmConfig(credentials: Crawl4aiApiCredentials): LlmConfigResult {
+export function buildLlmConfig(
+  credentials: Crawl4aiApiCredentials,
+  modelOverride?: string,
+): LlmConfigResult {
   let provider = 'openai/gpt-4o';
   let apiKey = '';
   let baseUrl: string | undefined;
 
   if (credentials.llmProvider === 'openai') {
-    const model = credentials.llmModel || 'gpt-4o';
+    const model = modelOverride || credentials.llmModel || 'gpt-4o';
     provider = `openai/${model}`;
     apiKey = credentials.apiKey || '';
   } else if (credentials.llmProvider === 'anthropic') {
-    const model = credentials.llmModel || 'claude-3-haiku-20240307';
+    const model = modelOverride || credentials.llmModel || 'claude-3-haiku-20240307';
     provider = `anthropic/${model}`;
     apiKey = credentials.apiKey || '';
   } else if (credentials.llmProvider === 'groq') {
-    const model = credentials.llmModel || 'llama3-70b-8192';
+    const model = modelOverride || credentials.llmModel || 'llama3-70b-8192';
     provider = `groq/${model}`;
     apiKey = credentials.apiKey || '';
   } else if (credentials.llmProvider === 'ollama') {
-    const model = credentials.ollamaModel || 'llama3';
+    const model = modelOverride || credentials.ollamaModel || 'llama3';
     provider = `ollama/${model}`;
     baseUrl = credentials.ollamaUrl || 'http://localhost:11434';
-    // Ollama doesn't require API key
   } else if (credentials.llmProvider === 'other') {
-    provider = credentials.customProvider || 'custom/model';
+    if (modelOverride) {
+      if (modelOverride.includes('/')) {
+        provider = modelOverride;
+      } else {
+        const prefix = (credentials.customProvider || '').split('/')[0];
+        provider = prefix ? `${prefix}/${modelOverride}` : modelOverride;
+      }
+    } else {
+      provider = credentials.customProvider || 'custom/model';
+    }
     apiKey = credentials.customApiKey || '';
     baseUrl = credentials.customBaseUrl || undefined;
   }
 
-  // Build the llmConfig object for API requests
   const llmConfig: LlmConfigResult['llmConfig'] = {
     type: 'LLMConfig',
     params: {
@@ -629,12 +640,7 @@ export function buildLlmConfig(credentials: Crawl4aiApiCredentials): LlmConfigRe
     },
   };
 
-  return {
-    provider,
-    apiKey,
-    baseUrl,
-    llmConfig,
-  };
+  return { provider, apiKey, baseUrl, llmConfig };
 }
 
 /**

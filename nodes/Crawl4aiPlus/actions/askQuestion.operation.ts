@@ -159,6 +159,16 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Model Name or ID',
+				name: 'llmModel',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getLlmModels',
+				},
+				default: '',
+				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+			},
+			{
 				displayName: 'Wait For',
 				name: 'waitFor',
 				type: 'string',
@@ -204,7 +214,8 @@ export async function execute(
 			}
 
 			// Build LLM config and extraction strategy
-			const { provider, apiKey, baseUrl } = buildLlmConfig(credentials);
+			const modelOverride = options.llmModel as string | undefined;
+			const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
 			const instruction = `${SYSTEM_PROMPT}\n\nQuestion: ${question}`;
 
 			const extractionStrategy = createLlmExtractionStrategy(

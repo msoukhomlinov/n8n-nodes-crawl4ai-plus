@@ -6,6 +6,7 @@ import {
 	NodeConnectionTypes,
 } from 'n8n-workflow';
 
+import { getLlmModels } from '../shared/loadOptions';
 import { router } from './actions/router';
 import { operationDescriptions } from './actions/operations';
 
@@ -66,6 +67,12 @@ export class Crawl4aiPlus implements INodeType {
 			},
 			...operationDescriptions,
 		],
+	};
+
+	methods = {
+		loadOptions: {
+			getLlmModels,
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {

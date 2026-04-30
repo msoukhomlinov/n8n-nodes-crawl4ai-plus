@@ -212,6 +212,16 @@ export const description: INodeProperties[] = [
 				description: 'Maximum number of tokens for the LLM response',
 			},
 			{
+				displayName: 'Model Name or ID',
+				name: 'llmModel',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getLlmModels',
+				},
+				default: '',
+				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+			},
+			{
 				displayName: 'Temperature',
 				name: 'temperature',
 				type: 'number',
@@ -486,7 +496,8 @@ export async function execute(
 			}
 
 			// Build LLM config and extraction strategy
-			const { provider, apiKey, baseUrl } = buildLlmConfig(credentials);
+			const modelOverride = llmOptions.llmModel as string | undefined;
+			const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
 			const inputFormat = llmOptions.inputFormat as 'markdown' | 'html' | 'fit_markdown' | undefined;
 			const maxTokens = llmOptions.maxTokens !== undefined ? Number(llmOptions.maxTokens) : undefined;
 			const temperature = llmOptions.temperature !== undefined && llmOptions.temperature !== '' ? Number(llmOptions.temperature) : undefined;
