@@ -150,6 +150,13 @@ async function runLlmContactValidation(
 
 	try {
 		const result = await crawler.crawlUrl(rawUrl, config);
+		if (!result.success) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`LLM validation failed: ${result.error_message || 'crawl request failed'}`,
+				{ itemIndex },
+			);
+		}
 		const llmError = checkLlmExtractionError(result);
 		if (llmError) {
 			throw new NodeOperationError(
