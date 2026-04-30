@@ -21,6 +21,8 @@ import {
 	resolveRequestHeaders,
 } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
@@ -31,6 +33,21 @@ const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 	percentages: [/\d+(?:\.\d+)?%/g],
 	numbers: [/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g],
 };
+
+const LOCATION_URL_KEYWORDS = [
+    'about', 'about-us', 'branches', 'campus', 'contact', 'contact-us',
+    'dealers', 'directions', 'distributors', 'find-a-store', 'find-us',
+    'get-in-touch', 'global', 'imprint', 'impressum', 'locations',
+    'offices', 'our-company', 'reach-us', 'regions', 'retailers',
+    'stockists', 'store-finder', 'stores', 'visit-us', 'where-to-buy',
+    'where-to-find', 'worldwide',
+];
+
+const LOCATION_CONTENT_KEYWORDS = [
+    ' avenue', ' floor ', ' level ', ' road', ' street', ' suite ',
+    'branch', 'campus', 'factory', 'head office', 'headquarter',
+    'postcode', 'showroom', 'warehouse', 'zip code',
+];
 
 function extractContactInfo(
 	results: CrawlResult[],
@@ -164,6 +181,36 @@ async function runLlmContactValidation(
 		if (err instanceof NodeOperationError) throw err;
 		return contacts;
 	}
+}
+
+function scorePageForLocations(result: CrawlResult): number {
+    let score = 0;
+    const urlLower = result.url.toLowerCase();
+    for (const kw of LOCATION_URL_KEYWORDS) {
+        if (urlLower.includes(kw)) score += 2;
+    }
+    const text =
+        (typeof result.markdown === 'object' && result.markdown !== null
+            ? result.markdown.raw_markdown
+            : typeof result.markdown === 'string'
+                ? result.markdown
+                : '') || '';
+    const textLower = text.toLowerCase();
+    for (const kw of LOCATION_CONTENT_KEYWORDS) {
+        const count = textLower.split(kw).length - 1;
+        score += Math.min(count, 3);
+    }
+    return score;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function selectLocationRelevantPages(pages: CrawlResult[]): CrawlResult[] {
+    if (pages.length <= 2) return pages;
+    const scored = pages.map((r) => ({ r, s: scorePageForLocations(r) }));
+    scored.sort((a, b) => b.s - a.s);
+    const withScore = scored.filter((x) => x.s > 0);
+    // Take up to 8 location-relevant pages; if none scored, take top 3 by score
+    return (withScore.length > 0 ? withScore.slice(0, 8) : scored.slice(0, 3)).map((x) => x.r);
 }
 
 function buildLocationsSchema(includePhones: boolean): IDataObject {
