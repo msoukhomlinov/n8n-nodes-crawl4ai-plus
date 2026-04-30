@@ -707,6 +707,15 @@ export async function execute(
 				config.waitFor = String(options.waitFor);
 			}
 
+			// Pre-flight LLM credential checks — before any crawl is initiated
+			if (extractionType === 'locationsAddresses') {
+				try {
+					validateLlmCredentials(credentials, 'Locations extraction');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				}
+			}
+
 			// For customLlm, build LLM extraction strategy
 			if (extractionType === 'customLlm') {
 				try {
@@ -810,11 +819,6 @@ export async function execute(
 			} else if (extractionType === 'financialData') {
 				data = extractWithRegex(results, FINANCIAL_PATTERNS);
 			} else if (extractionType === 'locationsAddresses') {
-				try {
-					validateLlmCredentials(credentials, 'Locations extraction');
-				} catch (err) {
-					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-				}
 				const includePhones = options.includePhones === true;
 				const modelOverride = options.llmModel as string | undefined;
 				data = await runLocationsExtraction.call(
