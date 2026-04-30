@@ -48,6 +48,8 @@ const LOCATION_CONTENT_KEYWORDS = [
     'postcode', 'showroom', 'warehouse', 'zip code',
 ];
 
+const LOCATION_CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
 function extractContactInfo(
 	results: CrawlResult[],
 	defaultCountry: string,
@@ -438,9 +440,8 @@ function mergeLocationsIntoMap(
 					existing[k] = value;
 				}
 			}
-			const rank = { high: 3, medium: 2, low: 1 };
-			const existingRank = rank[existing.confidence as keyof typeof rank] ?? 0;
-			const newRank = rank[loc.confidence as keyof typeof rank] ?? 0;
+			const existingRank = LOCATION_CONFIDENCE_RANK[existing.confidence as string] ?? 0;
+			const newRank = LOCATION_CONFIDENCE_RANK[loc.confidence as string] ?? 0;
 			if (newRank > existingRank) existing.confidence = loc.confidence;
 		}
 	}
