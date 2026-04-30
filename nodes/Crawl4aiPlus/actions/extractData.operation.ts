@@ -453,6 +453,92 @@ function mergeLocationsIntoMap(
 	}
 }
 
+function extractStreetNum(loc: IDataObject): string {
+	let s = String(loc.address || '').toLowerCase().replace(/\s+/g, ' ').trim();
+	// Strip "Level N/" slash-as-separator pattern: "Level 2/343" -> "343"
+	s = s.replace(/^(level|floor|fl?)\s*\d+\s*\/\s*/i, '');
+	// Strip comma-delimited unit designations: "Level 2, " or "Suites 214/215, "
+	const prefixRe = /^(level|floor|fl?|suite|suites?|unit|apt|apartment|flat|ste|room)\s+[^,]+,\s*/i;
+	for (let j = 0; j < 3; j++) {
+		const next = s.replace(prefixRe, '').trimStart();
+		if (next === s) break;
+		s = next;
+	}
+	const m = s.match(/(\d{1,5})/);
+	return m ? m[1] : '';
+}
+
+function extractPostcodeFromAddress(address: string): string {
+	const re = /(\d{4,6})/g;
+	let last = '';
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(address)) !== null) { last = m[1]; }
+	return last;
+}
+
+function computeLocationKeys(loc: IDataObject): string[] {
+	const keys: string[] = [];
+	const streetNum = extractStreetNum(loc);
+	const postcode = String(loc.postcode || '').trim() || extractPostcodeFromAddress(String(loc.address || ''));
+	const city = String(loc.city || '').toLowerCase().replace(/\s+/g, ' ').trim();
+	if (postcode && streetNum) keys.push(`pc:${postcode}:${streetNum}`);
+	if (city && streetNum) keys.push(`ci:${city}:${streetNum}`);
+	if (keys.length === 0) {
+		keys.push(`ca:${canonicalizeAddress(String(loc.address || ''), loc.postcode as string | undefined)}`);
+	}
+	return keys;
+}
+
+function selectBestLocation(group: IDataObject[]): IDataObject {
+	if (group.length === 1) return group[0];
+	const sorted = [...group].sort((a, b) => {
+		const ra = LOCATION_CONFIDENCE_RANK[String(a.confidence || 'low')] ?? 0;
+		const rb = LOCATION_CONFIDENCE_RANK[String(b.confidence || 'low')] ?? 0;
+		if (rb !== ra) return rb - ra;
+		const sa = a.source === 'json-ld' ? 1 : 0;
+		const sb = b.source === 'json-ld' ? 1 : 0;
+		if (sb !== sa) return sb - sa;
+		return String(b.address || '').length - String(a.address || '').length;
+	});
+	const best = { ...sorted[0] };
+	if (!best.phone) {
+		for (const candidate of sorted) {
+			if (candidate.phone) { best.phone = candidate.phone; break; }
+		}
+	}
+	return best;
+}
+
+function deduplicateLocations(locations: IDataObject[]): IDataObject[] {
+	if (locations.length <= 1) return locations;
+	const parent = locations.map((_, i) => i);
+	function find(i: number): number {
+		if (parent[i] !== i) parent[i] = find(parent[i]);
+		return parent[i];
+	}
+	const keyToIndices = new Map<string, number[]>();
+	for (let idx = 0; idx < locations.length; idx++) {
+		for (const key of computeLocationKeys(locations[idx])) {
+			if (!keyToIndices.has(key)) keyToIndices.set(key, []);
+			keyToIndices.get(key)!.push(idx);
+		}
+	}
+	for (const indices of keyToIndices.values()) {
+		for (let k = 1; k < indices.length; k++) {
+			const ri = find(indices[0]);
+			const rk = find(indices[k]);
+			if (ri !== rk) parent[ri] = rk;
+		}
+	}
+	const groups = new Map<number, IDataObject[]>();
+	for (let i = 0; i < locations.length; i++) {
+		const root = find(i);
+		if (!groups.has(root)) groups.set(root, []);
+		groups.get(root)!.push(locations[i]);
+	}
+	return [...groups.values()].map(selectBestLocation);
+}
+
 async function extractLocationsFromPage(
 	result: CrawlResult,
 	includePhones: boolean,
@@ -578,7 +664,7 @@ async function runLocationsExtraction(
 		);
 	}
 
-	return [...locationMap.values()];
+	return deduplicateLocations([...locationMap.values()]);
 }
 
 /**
@@ -850,27 +936,6 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
-				displayName: 'Bypass Bot Detection',
-				name: 'stealthMode',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
-			},
-			{
-				displayName: 'Cache Mode',
-				name: 'cacheMode',
-				type: 'options',
-				options: [
-					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
-					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
-					{ name: 'Read Only', value: 'READ_ONLY' },
-					{ name: 'Write Only', value: 'WRITE_ONLY' },
-				],
-				default: 'ENABLED',
-				description: 'How to use the cache when crawling',
-			},
-			{
 				displayName: 'Browser Profile',
 				name: 'browserProfile',
 				type: 'options',
@@ -896,12 +961,33 @@ export const description: INodeProperties[] = [
 				name: 'browserType',
 				type: 'options',
 				options: [
-					{ name: 'Chromium (default)', value: 'chromium' },
+					{ name: 'Chromium (Default)', value: 'chromium' },
 					{ name: 'Firefox', value: 'firefox' },
 					{ name: 'WebKit', value: 'webkit' },
 				],
 				default: 'chromium',
 				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+			},
+			{
+				displayName: 'Bypass Bot Detection',
+				name: 'stealthMode',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
+			},
+			{
+				displayName: 'Cache Mode',
+				name: 'cacheMode',
+				type: 'options',
+				options: [
+					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
+					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
+					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
+					{ name: 'Read Only', value: 'READ_ONLY' },
+					{ name: 'Write Only', value: 'WRITE_ONLY' },
+				],
+				default: 'ENABLED',
+				description: 'How to use the cache when crawling',
 			},
 			{
 				displayName: 'Custom Headers',

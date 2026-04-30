@@ -140,27 +140,6 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
-				displayName: 'Bypass Bot Detection',
-				name: 'stealthMode',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
-			},
-			{
-				displayName: 'Cache Mode',
-				name: 'cacheMode',
-				type: 'options',
-				options: [
-					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
-					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
-					{ name: 'Read Only', value: 'READ_ONLY' },
-					{ name: 'Write Only', value: 'WRITE_ONLY' },
-				],
-				default: 'ENABLED',
-				description: 'How to use the cache when crawling',
-			},
-			{
 				displayName: 'Browser Profile',
 				name: 'browserProfile',
 				type: 'options',
@@ -186,12 +165,41 @@ export const description: INodeProperties[] = [
 				name: 'browserType',
 				type: 'options',
 				options: [
-					{ name: 'Chromium (default)', value: 'chromium' },
+					{
+				displayName: 'Bypass Bot Detection',
+				name: 'stealthMode',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
+			},
+			{
+				displayName: 'Cache Mode',
+				name: 'cacheMode',
+				type: 'options',
+				options: [
+					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
+					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
+					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
+					{ name: 'Read Only', value: 'READ_ONLY' },
+					{ name: 'Write Only', value: 'WRITE_ONLY' },
+				],
+				default: 'ENABLED',
+				description: 'How to use the cache when crawling',
+			},
+			{ name: 'Chromium (Default)', value: 'chromium' },
 					{ name: 'Firefox', value: 'firefox' },
 					{ name: 'WebKit', value: 'webkit' },
 				],
 				default: 'chromium',
 				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+			},
+			{
+				displayName: 'Clean Text',
+				name: 'cleanText',
+				type: 'boolean',
+				default: true,
+				description:
+					'Whether to clean and normalize extracted text (remove extra spaces, newlines)',
 			},
 			{
 				displayName: 'Custom Headers',
@@ -206,14 +214,6 @@ export const description: INodeProperties[] = [
 						browserProfile: ['custom'],
 					},
 				},
-			},
-			{
-				displayName: 'Clean Text',
-				name: 'cleanText',
-				type: 'boolean',
-				default: true,
-				description:
-					'Whether to clean and normalize extracted text (remove extra spaces, newlines)',
 			},
 			{
 				displayName: 'Include Original Text',

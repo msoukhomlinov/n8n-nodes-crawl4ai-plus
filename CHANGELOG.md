@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.1.4 (2026-04-30)
+
+### Fixed
+- `extractData` Locations & Addresses: duplicate location deduplication using Union-Find fingerprinting — addresses referring to the same building (e.g. "Level 2/343 Lt Collins St", "Level 2, Suites 214/215, 343 Little Collins Street", "Level 2, 343 Little Collins Street") now collapse to a single best-quality result; fingerprint uses postcode + street number as primary key, city + street number as secondary, with transitivity so partial addresses (no postcode) still merge with full entries sharing the same city and street number; when merging, highest-confidence json-ld entry wins, phone numbers are inherited from any group member
+
 ## 5.1.3 (2026-04-30)
 
 ### Fixed
