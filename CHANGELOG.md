@@ -17,6 +17,7 @@
 - Failed crawl results now include `errorMessage` from Crawl4AI in all simple node operations (`getPageContent`, `askQuestion`, `extractData`, `cssExtractor`)
 - `errorMessage` on failure is now cleaned of Python tracebacks, code context blocks, and Playwright call logs — only the meaningful error reason is shown
 - All four simple node operations now have a **Bypass Bot Detection** option (Options → Bypass Bot Detection) that enables all four Crawl4AI anti-bot flags (`enable_stealth`, `magic`, `simulate_user`, `override_navigator`); use when a site returns 403 or blocks headless Chrome
+- All four simple node operations now have a **Browser Type** option (Options → Browser Type) to switch between Chromium, Firefox, and WebKit; Firefox has a different TLS fingerprint to Chromium and bypasses bot-detection systems that block headless Chrome
 - All four simple node operations now have a **Browser Profile** option (Options → Browser Profile) with 10 real-browser presets (Chrome Windows/macOS/Android/Linux, Edge Windows, Firefox Windows/macOS, Safari macOS/iOS, Googlebot) plus a Custom option that reveals a `Key: Value` textarea; Advanced node gains the same picker in Browser & Session; profile headers are merged with any explicit headers (explicit values override profile)
 
 ## 5.1.1 (2026-04-30)
