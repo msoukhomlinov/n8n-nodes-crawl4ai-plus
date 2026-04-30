@@ -396,6 +396,14 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
     config.checkRobotsTxt = true;
   }
 
+  if (options.avoidAds === true) {
+    config.avoidAds = true;
+  }
+
+  if (options.avoidCss === true) {
+    config.avoidCss = true;
+  }
+
   if (options.wordCountThreshold !== undefined) {
     const threshold = Number(options.wordCountThreshold);
     if (!Number.isNaN(threshold)) {

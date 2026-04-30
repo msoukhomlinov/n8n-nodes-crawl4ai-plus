@@ -1,5 +1,18 @@
 # Changelog
 
+## 5.1.4 (2026-04-30)
+
+### Changed
+- **Crawl4AI v0.8.5 compatibility**: `BestFirstCrawlStrategy` renamed to `BestFirstCrawlingStrategy` — Crawl4AI 0.8.5 introduced a deserialization allowlist (security fix for RCE vector); the old name is now explicitly rejected; this fix applies to both the Simple node locations extraction and the Advanced node deep crawl strategy picker
+- **New options (Advanced node Crawl Settings)**: `Avoid Ads` and `Avoid CSS` — new `CrawlerRunConfig` params introduced in v0.8.5 to block ad-related and CSS network requests during crawl; improves speed and reduces noise for text-only extraction use cases
+- Package description updated to reference Crawl4AI v0.8.5
+
+### Fixed
+- `extractData` Locations & Addresses: structured address output — `address` field replaced with `address1` (street number + name), `address2` (unit/level/floor/suite), `city`, `state`, `postcode`, `country`, and `additionalNotes`; JSON-LD extraction splits `streetAddress` into `address1`/`address2` automatically; LLM schema and instruction updated with examples using new fields
+- `extractData` Locations & Addresses: multi-page crawls now use `BestFirstCrawlStrategy` with `KeywordRelevanceScorer` instead of `BFSDeepCrawlStrategy` — Crawl4AI ranks and prioritises location-relevant pages during the crawl itself using 44 expanded location keywords; eliminates the need for post-crawl page scoring
+- `extractData` Locations & Addresses: location keyword list expanded to 44 terms covering branch types, address components, and find-us phrases (`stockist`, `distributor`, `pharmacy`, `showroom`, `warehouse`, `impressum`, `imprint`, `find us`, `get in touch`, `where to buy`, `zip code`, etc.)
+- `extractData` Locations & Addresses: duplicate location deduplication using Union-Find fingerprinting — addresses referring to the same building (e.g. "Level 2/343 Lt Collins St", "Level 2, Suites 214/215, 343 Little Collins Street", "Level 2, 343 Little Collins Street") now collapse to a single best-quality result; fingerprint uses postcode + street number as primary key, city + street number as secondary, with transitivity so partial addresses (no postcode) still merge with full entries sharing the same city and street number; when merging, highest-confidence json-ld entry wins, phone numbers are inherited from any group member
+
 ## 5.1.3 (2026-04-30)
 
 ### Fixed

@@ -503,6 +503,8 @@ export class Crawl4aiClient {
     if (config.magic === true) params.magic = true;
     if (config.simulateUser === true) params.simulate_user = true;
     if (config.overrideNavigator === true) params.override_navigator = true;
+    if (config.avoidAds === true) params.avoid_ads = true;
+    if (config.avoidCss === true) params.avoid_css = true;
     if (config.delayBeforeReturnHtml !== undefined) params.delay_before_return_html = config.delayBeforeReturnHtml;
     if (config.verbose === true) params.verbose = true;
     if (config.markdownGenerator) params.markdown_generator = config.markdownGenerator;

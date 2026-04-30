@@ -107,13 +107,16 @@ const SMART_DEDUP_EXCLUDE_PATTERNS = [
 ];
 
 /**
- * Build a BFSDeepCrawlStrategy config for multi-page crawls
+ * Build a deep crawl strategy config.
+ * Uses BestFirstCrawlingStrategy with KeywordRelevanceScorer when keywords are provided;
+ * falls back to BFSDeepCrawlStrategy for generic crawls.
  */
 export function buildDeepCrawlStrategy(
 	scope: 'followLinks' | 'fullSite',
 	maxPages: number,
 	seedUrl: string,
 	excludePatterns?: string,
+	keywords?: string[],
 ): DeepCrawlStrategy {
 	const maxDepth = scope === 'followLinks' ? 1 : 3;
 
@@ -147,7 +150,7 @@ export function buildDeepCrawlStrategy(
 			type: 'URLPatternFilter',
 			params: {
 				patterns: allExcludePatterns,
-				reverse: true, // Block if match
+				reverse: true,
 			},
 		});
 	}
@@ -165,10 +168,15 @@ export function buildDeepCrawlStrategy(
 			: {}),
 	};
 
-	return {
-		type: 'BFSDeepCrawlStrategy',
-		params: strategyParams,
-	};
+	if (keywords && keywords.length > 0) {
+		strategyParams.url_scorer = {
+			type: 'KeywordRelevanceScorer',
+			params: { keywords, weight: 1.0 },
+		};
+		return { type: 'BestFirstCrawlingStrategy', params: strategyParams };
+	}
+
+	return { type: 'BFSDeepCrawlStrategy', params: strategyParams };
 }
 
 /**
@@ -183,6 +191,7 @@ export async function executeCrawl(
 	options: {
 		maxPages?: number;
 		excludePatterns?: string;
+		keywords?: string[];
 	} = {},
 ): Promise<CrawlResult[]> {
 	if (scope === 'singlePage') {
@@ -199,6 +208,7 @@ export async function executeCrawl(
 		maxPages,
 		url,
 		options.excludePatterns,
+		options.keywords,
 	);
 
 	const multiConfig: FullCrawlConfig = {
