@@ -171,10 +171,11 @@ async function runLlmContactValidation(
 			phones: [...new Set(items.flatMap((c) => Array.isArray(c.phones) ? (c.phones as string[]) : []))],
 			addresses: [...new Set(items.flatMap((c) => Array.isArray(c.addresses) ? (c.addresses as string[]) : []))],
 		};
+		const anyHas = (key: string) => items.some((c) => key in c);
 		return {
-			emails: merged.emails.length > 0 ? merged.emails : contacts.emails,
-			phones: merged.phones.length > 0 ? merged.phones : contacts.phones,
-			addresses: merged.addresses.length > 0 ? merged.addresses : contacts.addresses,
+			emails: anyHas('emails') ? merged.emails : contacts.emails,
+			phones: anyHas('phones') ? merged.phones : contacts.phones,
+			addresses: anyHas('addresses') ? merged.addresses : contacts.addresses,
 		};
 	} catch (err) {
 		if (err instanceof NodeOperationError) throw err;
