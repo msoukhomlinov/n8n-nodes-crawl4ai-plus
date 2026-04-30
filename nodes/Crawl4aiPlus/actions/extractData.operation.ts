@@ -453,14 +453,21 @@ function extractStreetNum(address1: string): string {
 	return m ? m[1] : '';
 }
 
+function extractStreetNameWord(address1: string): string {
+	// "343 Little Collins Street" → "little" (first word after leading number)
+	const withoutNum = address1.toLowerCase().replace(/^\d+\s*/, '').trim();
+	return withoutNum.split(/\s+/)[0] || '';
+}
+
 function computeLocationKeys(loc: IDataObject): string[] {
 	const keys: string[] = [];
 	const addr1 = String(loc.address1 || '');
 	const streetNum = extractStreetNum(addr1);
+	const streetName = extractStreetNameWord(addr1);
 	const postcode = String(loc.postcode || '').trim();
 	const city = String(loc.city || '').toLowerCase().replace(/\s+/g, ' ').trim();
-	if (postcode && streetNum) keys.push(`pc:${postcode}:${streetNum}`);
-	if (city && streetNum) keys.push(`ci:${city}:${streetNum}`);
+	if (postcode && streetNum && streetName) keys.push(`pc:${postcode}:${streetNum}:${streetName}`);
+	if (city && streetNum && streetName) keys.push(`ci:${city}:${streetNum}:${streetName}`);
 	if (keys.length === 0) {
 		keys.push(`ca:${canonicalizeAddress(addr1, postcode || undefined)}`);
 	}

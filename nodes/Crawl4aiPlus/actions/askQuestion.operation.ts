@@ -148,7 +148,14 @@ export const description: INodeProperties[] = [
 				name: 'browserType',
 				type: 'options',
 				options: [
-					{
+					{ name: 'Chromium (Default)', value: 'chromium' },
+					{ name: 'Firefox', value: 'firefox' },
+					{ name: 'WebKit', value: 'webkit' },
+				],
+				default: 'chromium',
+				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+			},
+			{
 				displayName: 'Bypass Bot Detection',
 				name: 'stealthMode',
 				type: 'boolean',
@@ -168,13 +175,6 @@ export const description: INodeProperties[] = [
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
-			},
-			{ name: 'Chromium (Default)', value: 'chromium' },
-					{ name: 'Firefox', value: 'firefox' },
-					{ name: 'WebKit', value: 'webkit' },
-				],
-				default: 'chromium',
-				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
 			},
 			{
 				displayName: 'Custom Headers',
