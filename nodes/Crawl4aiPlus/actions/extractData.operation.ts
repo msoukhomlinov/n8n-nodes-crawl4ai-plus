@@ -5,7 +5,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { findNumbers } from 'libphonenumber-js';
+import { findNumbers, isSupportedCountry, type CountryCode } from 'libphonenumber-js';
 
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
 import { checkLlmExtractionError } from '../../shared/formatters';
@@ -67,7 +67,11 @@ function extractContactInfo(
 		}
 
 		// Phones via libphonenumber-js — finds and validates in one pass
-		const found = findNumbers(text, { defaultCountry: defaultCountry as import('libphonenumber-js').CountryCode, v2: true });
+		const normalizedCountry = defaultCountry.toUpperCase();
+		const findOpts = isSupportedCountry(normalizedCountry as CountryCode)
+			? { defaultCountry: normalizedCountry as CountryCode, v2: true as const }
+			: { v2: true as const };
+		const found = findNumbers(text, findOpts);
 		for (const match of found) {
 			if (match.number.isValid()) {
 				const e164 = match.number.format('E.164');
