@@ -453,22 +453,25 @@ function extractStreetNum(address1: string): string {
 	return m ? m[1] : '';
 }
 
-function extractStreetNameWord(address1: string): string {
-	// "343 Little Collins Street" → "little" (first word after leading number)
-	const withoutNum = address1.toLowerCase().replace(/^\d+\s*/, '').trim();
-	return withoutNum.split(/\s+/)[0] || '';
+function extractStreetNameKey(address1: string): string {
+	// "343 Little Collins Street" → "little collins street" (full canonicalized street name)
+	let s = address1.toLowerCase().replace(/^\d+\s*/, '').trim();
+	for (const [pattern, replacement] of ADDRESS_ABBREVIATIONS) {
+		s = s.replace(pattern, replacement);
+	}
+	return s.replace(/[.,#\-/]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function computeLocationKeys(loc: IDataObject): string[] {
 	const keys: string[] = [];
 	const addr1 = String(loc.address1 || '');
 	const streetNum = extractStreetNum(addr1);
-	const streetName = extractStreetNameWord(addr1);
+	const streetNameKey = extractStreetNameKey(addr1);
 	const postcode = String(loc.postcode || '').trim();
 	const city = String(loc.city || '').toLowerCase().replace(/\s+/g, ' ').trim();
-	if (postcode && streetNum && streetName) keys.push(`pc:${postcode}:${streetNum}:${streetName}`);
-	if (city && streetNum && streetName) keys.push(`ci:${city}:${streetNum}:${streetName}`);
-	if (keys.length === 0) {
+	if (postcode && streetNum && streetNameKey) keys.push(`pc:${postcode}:${streetNum}:${streetNameKey}`);
+	if (city && streetNum && streetNameKey) keys.push(`ci:${city}:${streetNum}:${streetNameKey}`);
+	if (keys.length === 0 && addr1) {
 		keys.push(`ca:${canonicalizeAddress(addr1, postcode || undefined)}`);
 	}
 	return keys;
