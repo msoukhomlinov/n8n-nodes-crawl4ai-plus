@@ -494,9 +494,11 @@ function selectBestLocation(group: IDataObject[]): IDataObject {
 		return String(b.address1 || '').length - String(a.address1 || '').length;
 	});
 	const best = { ...sorted[0] };
-	if (!best.phone) {
-		for (const candidate of sorted) {
-			if (candidate.phone) { best.phone = candidate.phone; break; }
+	for (const candidate of sorted.slice(1)) {
+		for (const [k, v] of Object.entries(candidate)) {
+			if (v !== null && v !== undefined && v !== '' && (best[k] === null || best[k] === undefined || best[k] === '')) {
+				best[k] = v;
+			}
 		}
 	}
 	return best;
@@ -623,9 +625,7 @@ async function runLocationsExtraction(
 	const locationMap = new Map<string, IDataObject>();
 	const errors: string[] = [];
 
-	// BestFirstCrawlStrategy already ranks pages by keyword relevance during crawl —
-	// process all returned pages (up to 13) without manual re-scoring
-	const pagesToProcess = results.slice(0, 13);
+	const pagesToProcess = results;
 
 	for (const result of pagesToProcess) {
 		const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
