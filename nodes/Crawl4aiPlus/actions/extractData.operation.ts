@@ -22,9 +22,10 @@ import { formatExtractedDataResult } from '../helpers/formatters';
 
 // --- Regex patterns for contact info extraction ---
 const ADDRESS_PATTERNS: RegExp[] = [
-	// Street addresses: number + name + recognised suffix + optional unit + state + postcode
-	// Covers AU/US/UK street formats; requires state-like 2-letter code + postcode for confidence
+	// AU/US/CA: street + state abbreviation + numeric postcode
 	/\d{1,5}\s+[\w\s]{2,40}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl|Parade|Pde|Highway|Hwy|Crescent|Cres|Terrace|Tce|Circuit|Cct)\.?(?:\s*,?\s*(?:Suite|Ste|Apt|Unit|Level|#)\s*[\w\d-]+)?(?:\s*,?\s*[\w\s]{2,30})?\s*,?\s*(?:VIC|NSW|QLD|WA|SA|TAS|ACT|NT|[A-Z]{2})\s*\d{4,6}(?:-\d{4})?/gi,
+	// UK: street + town/city + UK postcode (e.g. SW1A 1AA, EC1A 1BB, W1A 0AX)
+	/\d{1,5}\s+[\w\s]{2,40}(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Court|Ct|Way|Place|Pl|Crescent|Cres|Terrace|Tce)\.?(?:\s*,?\s*(?:Flat|Apt|Unit|Floor)\s*[\w\d-]+)?(?:\s*,?\s*[\w\s]{2,30})?\s*,?\s*[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/gi,
 ];
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -159,14 +160,21 @@ async function runLlmContactValidation(
 		}
 		if (!result.extracted_content) return contacts;
 		const parsed = JSON.parse(result.extracted_content) as unknown;
-		const item = Array.isArray(parsed)
-			? (parsed as IDataObject[])[0]
-			: (parsed as IDataObject);
-		if (!item || item.error) return contacts;
+		const items = Array.isArray(parsed)
+			? (parsed as IDataObject[]).filter((c) => !c.error)
+			: parsed && !(parsed as IDataObject).error
+				? [(parsed as IDataObject)]
+				: [];
+		if (items.length === 0) return contacts;
+		const merged = {
+			emails: [...new Set(items.flatMap((c) => Array.isArray(c.emails) ? (c.emails as string[]) : []))],
+			phones: [...new Set(items.flatMap((c) => Array.isArray(c.phones) ? (c.phones as string[]) : []))],
+			addresses: [...new Set(items.flatMap((c) => Array.isArray(c.addresses) ? (c.addresses as string[]) : []))],
+		};
 		return {
-			emails: Array.isArray(item.emails) ? (item.emails as string[]) : contacts.emails,
-			phones: Array.isArray(item.phones) ? (item.phones as string[]) : contacts.phones,
-			addresses: Array.isArray(item.addresses) ? (item.addresses as string[]) : contacts.addresses,
+			emails: merged.emails.length > 0 ? merged.emails : contacts.emails,
+			phones: merged.phones.length > 0 ? merged.phones : contacts.phones,
+			addresses: merged.addresses.length > 0 ? merged.addresses : contacts.addresses,
 		};
 	} catch (err) {
 		if (err instanceof NodeOperationError) throw err;
