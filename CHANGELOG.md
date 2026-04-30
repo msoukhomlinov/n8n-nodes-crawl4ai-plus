@@ -10,6 +10,7 @@
 - `metrics.crawlTime` now populated — was always null because `server_processing_time_s` lives on the API response wrapper, not per-result; now promoted onto each result before returning
 - `metrics` no longer emits null-valued keys
 - New fields surfaced across all nodes: `metrics.cacheStatus`, `metrics.memoryDeltaMb`, `metrics.peakMemoryMb`, `redirectedUrl` (conditional), `jsExecutionResult` (conditional), `downloadedFiles` (conditional)
+- `extractData` Contact Info: replaced phone regex with `libphonenumber-js` for accurate detection and E.164 deduplication; removed social media (noise); tightened address regex to require state code + postcode; Default Country Code option (default AU) for local number parsing; optional LLM Validation pass to clean false positives using the configured LLM
 
 ## 5.1.1 (2026-04-30)
 

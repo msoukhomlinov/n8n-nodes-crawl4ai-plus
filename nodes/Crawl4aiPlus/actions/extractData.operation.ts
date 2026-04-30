@@ -5,9 +5,11 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
+import { findNumbers, isSupportedCountry, type CountryCode } from 'libphonenumber-js';
 
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
 import { checkLlmExtractionError } from '../../shared/formatters';
+import { Crawl4aiClient } from '../../shared/apiClient';
 import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
@@ -19,21 +21,14 @@ import {
 import { formatExtractedDataResult } from '../helpers/formatters';
 
 // --- Regex patterns for contact info extraction ---
-const REGEX_PATTERNS: Record<string, RegExp[]> = {
-	emails: [/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g],
-	phones: [
-		/(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}/g,
-		/\+?[0-9]{1,4}[-.\s]?(?:\([0-9]{1,4}\)[-.\s]?)?[0-9]{2,4}[-.\s]?[0-9]{2,4}[-.\s]?[0-9]{0,4}/g,
-	],
-	socialMedia: [
-		/@[a-zA-Z0-9_]{1,15}/g,
-		/(?:https?:\/\/)?(?:www\.)?(?:twitter|x|facebook|linkedin|instagram|youtube|tiktok|github)\.com\/[a-zA-Z0-9._-]+/gi,
-	],
-	addresses: [
-		/\d{1,5}\s+[\w\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl)\.?(?:\s*,?\s*(?:Suite|Ste|Apt|Unit|#)\s*\d+)?(?:\s*,?\s*[\w\s]+)?\s*,?\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?/gi,
-		/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/g,
-	],
-};
+const ADDRESS_PATTERNS: RegExp[] = [
+	// AU/US/CA: street + state abbreviation + numeric postcode
+	/\d{1,5}\s+[\w\s]{2,40}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl|Parade|Pde|Highway|Hwy|Crescent|Cres|Terrace|Tce|Circuit|Cct)\.?(?:\s*,?\s*(?:Suite|Ste|Apt|Unit|Level|#)\s*[\w\d-]+)?(?:\s*,?\s*[\w\s]{2,30})?\s*,?\s*(?:VIC|NSW|QLD|WA|SA|TAS|ACT|NT|[A-Z]{2})\s*\d{4,6}(?:-\d{4})?/gi,
+	// UK: street + town/city + UK postcode (e.g. SW1A 1AA, EC1A 1BB, W1A 0AX)
+	/\d{1,5}\s+[\w\s]{2,40}(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Court|Ct|Way|Place|Pl|Crescent|Cres|Terrace|Tce)\.?(?:\s*,?\s*(?:Flat|Apt|Unit|Floor)\s*[\w\d-]+)?(?:\s*,?\s*[\w\s]{2,30})?\s*,?\s*[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/gi,
+];
+
+const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 	currencies: [/[$\u00A3\u20AC\u00A5]\s?\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?/g],
@@ -42,6 +37,162 @@ const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 	percentages: [/\d+(?:\.\d+)?%/g],
 	numbers: [/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g],
 };
+
+/**
+ * Extract contact info from crawl results using libphonenumber-js for phones
+ * and targeted regex for emails and addresses.
+ */
+function extractContactInfo(
+	results: CrawlResult[],
+	defaultCountry: string,
+): { emails: string[]; phones: string[]; addresses: string[] } {
+	const emails = new Set<string>();
+	const phoneMap = new Map<string, string>(); // E.164 → formatted
+	const addresses = new Set<string>();
+
+	for (const result of results) {
+		let text = '';
+		if (typeof result.markdown === 'object' && result.markdown !== null) {
+			text = result.markdown.raw_markdown || '';
+		} else if (typeof result.markdown === 'string') {
+			text = result.markdown;
+		}
+		if (!text) continue;
+
+		// Emails
+		EMAIL_PATTERN.lastIndex = 0;
+		const emailMatches = text.match(EMAIL_PATTERN);
+		if (emailMatches) {
+			for (const e of emailMatches) emails.add(e.toLowerCase());
+		}
+
+		// Phones via libphonenumber-js — finds and validates in one pass
+		const normalizedCountry = String(defaultCountry || '').toUpperCase();
+		const findOpts = isSupportedCountry(normalizedCountry as CountryCode)
+			? { defaultCountry: normalizedCountry as CountryCode, v2: true as const }
+			: { v2: true as const };
+		const found = findNumbers(text, findOpts);
+		for (const match of found) {
+			if (match.number.isValid()) {
+				const e164 = match.number.format('E.164');
+				if (!phoneMap.has(e164)) {
+					phoneMap.set(e164, match.number.formatInternational());
+				}
+			}
+		}
+
+		// Addresses
+		for (const pattern of ADDRESS_PATTERNS) {
+			pattern.lastIndex = 0;
+			const addrMatches = text.match(pattern);
+			if (addrMatches) {
+				for (const a of addrMatches) addresses.add(a.trim());
+			}
+		}
+	}
+
+	return {
+		emails: [...emails],
+		phones: [...phoneMap.values()],
+		addresses: [...addresses],
+	};
+}
+
+const LLM_VALIDATION_SCHEMA = {
+	type: 'object',
+	properties: {
+		emails: {
+			type: 'array',
+			items: { type: 'string' },
+			description: 'Validated email addresses — real contact emails only, no noreply/system addresses unless clearly a contact',
+		},
+		phones: {
+			type: 'array',
+			items: { type: 'string' },
+			description: 'Validated phone numbers in international format (+XX XX XXXX XXXX)',
+		},
+		addresses: {
+			type: 'array',
+			items: { type: 'string' },
+			description: 'Validated physical postal addresses — complete addresses only',
+		},
+	},
+	required: ['emails', 'phones', 'addresses'],
+};
+
+const LLM_VALIDATION_INSTRUCTION = `You are a contact information validator. You receive a list of extracted emails, phone numbers, and addresses that may contain false positives. Your task:
+1. Remove any items that are clearly NOT real contact details (e.g. example@domain.com, placeholder numbers, version strings mistaken for phones)
+2. Remove duplicate entries (same number in different formats)
+3. Format phone numbers consistently in international format (+XX XX XXXX XXXX)
+4. Return only genuine contact information
+Return the cleaned data as JSON matching the provided schema.`;
+
+async function runLlmContactValidation(
+	this: IExecuteFunctions,
+	contacts: { emails: string[]; phones: string[]; addresses: string[] },
+	credentials: Crawl4aiApiCredentials,
+	crawler: Crawl4aiClient,
+	modelOverride: string | undefined,
+	itemIndex: number,
+): Promise<{ emails: string[]; phones: string[]; addresses: string[] }> {
+	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
+
+	const jsonStr = JSON.stringify(contacts, null, 2)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const syntheticHtml = `<pre>${jsonStr}</pre>`;
+	const rawUrl = `raw:${syntheticHtml}`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			LLM_VALIDATION_SCHEMA,
+			LLM_VALIDATION_INSTRUCTION,
+			provider,
+			apiKey,
+			baseUrl,
+		),
+	};
+
+	try {
+		const result = await crawler.crawlUrl(rawUrl, config);
+		if (!result.success) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`LLM validation failed: ${result.error_message || 'crawl request failed'}`,
+				{ itemIndex },
+			);
+		}
+		const llmError = checkLlmExtractionError(result);
+		if (llmError) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`LLM validation failed: ${llmError}`,
+				{ itemIndex },
+			);
+		}
+		if (!result.extracted_content) return contacts;
+		const parsed = JSON.parse(result.extracted_content) as unknown;
+		const items = Array.isArray(parsed)
+			? (parsed as IDataObject[]).filter((c) => !c.error)
+			: parsed && !(parsed as IDataObject).error
+				? [(parsed as IDataObject)]
+				: [];
+		if (items.length === 0) return contacts;
+		const merged = {
+			emails: [...new Set(items.flatMap((c) => Array.isArray(c.emails) ? (c.emails as string[]) : []))],
+			phones: [...new Set(items.flatMap((c) => Array.isArray(c.phones) ? (c.phones as string[]) : []))],
+			addresses: [...new Set(items.flatMap((c) => Array.isArray(c.addresses) ? (c.addresses as string[]) : []))],
+		};
+		const anyHas = (key: string) => items.some((c) => Array.isArray(c[key]));
+		return {
+			emails: anyHas('emails') ? merged.emails : contacts.emails,
+			phones: anyHas('phones') ? merged.phones : contacts.phones,
+			addresses: anyHas('addresses') ? merged.addresses : contacts.addresses,
+		};
+	} catch (err) {
+		if (err instanceof NodeOperationError) throw err;
+		return contacts;
+	}
+}
 
 /**
  * Extract data using regex patterns from markdown content
@@ -137,7 +288,7 @@ export const description: INodeProperties[] = [
 			{
 				name: 'Contact Info',
 				value: 'contactInfo',
-				description: 'Extract emails, phones, social media, addresses (no LLM required)',
+				description: 'Extract emails, phone numbers, and addresses (no LLM required)',
 			},
 			{
 				name: 'Financial Data',
@@ -240,6 +391,19 @@ export const description: INodeProperties[] = [
 		},
 	},
 	{
+		displayName:
+			'LLM validation requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		name: 'llmValidationNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+			},
+		},
+	},
+	{
 		displayName: 'Crawl Scope',
 		name: 'crawlScope',
 		type: 'options',
@@ -295,6 +459,19 @@ export const description: INodeProperties[] = [
 				description: 'How to use the cache when crawling',
 			},
 			{
+				displayName: 'Default Country Code',
+				name: 'defaultCountry',
+				type: 'string',
+				default: 'AU',
+				placeholder: 'AU',
+				description: 'ISO 3166-1 alpha-2 country code (two uppercase letters) used to interpret local phone numbers that have no country prefix. Examples: AU, US, GB, NZ, DE.',
+				displayOptions: {
+					show: {
+						'/extractionType': ['contactInfo'],
+					},
+				},
+			},
+			{
 				displayName: 'Exclude URL Patterns',
 				name: 'excludePatterns',
 				type: 'string',
@@ -304,6 +481,18 @@ export const description: INodeProperties[] = [
 				displayOptions: {
 					show: {
 						'/crawlScope': ['followLinks', 'fullSite'],
+					},
+				},
+			},
+			{
+				displayName: 'LLM Validation',
+				name: 'llmValidation',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to send extracted contacts to the configured LLM for a final validation and cleanup pass. Removes false positives and normalises formats. Requires LLM credentials.',
+				displayOptions: {
+					show: {
+						'/extractionType': ['contactInfo'],
 					},
 				},
 			},
@@ -330,7 +519,7 @@ export const description: INodeProperties[] = [
 				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
-						'/extractionType': ['customLlm'],
+						'/extractionType': ['customLlm', 'contactInfo'],
 					},
 				},
 			},
@@ -458,7 +647,27 @@ export async function execute(
 			let data: IDataObject | IDataObject[];
 
 			if (extractionType === 'contactInfo') {
-				data = extractWithRegex(results, REGEX_PATTERNS);
+				const defaultCountry = (options.defaultCountry as string) || 'AU';
+				let contacts = extractContactInfo(results, defaultCountry);
+
+				if (options.llmValidation === true) {
+					try {
+						validateLlmCredentials(credentials, 'LLM validation');
+					} catch (err) {
+						throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+					}
+					const modelOverride = options.llmModel as string | undefined;
+					contacts = await runLlmContactValidation.call(
+						this,
+						contacts,
+						credentials,
+						client,
+						modelOverride,
+						i,
+					);
+				}
+
+				data = contacts;
 			} else if (extractionType === 'financialData') {
 				data = extractWithRegex(results, FINANCIAL_PATTERNS);
 			} else {
