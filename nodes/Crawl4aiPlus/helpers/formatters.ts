@@ -76,7 +76,7 @@ export function formatPageContentResult(
 		}
 
 		if (result.crawl_time != null) {
-			totalCrawlTime += result.crawl_time;
+			if (result.crawl_time > totalCrawlTime) totalCrawlTime = result.crawl_time;
 			hasValidDuration = true;
 		}
 	}
@@ -160,12 +160,14 @@ export function formatQuestionResult(
 		primaryResult.extracted_content ||
 		'';
 
-	// Aggregate crawlTime across all pages (mirrors formatPageContentResult behaviour)
+	// Take the max crawl_time across all pages (batch results all share the same batch total,
+	// so summing would multiply it; max correctly returns the batch total for multi-URL calls
+	// and the single value for single-page calls)
 	let totalCrawlTime = 0;
 	let hasValidDuration = false;
 	for (const result of results) {
 		if (result.crawl_time != null) {
-			totalCrawlTime += result.crawl_time;
+			if (result.crawl_time > totalCrawlTime) totalCrawlTime = result.crawl_time;
 			hasValidDuration = true;
 		}
 	}
