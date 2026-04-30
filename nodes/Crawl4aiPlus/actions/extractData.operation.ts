@@ -33,19 +33,13 @@ const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 	numbers: [/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g],
 };
 
-const LOCATION_URL_KEYWORDS = [
-    'about', 'about-us', 'branches', 'campus', 'contact', 'contact-us',
-    'dealers', 'directions', 'distributors', 'find-a-store', 'find-us',
-    'get-in-touch', 'global', 'imprint', 'impressum', 'locations',
-    'offices', 'our-company', 'reach-us', 'regions', 'retailers',
-    'stockists', 'store-finder', 'stores', 'visit-us', 'where-to-buy',
-    'where-to-find', 'worldwide',
-];
-
-const LOCATION_CONTENT_KEYWORDS = [
-    ' avenue', ' floor ', ' level ', ' road', ' street', ' suite ',
-    'branch', 'campus', 'factory', 'head office', 'headquarter',
-    'postcode', 'showroom', 'warehouse', 'zip code',
+const LOCATION_QUERY_KEYWORDS = [
+	'address', 'avenue', 'boulevard', 'branch', 'branches', 'campus', 'centre', 'center',
+	'clinic', 'contact', 'depot', 'directions', 'distributor', 'facility', 'factory',
+	'find us', 'floor', 'get in touch', 'headquarters', 'hub', 'imprint', 'impressum',
+	'level', 'location', 'locations', 'map', 'office', 'offices', 'outlet', 'pharmacy',
+	'postcode', 'reach us', 'road', 'showroom', 'stockist', 'store', 'stores', 'street',
+	'suburb', 'suite', 'unit', 'visit us', 'warehouse', 'where to buy', 'zip code',
 ];
 
 const LOCATION_CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
@@ -184,35 +178,6 @@ async function runLlmContactValidation(
 	}
 }
 
-function scorePageForLocations(result: CrawlResult): number {
-    let score = 0;
-    const urlLower = result.url.toLowerCase();
-    for (const kw of LOCATION_URL_KEYWORDS) {
-        if (urlLower.includes(kw)) score += 2;
-    }
-    const text =
-        (typeof result.markdown === 'object' && result.markdown !== null
-            ? result.markdown.raw_markdown
-            : typeof result.markdown === 'string'
-                ? result.markdown
-                : '') || '';
-    const textLower = text.toLowerCase();
-    for (const kw of LOCATION_CONTENT_KEYWORDS) {
-        const count = textLower.split(kw).length - 1;
-        score += Math.min(count, 3);
-    }
-    return score;
-}
-
-function selectLocationRelevantPages(pages: CrawlResult[]): CrawlResult[] {
-    if (pages.length <= 2) return pages;
-    const scored = pages.map((r) => ({ r, s: scorePageForLocations(r) }));
-    scored.sort((a, b) => b.s - a.s);
-    const withScore = scored.filter((x) => x.s > 0);
-    // Take up to 8 location-relevant pages; if none scored, take top 3 by score
-    return (withScore.length > 0 ? withScore.slice(0, 8) : scored.slice(0, 3)).map((x) => x.r);
-}
-
 const JSON_LD_LOCATION_TYPES = new Set([
     'AutoDealer', 'AutomotiveBusiness', 'ChildCare', 'Corporation',
     'DryCleaningOrLaundry', 'EducationalOrganization', 'EmergencyService',
@@ -225,6 +190,27 @@ const JSON_LD_LOCATION_TYPES = new Set([
     'TouristInformationCenter', 'TravelAgency',
 ]);
 
+function splitStreetAddress(streetAddress: string): { address1: string; address2?: string } {
+    // "Level 2/343 Collins St" → address1="343 Collins St", address2="Level 2"
+    const slashMatch = streetAddress.match(/^(level|floor|fl?)\s*\d+\s*\//i);
+    if (slashMatch) {
+        const slashIdx = streetAddress.indexOf('/');
+        return {
+            address1: streetAddress.slice(slashIdx + 1).trim(),
+            address2: streetAddress.slice(0, slashIdx).trim(),
+        };
+    }
+    // "Level 2, 343 Collins St" or "Suite 5, 343 Collins St" → split at first comma
+    const commaMatch = streetAddress.match(/^((?:level|floor|fl?|suite|suites?|unit|apt|flat|ste|room)\s+[^,]+),\s*/i);
+    if (commaMatch) {
+        return {
+            address1: streetAddress.slice(commaMatch[0].length).trim(),
+            address2: commaMatch[1].trim(),
+        };
+    }
+    return { address1: streetAddress };
+}
+
 function mapJsonLdPostalAddress(
     orgName: string | undefined,
     addr: IDataObject,
@@ -234,21 +220,19 @@ function mapJsonLdPostalAddress(
     const street = String(addr.streetAddress || '').trim();
     const city = String(addr.addressLocality || '').trim();
     const country = String(addr.addressCountry || '').trim();
-    // Require at least a street or a city — pure country-only entries are noise
     if (!street && !city) return null;
     const state = String(addr.addressRegion || '').trim();
     const postcode = String(addr.postalCode || '').trim();
-    const fullAddress = city
-        ? (street ? `${street}, ${city}${state ? ` ${state}` : ''}${postcode ? ` ${postcode}` : ''}` : `${city}${state ? `, ${state}` : ''}${postcode ? ` ${postcode}` : ''}`)
-        : [street, state, postcode].filter(Boolean).join(', ');
+    const { address1, address2 } = street ? splitStreetAddress(street) : { address1: '', address2: undefined };
     const loc: IDataObject = {
         name: orgName || (city ? `${city} Location` : 'Location'),
-        address: fullAddress,
         city,
         country,
         confidence: 'high',
         source: 'json-ld',
     };
+    if (address1) loc.address1 = address1;
+    if (address2) loc.address2 = address2;
     if (state) loc.state = state;
     if (postcode) loc.postcode = postcode;
     if (includePhones && telephone) loc.phone = telephone;
@@ -360,16 +344,26 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 			type: 'string',
 			description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.',
 		},
-		address: {
+		address1: {
 			type: 'string',
-			description: 'Full postal address including street number, street name, suburb/city, state/region, postcode',
+			description: 'Street number and street name only — no unit, level, or floor (e.g. "343 Little Collins Street")',
 		},
-		city: { type: 'string', description: 'City or suburb' },
-		country: { type: 'string', description: 'Country name' },
+		address2: {
+			type: 'string',
+			description: 'Unit, level, floor, or suite designation (e.g. "Level 2" or "Suite 5"). Omit if not present.',
+		},
+		city: { type: 'string', description: 'Suburb or city' },
+		state: { type: 'string', description: 'State, province, or region (abbreviated or full, e.g. "VIC" or "Victoria")' },
+		postcode: { type: 'string', description: 'Postal code or ZIP code' },
+		country: { type: 'string', description: 'Country name or ISO 3166-1 alpha-2 code' },
+		additionalNotes: {
+			type: 'string',
+			description: 'Any additional notable details about this location (e.g. opening hours, landmark, parking). Omit if none.',
+		},
 		confidence: {
 			type: 'string',
 			enum: ['high', 'medium', 'low'],
-			description: 'high = complete address with postcode and city; medium = partial address missing postcode or state; low = city/country only or inferred from context',
+			description: 'high = address1 + postcode + city present; medium = missing postcode or state; low = city/country only',
 		},
 		sourceSnippet: {
 			type: 'string',
@@ -391,7 +385,7 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 				items: {
 					type: 'object',
 					properties: itemProperties,
-					required: ['name', 'address', 'city', 'country', 'confidence', 'sourceSnippet'],
+					required: ['name', 'address1', 'city', 'country', 'confidence', 'sourceSnippet'],
 				},
 			},
 		},
@@ -405,12 +399,13 @@ function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): st
 		: '';
 	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
 	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
+	const phoneFewShot2 = includePhones ? ', "phone": "(not stated)"' : '';
 	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters, distributors, stockists, dealers) mentioned on this page.${urlContext}
 
 For each location:
-1. Extract the complete postal address including street, city, state/region, and postcode.
+1. Extract address1 (street number + street name only, e.g. "200 Collins Street"), address2 (unit/level/floor/suite if present, e.g. "Level 12"), city, state, postcode, and country separately.
 2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb. Every name MUST be unique.
-3. Assign confidence: "high" if full address with postcode and city; "medium" if partial (missing postcode or state); "low" if city/country only.
+3. Assign confidence: "high" if address1 + postcode + city present; "medium" if missing postcode or state; "low" if city/country only.
 4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}
 
 Include: offices, branches, stores, showrooms, warehouses, distribution centres, factories, partner/dealer/stockist locations (if an address is given).
@@ -420,10 +415,10 @@ If no physical locations are found, return: {"locations": []}
 Examples:
 
 Input: "Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."
-Output: {"locations":[{"name":"Melbourne Office","address":"Level 12, 200 Collins Street, Melbourne VIC 3000","city":"Melbourne","country":"Australia","confidence":"high","sourceSnippet":"Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."${phoneFewShot}}]}
+Output: {"locations":[{"name":"Melbourne Office","address1":"200 Collins Street","address2":"Level 12","city":"Melbourne","state":"VIC","postcode":"3000","country":"Australia","confidence":"high","sourceSnippet":"Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."${phoneFewShot}}]}
 
 Input: "Visit our Sydney showroom at 42 George Street, Sydney. Open weekdays 9–5."
-Output: {"locations":[{"name":"Sydney Showroom","address":"42 George Street, Sydney","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney."${phoneFewShot ? phoneFewShot.replace(/"\+61.*?"/, '"(not stated)"') : ''}}]}`;
+Output: {"locations":[{"name":"Sydney Showroom","address1":"42 George Street","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney."${phoneFewShot2}}]}`;
 }
 
 function mergeLocationsIntoMap(
@@ -433,7 +428,7 @@ function mergeLocationsIntoMap(
 	for (const loc of locations) {
 		if (!loc || (loc as IDataObject & { error?: unknown }).error) continue;
 		const key = canonicalizeAddress(
-			String(loc.address || ''),
+			String(loc.address1 || ''),
 			loc.postcode as string | undefined,
 		);
 		if (!key) continue;
@@ -453,38 +448,21 @@ function mergeLocationsIntoMap(
 	}
 }
 
-function extractStreetNum(loc: IDataObject): string {
-	let s = String(loc.address || '').toLowerCase().replace(/\s+/g, ' ').trim();
-	// Strip "Level N/" slash-as-separator pattern: "Level 2/343" -> "343"
-	s = s.replace(/^(level|floor|fl?)\s*\d+\s*\/\s*/i, '');
-	// Strip comma-delimited unit designations: "Level 2, " or "Suites 214/215, "
-	const prefixRe = /^(level|floor|fl?|suite|suites?|unit|apt|apartment|flat|ste|room)\s+[^,]+,\s*/i;
-	for (let j = 0; j < 3; j++) {
-		const next = s.replace(prefixRe, '').trimStart();
-		if (next === s) break;
-		s = next;
-	}
-	const m = s.match(/(\d{1,5})/);
+function extractStreetNum(address1: string): string {
+	const m = address1.toLowerCase().replace(/\s+/g, ' ').trim().match(/(\d{1,5})/);
 	return m ? m[1] : '';
-}
-
-function extractPostcodeFromAddress(address: string): string {
-	const re = /(\d{4,6})/g;
-	let last = '';
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(address)) !== null) { last = m[1]; }
-	return last;
 }
 
 function computeLocationKeys(loc: IDataObject): string[] {
 	const keys: string[] = [];
-	const streetNum = extractStreetNum(loc);
-	const postcode = String(loc.postcode || '').trim() || extractPostcodeFromAddress(String(loc.address || ''));
+	const addr1 = String(loc.address1 || '');
+	const streetNum = extractStreetNum(addr1);
+	const postcode = String(loc.postcode || '').trim();
 	const city = String(loc.city || '').toLowerCase().replace(/\s+/g, ' ').trim();
 	if (postcode && streetNum) keys.push(`pc:${postcode}:${streetNum}`);
 	if (city && streetNum) keys.push(`ci:${city}:${streetNum}`);
 	if (keys.length === 0) {
-		keys.push(`ca:${canonicalizeAddress(String(loc.address || ''), loc.postcode as string | undefined)}`);
+		keys.push(`ca:${canonicalizeAddress(addr1, postcode || undefined)}`);
 	}
 	return keys;
 }
@@ -498,7 +476,7 @@ function selectBestLocation(group: IDataObject[]): IDataObject {
 		const sa = a.source === 'json-ld' ? 1 : 0;
 		const sb = b.source === 'json-ld' ? 1 : 0;
 		if (sb !== sa) return sb - sa;
-		return String(b.address || '').length - String(a.address || '').length;
+		return String(b.address1 || '').length - String(a.address1 || '').length;
 	});
 	const best = { ...sorted[0] };
 	if (!best.phone) {
@@ -630,8 +608,9 @@ async function runLocationsExtraction(
 	const locationMap = new Map<string, IDataObject>();
 	const errors: string[] = [];
 
-	const candidates = selectLocationRelevantPages(results);
-	const pagesToProcess = candidates.length > 0 ? candidates : results.slice(0, 8);
+	// BestFirstCrawlStrategy already ranks pages by keyword relevance during crawl —
+	// process all returned pages (up to 13) without manual re-scoring
+	const pagesToProcess = results.slice(0, 13);
 
 	for (const result of pagesToProcess) {
 		const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
@@ -640,20 +619,6 @@ async function runLocationsExtraction(
 		if (error) errors.push(error);
 		mergeLocationsIntoMap(jsonLdLocations, locationMap);
 		mergeLocationsIntoMap(llmLocations, locationMap);
-	}
-
-	if (locationMap.size === 0 && pagesToProcess.length < results.length) {
-		const remaining = results
-			.filter((r) => !pagesToProcess.includes(r))
-			.slice(0, 5);
-		for (const result of remaining) {
-			const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
-				result, includePhones, provider, apiKey, baseUrl, crawler,
-			);
-			if (error) errors.push(error);
-			mergeLocationsIntoMap(jsonLdLocations, locationMap);
-			mergeLocationsIntoMap(llmLocations, locationMap);
-		}
 	}
 
 	if (locationMap.size === 0 && errors.length > 0) {
@@ -1221,6 +1186,7 @@ export async function execute(
 				{
 					maxPages: options.maxPages as number | undefined,
 					excludePatterns: options.excludePatterns as string | undefined,
+					keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
 				},
 			);
 
