@@ -283,14 +283,11 @@ function extractLocationsFromJsonLd(html: string, includePhones: boolean): IData
 
         // Walk child properties BEFORE checking address — parent may have no address
         // but its hasPOS/location/containsPlace children hold the actual PostalAddress nodes
-        if (Array.isArray(node.hasPOS)) {
-            for (const pos of node.hasPOS as IDataObject[]) processNode(pos);
-        }
-        if (Array.isArray(node.location)) {
-            for (const loc of node.location as IDataObject[]) processNode(loc);
-        }
-        if (Array.isArray(node.containsPlace)) {
-            for (const place of node.containsPlace as IDataObject[]) processNode(place);
+        for (const prop of ['hasPOS', 'location', 'containsPlace'] as const) {
+            const val = node[prop];
+            if (!val) continue;
+            const children = Array.isArray(val) ? (val as IDataObject[]) : [val as IDataObject];
+            for (const child of children) processNode(child);
         }
 
         const rawAddress = node.address;
@@ -518,14 +515,13 @@ async function extractLocationsFromPage(
 		const rawLocs = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
 		for (const loc of rawLocs) {
 			const snippet = String(loc.sourceSnippet || '').trim();
-			if (snippet) {
-				const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
-				let found = textLower.includes(normSnippet);
-				if (!found && normSnippet.length > 30) {
-					found = textLower.includes(normSnippet.slice(0, 30));
-				}
-				if (!found) continue;
+			if (!snippet) continue; // No grounding evidence — reject
+			const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
+			let found = textLower.includes(normSnippet);
+			if (!found && normSnippet.length > 30) {
+				found = textLower.includes(normSnippet.slice(0, 30));
 			}
+			if (!found) continue; // Hallucination — skip
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { sourceSnippet: _ss, ...cleanLoc } = loc as Record<string, unknown>;
 			llmLocations.push({ ...(cleanLoc as IDataObject), source: 'llm' });
