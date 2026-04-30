@@ -351,10 +351,25 @@ function canonicalizeAddress(address: string, postcode?: string): string {
 
 function buildLocationsSchema(includePhones: boolean): IDataObject {
 	const itemProperties: IDataObject = {
-		name: { type: 'string', description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.' },
-		address: { type: 'string', description: 'Full postal address including street number, street name, suburb/city, state/region, postcode' },
+		name: {
+			type: 'string',
+			description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.',
+		},
+		address: {
+			type: 'string',
+			description: 'Full postal address including street number, street name, suburb/city, state/region, postcode',
+		},
 		city: { type: 'string', description: 'City or suburb' },
 		country: { type: 'string', description: 'Country name' },
+		confidence: {
+			type: 'string',
+			enum: ['high', 'medium', 'low'],
+			description: 'high = complete address with postcode and city; medium = partial address missing postcode or state; low = city/country only or inferred from context',
+		},
+		sourceSnippet: {
+			type: 'string',
+			description: 'Exact verbatim text from the page (1–2 sentences) that contains or directly supports this location. Must be copy-pasted from the content, not paraphrased.',
+		},
 	};
 	if (includePhones) {
 		(itemProperties as Record<string, IDataObject>).phone = {
@@ -371,7 +386,7 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 				items: {
 					type: 'object',
 					properties: itemProperties,
-					required: ['name', 'address', 'city', 'country'],
+					required: ['name', 'address', 'city', 'country', 'confidence', 'sourceSnippet'],
 				},
 			},
 		},
@@ -379,18 +394,31 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 	} as IDataObject;
 }
 
-function buildLocationsInstruction(includePhones: boolean): string {
+function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): string {
 	const phoneStep = includePhones
 		? '\n4. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
 		: '';
-	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters) mentioned on this page.
+	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
+	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
+	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters, distributors, stockists, dealers) mentioned on this page.${urlContext}
 
 For each location:
 1. Extract the complete postal address including street, city, state/region, and postcode.
-2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label exists, derive one from the city or suburb (e.g. "Melbourne Office"). If multiple locations share the same city, add the suburb to differentiate (e.g. "Melbourne CBD Office", "Melbourne Docklands Office"). Every name MUST be unique across all locations.
-3. Extract city and country.${phoneStep}
+2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb. Every name MUST be unique.
+3. Assign confidence: "high" if full address with postcode and city; "medium" if partial (missing postcode or state); "low" if city/country only.
+4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}
 
-Return only genuine physical locations. Exclude: P.O. boxes, virtual offices, and registered agent addresses.`;
+Include: offices, branches, stores, showrooms, warehouses, distribution centres, factories, partner/dealer/stockist locations (if an address is given).
+Exclude: P.O. boxes, virtual offices, registered agent addresses, locations with no street address.
+If no physical locations are found, return: {"locations": []}
+
+Examples:
+
+Input: "Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."
+Output: {"locations":[{"name":"Melbourne Office","address":"Level 12, 200 Collins Street, Melbourne VIC 3000","city":"Melbourne","country":"Australia","confidence":"high","sourceSnippet":"Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."${phoneFewShot}}]}
+
+Input: "Visit our Sydney showroom at 42 George Street, Sydney. Open weekdays 9–5."
+Output: {"locations":[{"name":"Sydney Showroom","address":"42 George Street, Sydney","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney."${phoneFewShot ? phoneFewShot.replace(/"\+61.*?"/, '"(not stated)"') : ''}}]}`;
 }
 
 async function runLocationsExtraction(
