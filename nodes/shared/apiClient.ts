@@ -159,11 +159,8 @@ export class Crawl4aiClient {
 
       if (response.data && Array.isArray(response.data.results)) {
         const results = response.data.results as CrawlResult[];
-        // Promote batch-level wrapper metrics onto first result so formatters can surface them
+        // Promote batch-level server metrics onto first result so formatters can surface them
         if (results.length > 0) {
-          if (response.data.server_processing_time_s != null && results[0].crawl_time == null) {
-            results[0].crawl_time = response.data.server_processing_time_s as number;
-          }
           if (response.data.server_memory_delta_mb != null) {
             results[0].server_memory_delta_mb = response.data.server_memory_delta_mb as number;
           }
