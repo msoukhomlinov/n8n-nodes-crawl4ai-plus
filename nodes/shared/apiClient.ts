@@ -120,10 +120,10 @@ export class Crawl4aiClient {
         if (response.data.server_processing_time_s != null && result.crawl_time == null) {
           result.crawl_time = response.data.server_processing_time_s as number;
         }
-        if (response.data.server_memory_delta_mb != null) {
+        if (response.data.server_memory_delta_mb != null && result.server_memory_delta_mb == null) {
           result.server_memory_delta_mb = response.data.server_memory_delta_mb as number;
         }
-        if (response.data.server_peak_memory_mb != null) {
+        if (response.data.server_peak_memory_mb != null && result.server_peak_memory_mb == null) {
           result.server_peak_memory_mb = response.data.server_peak_memory_mb as number;
         }
         return result;
