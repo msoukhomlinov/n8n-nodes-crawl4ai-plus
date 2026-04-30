@@ -277,23 +277,30 @@ async function runLocationsExtraction(
 		? (parsed as IDataObject[])
 		: [(parsed as IDataObject)];
 
-	const allLocations: IDataObject[] = [];
-	const seenAddresses = new Set<string>();
+	const locationMap = new Map<string, IDataObject>();
 
 	for (const chunk of chunks) {
 		if (chunk.error) continue;
 		const locations = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
 		for (const loc of locations) {
-			// Deduplicate by normalised address
 			const normalizedAddr = String(loc.address || '').toLowerCase().replace(/\s+/g, ' ').trim();
-			if (normalizedAddr && !seenAddresses.has(normalizedAddr)) {
-				seenAddresses.add(normalizedAddr);
-				allLocations.push(loc);
+			if (!normalizedAddr) continue;
+			if (!locationMap.has(normalizedAddr)) {
+				locationMap.set(normalizedAddr, { ...loc });
+			} else {
+				// Merge non-empty fields from later chunks to avoid data loss when the same
+				// location appears across multiple chunks with varying detail levels
+				const existing = locationMap.get(normalizedAddr)!;
+				for (const [key, value] of Object.entries(loc)) {
+					if (value !== null && value !== undefined && value !== '' && !existing[key]) {
+						existing[key] = value;
+					}
+				}
 			}
 		}
 	}
 
-	return allLocations;
+	return [...locationMap.values()];
 }
 
 /**
