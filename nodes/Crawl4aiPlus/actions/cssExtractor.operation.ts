@@ -283,7 +283,7 @@ export async function execute(
 
 			const resolvedHeaders = resolveRequestHeaders(
 				options.browserProfile as string | undefined,
-				options.customHeaders as string | undefined,
+				options.browserProfile === 'custom' ? options.customHeaders as string | undefined : undefined,
 			);
 			if (resolvedHeaders) config.headers = resolvedHeaders;
 
