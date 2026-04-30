@@ -224,10 +224,10 @@ function mapJsonLdPostalAddress(
     const street = String(addr.streetAddress || '').trim();
     const city = String(addr.addressLocality || '').trim();
     const country = String(addr.addressCountry || '').trim();
-    if (!street && !city) return null;
+    if (!street) return null; // city-only entries cause dedup collisions; LLM handles partial addresses
     const state = String(addr.addressRegion || '').trim();
     const postcode = String(addr.postalCode || '').trim();
-    const { address1, address2 } = street ? splitStreetAddress(street) : { address1: '', address2: undefined };
+    const { address1, address2 } = splitStreetAddress(street);
     const loc: IDataObject = {
         name: orgName || (city ? `${city} Location` : 'Location'),
         city,
