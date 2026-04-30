@@ -67,7 +67,7 @@ function extractContactInfo(
 		}
 
 		// Phones via libphonenumber-js — finds and validates in one pass
-		const normalizedCountry = defaultCountry.toUpperCase();
+		const normalizedCountry = String(defaultCountry || '').toUpperCase();
 		const findOpts = isSupportedCountry(normalizedCountry as CountryCode)
 			? { defaultCountry: normalizedCountry as CountryCode, v2: true as const }
 			: { v2: true as const };
@@ -182,7 +182,7 @@ async function runLlmContactValidation(
 			phones: [...new Set(items.flatMap((c) => Array.isArray(c.phones) ? (c.phones as string[]) : []))],
 			addresses: [...new Set(items.flatMap((c) => Array.isArray(c.addresses) ? (c.addresses as string[]) : []))],
 		};
-		const anyHas = (key: string) => items.some((c) => key in c);
+		const anyHas = (key: string) => items.some((c) => Array.isArray(c[key]));
 		return {
 			emails: anyHas('emails') ? merged.emails : contacts.emails,
 			phones: anyHas('phones') ? merged.phones : contacts.phones,
