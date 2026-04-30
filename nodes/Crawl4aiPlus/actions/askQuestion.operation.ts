@@ -9,12 +9,14 @@ import { NodeOperationError } from 'n8n-workflow';
 import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, FullCrawlConfig } from '../../shared/interfaces';
 import { checkLlmExtractionError } from '../../shared/formatters';
 import {
+	assertValidHttpUrl,
 	getCrawl4aiClient,
 	getSimpleDefaults,
 	executeCrawl,
 	validateLlmCredentials,
 	buildLlmConfig,
 	createLlmExtractionStrategy,
+	resolveRequestHeaders,
 } from '../helpers/utils';
 import { formatQuestionResult } from '../helpers/formatters';
 
@@ -80,12 +82,12 @@ export const description: INodeProperties[] = [
 			{
 				name: 'Follow Links',
 				value: 'followLinks',
-				description: 'Follow and crawl discovered links (depth 1)',
+				description: 'Follow and crawl same-domain links (depth 1); external links are excluded',
 			},
 			{
 				name: 'Full Site',
 				value: 'fullSite',
-				description: 'Crawl the entire site recursively (depth 3)',
+				description: 'Crawl the entire same-domain site recursively (depth 3); external links are excluded',
 			},
 		],
 		default: 'singlePage',
@@ -121,6 +123,13 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'Bypass Bot Detection',
+				name: 'stealthMode',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
+			},
+			{
 				displayName: 'Cache Mode',
 				name: 'cacheMode',
 				type: 'options',
@@ -133,6 +142,41 @@ export const description: INodeProperties[] = [
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
+			},
+			{
+				displayName: 'Browser Profile',
+				name: 'browserProfile',
+				type: 'options',
+				options: [
+					{ name: 'Chrome (Android)', value: 'chrome_android' },
+					{ name: 'Chrome (Linux)', value: 'chrome_linux' },
+					{ name: 'Chrome (macOS)', value: 'chrome_macos' },
+					{ name: 'Chrome (Windows)', value: 'chrome_windows' },
+					{ name: 'Custom', value: 'custom' },
+					{ name: 'Edge (Windows)', value: 'edge_windows' },
+					{ name: 'Firefox (macOS)', value: 'firefox_macos' },
+					{ name: 'Firefox (Windows)', value: 'firefox_windows' },
+					{ name: 'Googlebot', value: 'googlebot' },
+					{ name: 'None', value: 'none' },
+					{ name: 'Safari (iOS)', value: 'safari_ios' },
+					{ name: 'Safari (macOS)', value: 'safari_macos' },
+				],
+				default: 'none',
+				description: 'Preset browser headers to send with the request. Helps bypass server-side bot detection. Select Custom to enter your own headers.',
+			},
+			{
+				displayName: 'Custom Headers',
+				name: 'customHeaders',
+				type: 'string',
+				typeOptions: { rows: 3 },
+				default: '',
+				placeholder: 'User-Agent: Mozilla/5.0 ...\nAccept-Language: en-AU,en;q=0.9',
+				description: 'HTTP headers in Key: Value format, one per line',
+				displayOptions: {
+					show: {
+						browserProfile: ['custom'],
+					},
+				},
 			},
 			{
 				displayName: 'Exclude URL Patterns',
@@ -205,9 +249,7 @@ export async function execute(
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
-			if (!url) {
-				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
-			}
+			assertValidHttpUrl(url, this.getNode(), i);
 			if (!question) {
 				throw new NodeOperationError(this.getNode(), 'Question cannot be empty.', {
 					itemIndex: i,
@@ -233,6 +275,19 @@ export async function execute(
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 				extractionStrategy,
 			};
+
+			if (options.stealthMode === true) {
+				config.enable_stealth = true;
+				config.magic = true;
+				config.simulateUser = true;
+				config.overrideNavigator = true;
+			}
+
+			const resolvedHeaders = resolveRequestHeaders(
+				options.browserProfile as string | undefined,
+				options.browserProfile === 'custom' ? options.customHeaders as string | undefined : undefined,
+			);
+			if (resolvedHeaders) config.headers = resolvedHeaders;
 
 			if (options.waitFor) {
 				config.waitFor = String(options.waitFor);

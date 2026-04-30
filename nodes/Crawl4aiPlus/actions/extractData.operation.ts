@@ -11,12 +11,14 @@ import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCraw
 import { checkLlmExtractionError } from '../../shared/formatters';
 import { Crawl4aiClient } from '../../shared/apiClient';
 import {
+	assertValidHttpUrl,
 	getCrawl4aiClient,
 	getSimpleDefaults,
 	executeCrawl,
 	validateLlmCredentials,
 	buildLlmConfig,
 	createLlmExtractionStrategy,
+	resolveRequestHeaders,
 } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
 
@@ -543,12 +545,12 @@ export const description: INodeProperties[] = [
 			{
 				name: 'Follow Links',
 				value: 'followLinks',
-				description: 'Extract across this page and linked pages (depth 1)',
+				description: 'Extract across this page and same-domain linked pages (depth 1); external links are excluded',
 			},
 			{
 				name: 'Full Site',
 				value: 'fullSite',
-				description: 'Extract across the entire website (depth 3)',
+				description: 'Extract across the entire same-domain website (depth 3); external links are excluded',
 			},
 		],
 		default: 'singlePage',
@@ -572,6 +574,13 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'Bypass Bot Detection',
+				name: 'stealthMode',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
+			},
+			{
 				displayName: 'Cache Mode',
 				name: 'cacheMode',
 				type: 'options',
@@ -584,6 +593,41 @@ export const description: INodeProperties[] = [
 				],
 				default: 'ENABLED',
 				description: 'How to use the cache when crawling',
+			},
+			{
+				displayName: 'Browser Profile',
+				name: 'browserProfile',
+				type: 'options',
+				options: [
+					{ name: 'Chrome (Android)', value: 'chrome_android' },
+					{ name: 'Chrome (Linux)', value: 'chrome_linux' },
+					{ name: 'Chrome (macOS)', value: 'chrome_macos' },
+					{ name: 'Chrome (Windows)', value: 'chrome_windows' },
+					{ name: 'Custom', value: 'custom' },
+					{ name: 'Edge (Windows)', value: 'edge_windows' },
+					{ name: 'Firefox (macOS)', value: 'firefox_macos' },
+					{ name: 'Firefox (Windows)', value: 'firefox_windows' },
+					{ name: 'Googlebot', value: 'googlebot' },
+					{ name: 'None', value: 'none' },
+					{ name: 'Safari (iOS)', value: 'safari_ios' },
+					{ name: 'Safari (macOS)', value: 'safari_macos' },
+				],
+				default: 'none',
+				description: 'Preset browser headers to send with the request. Helps bypass server-side bot detection. Select Custom to enter your own headers.',
+			},
+			{
+				displayName: 'Custom Headers',
+				name: 'customHeaders',
+				type: 'string',
+				typeOptions: { rows: 3 },
+				default: '',
+				placeholder: 'User-Agent: Mozilla/5.0 ...\nAccept-Language: en-AU,en;q=0.9',
+				description: 'HTTP headers in Key: Value format, one per line',
+				displayOptions: {
+					show: {
+						browserProfile: ['custom'],
+					},
+				},
 			},
 			{
 				displayName: 'Default Country Code',
@@ -693,15 +737,26 @@ export async function execute(
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
-			if (!url) {
-				throw new NodeOperationError(this.getNode(), 'URL cannot be empty.', { itemIndex: i });
-			}
+			assertValidHttpUrl(url, this.getNode(), i);
 
 			// Build base config
 			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 			};
+
+			if (options.stealthMode === true) {
+				config.enable_stealth = true;
+				config.magic = true;
+				config.simulateUser = true;
+				config.overrideNavigator = true;
+			}
+
+			const resolvedHeaders = resolveRequestHeaders(
+				options.browserProfile as string | undefined,
+				options.browserProfile === 'custom' ? options.customHeaders as string | undefined : undefined,
+			);
+			if (resolvedHeaders) config.headers = resolvedHeaders;
 
 			if (options.waitFor) {
 				config.waitFor = String(options.waitFor);
