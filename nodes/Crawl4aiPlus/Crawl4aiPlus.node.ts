@@ -139,7 +139,7 @@ export class Crawl4aiPlus implements INodeType {
 							{ name: 'claude-3-5-haiku-20241022', value: 'claude-3-5-haiku-20241022' },
 							{ name: 'claude-3-opus-20240229', value: 'claude-3-opus-20240229' },
 							{ name: 'claude-3-haiku-20240307', value: 'claude-3-haiku-20240307' },
-						];
+						].sort((a, b) => a.name.localeCompare(b.name));
 					}
 
 					return [];
