@@ -207,6 +207,15 @@ export interface CrawlResult {
 	tables?: TableResult[];
 	error_message?: string;
 	crawl_time?: number;
+	cache_status?: string;
+	cached_at?: number;
+	redirected_url?: string;
+	redirected_status_code?: number;
+	response_headers?: Record<string, unknown>;
+	js_execution_result?: Record<string, unknown>;
+	downloaded_files?: string[];
+	server_memory_delta_mb?: number;
+	server_peak_memory_mb?: number;
 	metadata?: Record<string, unknown>;
 }
 

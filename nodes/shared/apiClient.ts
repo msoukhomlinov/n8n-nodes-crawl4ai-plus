@@ -115,7 +115,18 @@ export class Crawl4aiClient {
       });
 
       if (response.data && Array.isArray(response.data.results) && response.data.results.length > 0) {
-        return response.data.results[0];
+        const result = response.data.results[0] as CrawlResult;
+        // Promote wrapper-level server metrics onto the result so formatters can surface them
+        if (response.data.server_processing_time_s != null && result.crawl_time == null) {
+          result.crawl_time = response.data.server_processing_time_s as number;
+        }
+        if (response.data.server_memory_delta_mb != null) {
+          result.server_memory_delta_mb = response.data.server_memory_delta_mb as number;
+        }
+        if (response.data.server_peak_memory_mb != null) {
+          result.server_peak_memory_mb = response.data.server_peak_memory_mb as number;
+        }
+        return result;
       }
 
       return {
@@ -147,7 +158,20 @@ export class Crawl4aiClient {
       });
 
       if (response.data && Array.isArray(response.data.results)) {
-        return response.data.results;
+        const results = response.data.results as CrawlResult[];
+        // Promote batch-level wrapper metrics onto first result so formatters can surface them
+        if (results.length > 0) {
+          if (response.data.server_processing_time_s != null && results[0].crawl_time == null) {
+            results[0].crawl_time = response.data.server_processing_time_s as number;
+          }
+          if (response.data.server_memory_delta_mb != null) {
+            results[0].server_memory_delta_mb = response.data.server_memory_delta_mb as number;
+          }
+          if (response.data.server_peak_memory_mb != null) {
+            results[0].server_peak_memory_mb = response.data.server_peak_memory_mb as number;
+          }
+        }
+        return results;
       }
 
       return urls.map(url => ({
