@@ -460,7 +460,8 @@ export async function execute(
 							// LLM extraction returns an array of chunk results; flatten and skip error items
 							const items = Array.isArray(parsed) ? parsed : [parsed];
 							for (const item of items) {
-								if (item && !item.error) {
+								// Skip Crawl4AI error envelopes only (error:true + string content)
+								if (item && !(item.error === true && typeof item.content === 'string')) {
 									extractedItems.push(item);
 								}
 							}

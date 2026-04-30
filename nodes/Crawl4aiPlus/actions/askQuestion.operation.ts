@@ -241,12 +241,12 @@ export async function execute(
 			// Collect all pages with extracted content
 			const pagesWithContent = results.filter((r) => r.extracted_content);
 
-			// Surface LLM errors as NodeOperationError rather than passing raw error JSON as the answer
-			for (const result of pagesWithContent) {
-				const llmError = checkLlmExtractionError(result);
-				if (llmError) {
-					throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmError}`, { itemIndex: i });
-				}
+			// Only fail when every page with extracted content has LLM errors (no usable data at all)
+			const llmErrors = pagesWithContent
+				.map((r) => checkLlmExtractionError(r))
+				.filter((e): e is string => e !== null);
+			if (llmErrors.length > 0 && llmErrors.length === pagesWithContent.length) {
+				throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmErrors[0]}`, { itemIndex: i });
 			}
 
 			if (results.length === 0) {
