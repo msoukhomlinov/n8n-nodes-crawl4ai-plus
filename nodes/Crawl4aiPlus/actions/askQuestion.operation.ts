@@ -165,6 +165,18 @@ export const description: INodeProperties[] = [
 				description: 'Preset browser headers to send with the request. Helps bypass server-side bot detection. Select Custom to enter your own headers.',
 			},
 			{
+				displayName: 'Browser Type',
+				name: 'browserType',
+				type: 'options',
+				options: [
+					{ name: 'Chromium (default)', value: 'chromium' },
+					{ name: 'Firefox', value: 'firefox' },
+					{ name: 'WebKit', value: 'webkit' },
+				],
+				default: 'chromium',
+				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+			},
+			{
 				displayName: 'Custom Headers',
 				name: 'customHeaders',
 				type: 'string',
@@ -275,6 +287,10 @@ export async function execute(
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 				extractionStrategy,
 			};
+
+			if (options.browserType) {
+				config.browserType = String(options.browserType);
+			}
 
 			if (options.stealthMode === true) {
 				config.enable_stealth = true;

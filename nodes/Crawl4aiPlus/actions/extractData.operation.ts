@@ -21,6 +21,7 @@ import {
 	resolveRequestHeaders,
 } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
+import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
@@ -31,6 +32,23 @@ const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 	percentages: [/\d+(?:\.\d+)?%/g],
 	numbers: [/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g],
 };
+
+const LOCATION_URL_KEYWORDS = [
+    'about', 'about-us', 'branches', 'campus', 'contact', 'contact-us',
+    'dealers', 'directions', 'distributors', 'find-a-store', 'find-us',
+    'get-in-touch', 'global', 'imprint', 'impressum', 'locations',
+    'offices', 'our-company', 'reach-us', 'regions', 'retailers',
+    'stockists', 'store-finder', 'stores', 'visit-us', 'where-to-buy',
+    'where-to-find', 'worldwide',
+];
+
+const LOCATION_CONTENT_KEYWORDS = [
+    ' avenue', ' floor ', ' level ', ' road', ' street', ' suite ',
+    'branch', 'campus', 'factory', 'head office', 'headquarter',
+    'postcode', 'showroom', 'warehouse', 'zip code',
+];
+
+const LOCATION_CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 function extractContactInfo(
 	results: CrawlResult[],
@@ -166,12 +184,197 @@ async function runLlmContactValidation(
 	}
 }
 
+function scorePageForLocations(result: CrawlResult): number {
+    let score = 0;
+    const urlLower = result.url.toLowerCase();
+    for (const kw of LOCATION_URL_KEYWORDS) {
+        if (urlLower.includes(kw)) score += 2;
+    }
+    const text =
+        (typeof result.markdown === 'object' && result.markdown !== null
+            ? result.markdown.raw_markdown
+            : typeof result.markdown === 'string'
+                ? result.markdown
+                : '') || '';
+    const textLower = text.toLowerCase();
+    for (const kw of LOCATION_CONTENT_KEYWORDS) {
+        const count = textLower.split(kw).length - 1;
+        score += Math.min(count, 3);
+    }
+    return score;
+}
+
+function selectLocationRelevantPages(pages: CrawlResult[]): CrawlResult[] {
+    if (pages.length <= 2) return pages;
+    const scored = pages.map((r) => ({ r, s: scorePageForLocations(r) }));
+    scored.sort((a, b) => b.s - a.s);
+    const withScore = scored.filter((x) => x.s > 0);
+    // Take up to 8 location-relevant pages; if none scored, take top 3 by score
+    return (withScore.length > 0 ? withScore.slice(0, 8) : scored.slice(0, 3)).map((x) => x.r);
+}
+
+const JSON_LD_LOCATION_TYPES = new Set([
+    'AutoDealer', 'AutomotiveBusiness', 'ChildCare', 'Corporation',
+    'DryCleaningOrLaundry', 'EducationalOrganization', 'EmergencyService',
+    'EmploymentAgency', 'EntertainmentBusiness', 'FinancialService',
+    'FoodEstablishment', 'GovernmentOffice', 'HealthAndBeautyBusiness',
+    'HomeAndConstructionBusiness', 'LegalService', 'LocalBusiness',
+    'LodgingBusiness', 'MedicalBusiness', 'Organization', 'Place',
+    'ProfessionalService', 'RealEstateAgent', 'RecyclingCenter',
+    'SelfStorage', 'ShoppingCenter', 'SportsActivityLocation', 'Store',
+    'TouristInformationCenter', 'TravelAgency',
+]);
+
+function mapJsonLdPostalAddress(
+    orgName: string | undefined,
+    addr: IDataObject,
+    telephone: string | undefined,
+    includePhones: boolean,
+): IDataObject | null {
+    const street = String(addr.streetAddress || '').trim();
+    const city = String(addr.addressLocality || '').trim();
+    const country = String(addr.addressCountry || '').trim();
+    // Require at least a street or a city — pure country-only entries are noise
+    if (!street && !city) return null;
+    const state = String(addr.addressRegion || '').trim();
+    const postcode = String(addr.postalCode || '').trim();
+    const fullAddress = city
+        ? (street ? `${street}, ${city}${state ? ` ${state}` : ''}${postcode ? ` ${postcode}` : ''}` : `${city}${state ? `, ${state}` : ''}${postcode ? ` ${postcode}` : ''}`)
+        : [street, state, postcode].filter(Boolean).join(', ');
+    const loc: IDataObject = {
+        name: orgName || (city ? `${city} Location` : 'Location'),
+        address: fullAddress,
+        city,
+        country,
+        confidence: 'high',
+        source: 'json-ld',
+    };
+    if (state) loc.state = state;
+    if (postcode) loc.postcode = postcode;
+    if (includePhones && telephone) loc.phone = telephone;
+    return loc;
+}
+
+function extractLocationsFromJsonLd(html: string, includePhones: boolean): IDataObject[] {
+    if (!html) return [];
+    const { data } = extractJsonLd(html);
+    const locations: IDataObject[] = [];
+
+    function processNode(node: IDataObject): void {
+        // Walk @graph arrays recursively
+        if (Array.isArray(node['@graph'])) {
+            for (const child of node['@graph'] as IDataObject[]) {
+                processNode(child);
+            }
+        }
+
+        const rawType = node['@type'];
+        const types: string[] = Array.isArray(rawType)
+            ? (rawType as string[])
+            : rawType ? [String(rawType)] : [];
+
+        const isLocationNode = types.some(
+            (t) => JSON_LD_LOCATION_TYPES.has(t) || t.endsWith('Business') || t.endsWith('Store'),
+        );
+        if (!isLocationNode) return;
+
+        const orgName = node.name ? String(node.name) : undefined;
+        const telephone = node.telephone ? String(node.telephone) : undefined;
+
+        // Walk child properties BEFORE checking address — parent may have no address
+        // but its hasPOS/location/containsPlace children hold the actual PostalAddress nodes
+        for (const prop of ['hasPOS', 'location', 'containsPlace'] as const) {
+            const val = node[prop];
+            if (!val) continue;
+            const children = Array.isArray(val) ? (val as IDataObject[]) : [val as IDataObject];
+            for (const child of children) processNode(child);
+        }
+
+        const rawAddress = node.address;
+        if (!rawAddress) return;
+
+        // address can be a single PostalAddress object or an array (multi-location)
+        const addrs = Array.isArray(rawAddress)
+            ? (rawAddress as IDataObject[])
+            : [rawAddress as IDataObject];
+
+        for (const addr of addrs) {
+            if (typeof addr !== 'object' || !addr) continue;
+            // Accept PostalAddress nodes; also accept plain objects with streetAddress
+            const addrTypes = Array.isArray(addr['@type'])
+                ? (addr['@type'] as string[])
+                : addr['@type'] ? [String(addr['@type'])] : [];
+            if (addrTypes.length > 0 && !addrTypes.includes('PostalAddress')) continue;
+            const loc = mapJsonLdPostalAddress(orgName, addr, telephone, includePhones);
+            if (loc) locations.push(loc);
+        }
+    }
+
+    for (const item of data) {
+        // Some JSON-LD scripts emit an array of objects at the top level
+        if (Array.isArray(item)) {
+            for (const child of item as IDataObject[]) processNode(child);
+        } else {
+            processNode(item);
+        }
+    }
+    return locations;
+}
+
+const ADDRESS_ABBREVIATIONS: Array<[RegExp, string]> = [
+    [/\bst\.?\b/gi, 'street'],
+    [/\brd\.?\b/gi, 'road'],
+    [/\bave?\.?\b/gi, 'avenue'],
+    [/\bblvd\.?\b/gi, 'boulevard'],
+    [/\bln\.?\b/gi, 'lane'],
+    [/\bdr\.?\b/gi, 'drive'],
+    [/\bcr?t\.?\b/gi, 'court'],
+    [/\bcres\.?\b/gi, 'crescent'],
+    [/\bhwy\.?\b/gi, 'highway'],
+    [/\bpde\.?\b/gi, 'parade'],
+    [/\bpl\.?\b/gi, 'place'],
+    [/\bsq\.?\b/gi, 'square'],
+    [/\btce\.?\b/gi, 'terrace'],
+    [/\bcct\.?\b/gi, 'circuit'],
+    [/\bcl\.?\b/gi, 'close'],
+    [/\bgrv\.?\b/gi, 'grove'],
+];
+
+function canonicalizeAddress(address: string, postcode?: string): string {
+    let s = address.toLowerCase();
+    for (const [pattern, replacement] of ADDRESS_ABBREVIATIONS) {
+        s = s.replace(pattern, replacement);
+    }
+    s = s.replace(/[.,#\-/]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Strip leading unit/suite/level when postcode is present (same building, different unit = same location)
+    if (postcode) {
+        s = s.replace(/^(unit|suite|level|ste|apt|flat|floor)\s+[\w\d-]+\s*/i, '');
+    }
+    const pc = postcode ? String(postcode).replace(/\s/g, '').toLowerCase() : '';
+    return pc ? `${s}|${pc}` : s;
+}
+
 function buildLocationsSchema(includePhones: boolean): IDataObject {
 	const itemProperties: IDataObject = {
-		name: { type: 'string', description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.' },
-		address: { type: 'string', description: 'Full postal address including street number, street name, suburb/city, state/region, postcode' },
+		name: {
+			type: 'string',
+			description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.',
+		},
+		address: {
+			type: 'string',
+			description: 'Full postal address including street number, street name, suburb/city, state/region, postcode',
+		},
 		city: { type: 'string', description: 'City or suburb' },
 		country: { type: 'string', description: 'Country name' },
+		confidence: {
+			type: 'string',
+			enum: ['high', 'medium', 'low'],
+			description: 'high = complete address with postcode and city; medium = partial address missing postcode or state; low = city/country only or inferred from context',
+		},
+		sourceSnippet: {
+			type: 'string',
+			description: 'Exact verbatim text from the page (1–2 sentences) that contains or directly supports this location. Must be copy-pasted from the content, not paraphrased.',
+		},
 	};
 	if (includePhones) {
 		(itemProperties as Record<string, IDataObject>).phone = {
@@ -188,7 +391,7 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 				items: {
 					type: 'object',
 					properties: itemProperties,
-					required: ['name', 'address', 'city', 'country'],
+					required: ['name', 'address', 'city', 'country', 'confidence', 'sourceSnippet'],
 				},
 			},
 		},
@@ -196,18 +399,136 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 	} as IDataObject;
 }
 
-function buildLocationsInstruction(includePhones: boolean): string {
+function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): string {
 	const phoneStep = includePhones
-		? '\n4. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
+		? '\n5. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
 		: '';
-	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters) mentioned on this page.
+	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
+	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
+	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters, distributors, stockists, dealers) mentioned on this page.${urlContext}
 
 For each location:
 1. Extract the complete postal address including street, city, state/region, and postcode.
-2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label exists, derive one from the city or suburb (e.g. "Melbourne Office"). If multiple locations share the same city, add the suburb to differentiate (e.g. "Melbourne CBD Office", "Melbourne Docklands Office"). Every name MUST be unique across all locations.
-3. Extract city and country.${phoneStep}
+2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb. Every name MUST be unique.
+3. Assign confidence: "high" if full address with postcode and city; "medium" if partial (missing postcode or state); "low" if city/country only.
+4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}
 
-Return only genuine physical locations. Exclude: P.O. boxes, virtual offices, and registered agent addresses.`;
+Include: offices, branches, stores, showrooms, warehouses, distribution centres, factories, partner/dealer/stockist locations (if an address is given).
+Exclude: P.O. boxes, virtual offices, registered agent addresses, locations with no street address.
+If no physical locations are found, return: {"locations": []}
+
+Examples:
+
+Input: "Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."
+Output: {"locations":[{"name":"Melbourne Office","address":"Level 12, 200 Collins Street, Melbourne VIC 3000","city":"Melbourne","country":"Australia","confidence":"high","sourceSnippet":"Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."${phoneFewShot}}]}
+
+Input: "Visit our Sydney showroom at 42 George Street, Sydney. Open weekdays 9–5."
+Output: {"locations":[{"name":"Sydney Showroom","address":"42 George Street, Sydney","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney."${phoneFewShot ? phoneFewShot.replace(/"\+61.*?"/, '"(not stated)"') : ''}}]}`;
+}
+
+function mergeLocationsIntoMap(
+	locations: IDataObject[],
+	locationMap: Map<string, IDataObject>,
+): void {
+	for (const loc of locations) {
+		if (!loc || (loc as IDataObject & { error?: unknown }).error) continue;
+		const key = canonicalizeAddress(
+			String(loc.address || ''),
+			loc.postcode as string | undefined,
+		);
+		if (!key) continue;
+		if (!locationMap.has(key)) {
+			locationMap.set(key, { ...loc });
+		} else {
+			const existing = locationMap.get(key)!;
+			for (const [k, value] of Object.entries(loc)) {
+				if (value !== null && value !== undefined && value !== '' && !existing[k]) {
+					existing[k] = value;
+				}
+			}
+			const existingRank = LOCATION_CONFIDENCE_RANK[existing.confidence as string] ?? 0;
+			const newRank = LOCATION_CONFIDENCE_RANK[loc.confidence as string] ?? 0;
+			if (newRank > existingRank) existing.confidence = loc.confidence;
+		}
+	}
+}
+
+async function extractLocationsFromPage(
+	result: CrawlResult,
+	includePhones: boolean,
+	provider: string,
+	apiKey: string,
+	baseUrl: string | undefined,
+	crawler: Crawl4aiClient,
+): Promise<{ jsonLdLocations: IDataObject[]; llmLocations: IDataObject[]; error?: string }> {
+	const jsonLdLocations = extractLocationsFromJsonLd(result.html || '', includePhones);
+
+	const text =
+		(typeof result.markdown === 'object' && result.markdown !== null
+			? result.markdown.raw_markdown || result.markdown.fit_markdown
+			: typeof result.markdown === 'string'
+				? result.markdown
+				: '') || '';
+
+	if (!text.trim()) return { jsonLdLocations, llmLocations: [] };
+
+	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			buildLocationsSchema(includePhones),
+			buildLocationsInstruction(includePhones, result.url),
+			provider,
+			apiKey,
+			baseUrl,
+		),
+	};
+
+	let llmResult: CrawlResult;
+	try {
+		llmResult = await crawler.crawlUrl(rawUrl, config);
+	} catch (err) {
+		return { jsonLdLocations, llmLocations: [], error: (err as Error).message };
+	}
+
+	if (!llmResult.success) {
+		return { jsonLdLocations, llmLocations: [], error: llmResult.error_message || 'crawl request failed' };
+	}
+	const llmErr = checkLlmExtractionError(llmResult);
+	if (llmErr) return { jsonLdLocations, llmLocations: [], error: llmErr };
+	if (!llmResult.extracted_content) return { jsonLdLocations, llmLocations: [] };
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(llmResult.extracted_content);
+	} catch {
+		return { jsonLdLocations, llmLocations: [], error: 'failed to parse extracted_content as JSON' };
+	}
+
+	const chunks = Array.isArray(parsed) ? (parsed as IDataObject[]) : [(parsed as IDataObject)];
+	const textLower = text.toLowerCase().replace(/\s+/g, ' ');
+	const llmLocations: IDataObject[] = [];
+
+	for (const chunk of chunks) {
+		if (chunk.error) continue;
+		const rawLocs = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
+		for (const loc of rawLocs) {
+			const snippet = String(loc.sourceSnippet || '').trim();
+			if (!snippet) continue; // No grounding evidence — reject
+			const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
+			let found = textLower.includes(normSnippet);
+			if (!found && normSnippet.length > 30) {
+				found = textLower.includes(normSnippet.slice(0, 30));
+			}
+			if (!found) continue; // Hallucination — skip
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { sourceSnippet: _ss, ...cleanLoc } = loc as Record<string, unknown>;
+			llmLocations.push({ ...(cleanLoc as IDataObject), source: 'llm' });
+		}
+	}
+
+	return { jsonLdLocations, llmLocations };
 }
 
 async function runLocationsExtraction(
@@ -220,86 +541,41 @@ async function runLocationsExtraction(
 	itemIndex: number,
 ): Promise<IDataObject[]> {
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
-
-	// Concatenate all pages into one payload so a single LLM pass sees all content
-	const textParts: string[] = [];
-	for (const result of results) {
-		let text = '';
-		if (typeof result.markdown === 'object' && result.markdown !== null) {
-			text = result.markdown.raw_markdown || '';
-		} else if (typeof result.markdown === 'string') {
-			text = result.markdown;
-		}
-		if (text) textParts.push(text);
-	}
-	if (textParts.length === 0) return [];
-
-	const combinedText = textParts.join('\n\n---\n\n');
-	const escaped = combinedText
-		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	const rawUrl = `raw:<pre>${escaped}</pre>`;
-
-	const config: FullCrawlConfig = {
-		extractionStrategy: createLlmExtractionStrategy(
-			buildLocationsSchema(includePhones),
-			buildLocationsInstruction(includePhones),
-			provider,
-			apiKey,
-			baseUrl,
-		),
-	};
-
-	const llmResult = await crawler.crawlUrl(rawUrl, config);
-	if (!llmResult.success) {
-		throw new NodeOperationError(
-			this.getNode(),
-			`Locations extraction failed: ${llmResult.error_message || 'crawl request failed'}`,
-			{ itemIndex },
-		);
-	}
-
-	const llmError = checkLlmExtractionError(llmResult);
-	if (llmError) {
-		throw new NodeOperationError(
-			this.getNode(),
-			`Locations extraction failed: ${llmError}`,
-			{ itemIndex },
-		);
-	}
-
-	if (!llmResult.extracted_content) return [];
-
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(llmResult.extracted_content);
-	} catch {
-		return [];
-	}
-	const chunks = Array.isArray(parsed)
-		? (parsed as IDataObject[])
-		: [(parsed as IDataObject)];
-
 	const locationMap = new Map<string, IDataObject>();
+	const errors: string[] = [];
 
-	for (const chunk of chunks) {
-		if (chunk.error) continue;
-		const locations = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
-		for (const loc of locations) {
-			const normalizedAddr = String(loc.address || '').toLowerCase().replace(/\s+/g, ' ').trim();
-			if (!normalizedAddr) continue;
-			if (!locationMap.has(normalizedAddr)) {
-				locationMap.set(normalizedAddr, { ...loc });
-			} else {
-				// Merge non-empty fields from later chunks to avoid data loss when the same
-				// location appears across multiple chunks with varying detail levels
-				const existing = locationMap.get(normalizedAddr)!;
-				for (const [key, value] of Object.entries(loc)) {
-					if (value !== null && value !== undefined && value !== '' && !existing[key]) {
-						existing[key] = value;
-					}
-				}
-			}
+	const candidates = selectLocationRelevantPages(results);
+	const pagesToProcess = candidates.length > 0 ? candidates : results.slice(0, 8);
+
+	for (const result of pagesToProcess) {
+		const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
+			result, includePhones, provider, apiKey, baseUrl, crawler,
+		);
+		if (error) errors.push(error);
+		mergeLocationsIntoMap(jsonLdLocations, locationMap);
+		mergeLocationsIntoMap(llmLocations, locationMap);
+	}
+
+	if (locationMap.size === 0 && pagesToProcess.length < results.length) {
+		const remaining = results
+			.filter((r) => !pagesToProcess.includes(r))
+			.slice(0, 5);
+		for (const result of remaining) {
+			const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
+				result, includePhones, provider, apiKey, baseUrl, crawler,
+			);
+			if (error) errors.push(error);
+			mergeLocationsIntoMap(jsonLdLocations, locationMap);
+			mergeLocationsIntoMap(llmLocations, locationMap);
 		}
+	}
+
+	if (locationMap.size === 0 && errors.length > 0) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`Locations extraction failed on all pages: ${errors[0]}`,
+			{ itemIndex },
+		);
 	}
 
 	return [...locationMap.values()];
@@ -616,6 +892,18 @@ export const description: INodeProperties[] = [
 				description: 'Preset browser headers to send with the request. Helps bypass server-side bot detection. Select Custom to enter your own headers.',
 			},
 			{
+				displayName: 'Browser Type',
+				name: 'browserType',
+				type: 'options',
+				options: [
+					{ name: 'Chromium (default)', value: 'chromium' },
+					{ name: 'Firefox', value: 'firefox' },
+					{ name: 'WebKit', value: 'webkit' },
+				],
+				default: 'chromium',
+				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+			},
+			{
 				displayName: 'Custom Headers',
 				name: 'customHeaders',
 				type: 'string',
@@ -744,6 +1032,10 @@ export async function execute(
 				...getSimpleDefaults(),
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 			};
+
+			if (options.browserType) {
+				config.browserType = String(options.browserType);
+			}
 
 			if (options.stealthMode === true) {
 				config.enable_stealth = true;
