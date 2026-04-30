@@ -315,6 +315,40 @@ function extractLocationsFromJsonLd(html: string, includePhones: boolean): IData
     return locations;
 }
 
+const ADDRESS_ABBREVIATIONS: Array<[RegExp, string]> = [
+    [/\bst\.?\b/gi, 'street'],
+    [/\brd\.?\b/gi, 'road'],
+    [/\bave?\.?\b/gi, 'avenue'],
+    [/\bblvd\.?\b/gi, 'boulevard'],
+    [/\bln\.?\b/gi, 'lane'],
+    [/\bdr\.?\b/gi, 'drive'],
+    [/\bcr?t\.?\b/gi, 'court'],
+    [/\bcres\.?\b/gi, 'crescent'],
+    [/\bhwy\.?\b/gi, 'highway'],
+    [/\bpde\.?\b/gi, 'parade'],
+    [/\bpl\.?\b/gi, 'place'],
+    [/\bsq\.?\b/gi, 'square'],
+    [/\btce\.?\b/gi, 'terrace'],
+    [/\bcct\.?\b/gi, 'circuit'],
+    [/\bcl\.?\b/gi, 'close'],
+    [/\bgrv\.?\b/gi, 'grove'],
+];
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function canonicalizeAddress(address: string, postcode?: string): string {
+    let s = address.toLowerCase();
+    for (const [pattern, replacement] of ADDRESS_ABBREVIATIONS) {
+        s = s.replace(pattern, replacement);
+    }
+    s = s.replace(/[.,#\-/]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Strip leading unit/suite/level when postcode is present (same building, different unit = same location)
+    if (postcode) {
+        s = s.replace(/^(unit|suite|level|ste|apt|flat|floor)\s+[\w\d-]+\s*/i, '');
+    }
+    const pc = postcode ? String(postcode).replace(/\s/g, '').toLowerCase() : '';
+    return pc ? `${s}|${pc}` : s;
+}
+
 function buildLocationsSchema(includePhones: boolean): IDataObject {
 	const itemProperties: IDataObject = {
 		name: { type: 'string', description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.' },
