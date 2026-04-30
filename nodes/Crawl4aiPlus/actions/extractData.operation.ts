@@ -280,6 +280,19 @@ function extractLocationsFromJsonLd(html: string, includePhones: boolean): IData
 
         const orgName = node.name ? String(node.name) : undefined;
         const telephone = node.telephone ? String(node.telephone) : undefined;
+
+        // Walk child properties BEFORE checking address — parent may have no address
+        // but its hasPOS/location/containsPlace children hold the actual PostalAddress nodes
+        if (Array.isArray(node.hasPOS)) {
+            for (const pos of node.hasPOS as IDataObject[]) processNode(pos);
+        }
+        if (Array.isArray(node.location)) {
+            for (const loc of node.location as IDataObject[]) processNode(loc);
+        }
+        if (Array.isArray(node.containsPlace)) {
+            for (const place of node.containsPlace as IDataObject[]) processNode(place);
+        }
+
         const rawAddress = node.address;
         if (!rawAddress) return;
 
@@ -298,20 +311,16 @@ function extractLocationsFromJsonLd(html: string, includePhones: boolean): IData
             const loc = mapJsonLdPostalAddress(orgName, addr, telephone, includePhones);
             if (loc) locations.push(loc);
         }
-
-        // Walk hasPOS (point-of-sale) and location arrays for chain stores
-        if (Array.isArray(node.hasPOS)) {
-            for (const pos of node.hasPOS as IDataObject[]) processNode(pos);
-        }
-        if (Array.isArray(node.location)) {
-            for (const loc of node.location as IDataObject[]) processNode(loc);
-        }
-        if (Array.isArray(node.containsPlace)) {
-            for (const place of node.containsPlace as IDataObject[]) processNode(place);
-        }
     }
 
-    for (const item of data) processNode(item);
+    for (const item of data) {
+        // Some JSON-LD scripts emit an array of objects at the top level
+        if (Array.isArray(item)) {
+            for (const child of item as IDataObject[]) processNode(child);
+        } else {
+            processNode(item);
+        }
+    }
     return locations;
 }
 
