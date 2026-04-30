@@ -200,13 +200,17 @@ function splitStreetAddress(streetAddress: string): { address1: string; address2
             address2: streetAddress.slice(0, slashIdx).trim(),
         };
     }
-    // "Level 2, 343 Collins St" or "Suite 5, 343 Collins St" → split at first comma
-    const commaMatch = streetAddress.match(/^((?:level|floor|fl?|suite|suites?|unit|apt|flat|ste|room)\s+[^,]+),\s*/i);
-    if (commaMatch) {
-        return {
-            address1: streetAddress.slice(commaMatch[0].length).trim(),
-            address2: commaMatch[1].trim(),
-        };
+    // "Level 2, Suites 214/215, 343 Collins St" → strip all leading unit qualifiers, collect in parts
+    const prefixRe = /^((?:level|floor|fl?|suite|suites?|unit|apt|flat|ste|room)\s+[^,]+),\s*/i;
+    let remaining = streetAddress;
+    const parts: string[] = [];
+    let m: RegExpMatchArray | null;
+    while ((m = remaining.match(prefixRe))) {
+        parts.push(m[1].trim());
+        remaining = remaining.slice(m[0].length).trim();
+    }
+    if (parts.length > 0) {
+        return { address1: remaining, address2: parts.join(', ') };
     }
     return { address1: streetAddress };
 }
@@ -427,11 +431,12 @@ function mergeLocationsIntoMap(
 ): void {
 	for (const loc of locations) {
 		if (!loc || (loc as IDataObject & { error?: unknown }).error) continue;
-		const key = canonicalizeAddress(
-			String(loc.address1 || ''),
-			loc.postcode as string | undefined,
-		);
-		if (!key) continue;
+		const addr1 = String(loc.address1 || '');
+		const postcode = String(loc.postcode || '').trim();
+		const city = String(loc.city || '').toLowerCase().replace(/\s+/g, ' ').trim();
+		const addrKey = canonicalizeAddress(addr1, postcode || undefined);
+		if (!addrKey) continue;
+		const key = city ? `${city}|${addrKey}` : addrKey;
 		if (!locationMap.has(key)) {
 			locationMap.set(key, { ...loc });
 		} else {
