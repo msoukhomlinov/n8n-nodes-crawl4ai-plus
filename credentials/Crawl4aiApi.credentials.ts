@@ -187,12 +187,12 @@ export class Crawl4aiApi implements ICredentialType {
 			},
 		},
 		{
-			displayName: 'Custom Provider',
+			displayName: 'Model ID',
 			name: 'customProvider',
 			type: 'string',
 			default: '',
-			placeholder: 'custom/llama-3-70b or provider/model',
-			description: 'The custom provider in format "provider/model". Use "custom/" prefix for external LiteLLM proxies or custom endpoints (e.g., custom/llama-3-70b)',
+			placeholder: 'gpt-oss-120b',
+			description: 'Model name as it appears in your proxy\'s model list (e.g. "gpt-oss-120b"). Important: Crawl4AI uses LiteLLM internally, which always strips any "provider/" prefix before sending the model name to your endpoint. If your proxy registers models with a prefix (e.g. "azure_ai/gpt-oss-120b"), add a plain alias (e.g. "gpt-oss-120b") in your proxy config. Without a Base URL, use full "provider/model" format (e.g. "openai/gpt-4o").',
 			displayOptions: {
 				show: {
 					enableLlm: [true],
