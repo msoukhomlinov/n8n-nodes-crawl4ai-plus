@@ -6,6 +6,7 @@
 - LiteLLM/custom provider now auto-prefixes `openai/` when Base URL is set, matching OpenAI-compatible proxy protocol
 - `llmExtractor` now surfaces LLM errors instead of silently returning error JSON as data
 - Credentials "Custom Provider" field renamed to "Model ID" with description clarifying that Crawl4AI's LiteLLM SDK strips provider prefixes before calling the proxy
+- `extractData` Contact Info: replaced phone regex with `libphonenumber-js` for accurate detection and E.164 deduplication; removed social media (noise); tightened address regex to require state code + postcode; Default Country Code option (default AU) for local number parsing; optional LLM Validation pass to clean false positives using the configured LLM
 
 ## 5.1.1 (2026-04-30)
 

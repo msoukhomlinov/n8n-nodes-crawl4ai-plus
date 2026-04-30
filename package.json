@@ -14,14 +14,18 @@
   ],
   "license": "MIT",
   "homepage": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus",
-  "author": { "name": "Max Soukhomlinov" },
+  "author": {
+    "name": "Max Soukhomlinov"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus.git"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "n8n-node build",
     "build:watch": "tsc --watch",
@@ -34,7 +38,9 @@
   },
   "n8n": {
     "n8nNodesApiVersion": 1,
-    "credentials": ["dist/credentials/Crawl4aiApi.credentials.js"],
+    "credentials": [
+      "dist/credentials/Crawl4aiApi.credentials.js"
+    ],
     "nodes": [
       "dist/nodes/Crawl4aiPlus/Crawl4aiPlus.node.js",
       "dist/nodes/Crawl4aiPlus/Crawl4aiPlusAiTools.node.js",
@@ -48,6 +54,13 @@
     "prettier": "^3.1.0",
     "typescript": "~5.5.4"
   },
-  "peerDependencies": { "n8n-workflow": ">=1.60.0", "@langchain/core": ">=0.3.0" },
-  "dependencies": { "axios": "^1.7.9", "zod": "^3.22.0" }
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.0",
+    "n8n-workflow": ">=1.60.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "libphonenumber-js": "^1.12.42",
+    "zod": "^3.22.0"
+  }
 }
