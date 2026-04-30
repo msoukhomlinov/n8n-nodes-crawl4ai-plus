@@ -63,15 +63,30 @@ export async function getLlmModels(this: ILoadOptionsFunctions): Promise<INodePr
 		}
 
 		if (provider === 'anthropic') {
-			return [
-				{ name: 'claude-opus-4-5-20251101', value: 'claude-opus-4-5-20251101' },
-				{ name: 'claude-sonnet-4-5-20251022', value: 'claude-sonnet-4-5-20251022' },
-				{ name: 'claude-haiku-4-5-20251001', value: 'claude-haiku-4-5-20251001' },
-				{ name: 'claude-3-5-sonnet-20241022', value: 'claude-3-5-sonnet-20241022' },
-				{ name: 'claude-3-5-haiku-20241022', value: 'claude-3-5-haiku-20241022' },
-				{ name: 'claude-3-opus-20240229', value: 'claude-3-opus-20240229' },
-				{ name: 'claude-3-haiku-20240307', value: 'claude-3-haiku-20240307' },
-			].sort((a, b) => a.name.localeCompare(b.name));
+			try {
+				// eslint-disable-next-line @n8n/community-nodes/no-http-request-with-manual-auth
+				const response = await this.helpers.httpRequest({
+					method: 'GET',
+					url: 'https://api.anthropic.com/v1/models',
+					headers: {
+						'x-api-key': credentials.apiKey,
+						'anthropic-version': '2023-06-01',
+					},
+				}) as { data: Array<{ id: string; display_name: string }> };
+				return (response.data || [])
+					.map((m) => ({ name: m.display_name || m.id, value: m.id }))
+					.sort((a, b) => a.name.localeCompare(b.name));
+			} catch {
+				return [
+					{ name: 'claude-opus-4-5-20251101', value: 'claude-opus-4-5-20251101' },
+					{ name: 'claude-sonnet-4-5-20251022', value: 'claude-sonnet-4-5-20251022' },
+					{ name: 'claude-haiku-4-5-20251001', value: 'claude-haiku-4-5-20251001' },
+					{ name: 'claude-3-5-sonnet-20241022', value: 'claude-3-5-sonnet-20241022' },
+					{ name: 'claude-3-5-haiku-20241022', value: 'claude-3-5-haiku-20241022' },
+					{ name: 'claude-3-opus-20240229', value: 'claude-3-opus-20240229' },
+					{ name: 'claude-3-haiku-20240307', value: 'claude-3-haiku-20240307' },
+				].sort((a, b) => a.name.localeCompare(b.name));
+			}
 		}
 
 		return [];
