@@ -36,10 +36,10 @@ const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 const LOCATION_QUERY_KEYWORDS = [
 	'address', 'avenue', 'boulevard', 'branch', 'branches', 'campus', 'centre', 'center',
 	'clinic', 'contact', 'depot', 'directions', 'distributor', 'facility', 'factory',
-	'find us', 'floor', 'get in touch', 'headquarters', 'hub', 'imprint', 'impressum',
+	'find-us', 'floor', 'get-in-touch', 'headquarters', 'hub', 'imprint', 'impressum',
 	'level', 'location', 'locations', 'map', 'office', 'offices', 'outlet', 'pharmacy',
-	'postcode', 'reach us', 'road', 'showroom', 'stockist', 'store', 'stores', 'street',
-	'suburb', 'suite', 'unit', 'visit us', 'warehouse', 'where to buy', 'zip code',
+	'postcode', 'reach-us', 'road', 'showroom', 'stockist', 'store', 'stores', 'street',
+	'suburb', 'suite', 'unit', 'visit-us', 'warehouse', 'where-to-buy', 'zip-code',
 ];
 
 const LOCATION_CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
@@ -435,8 +435,8 @@ function mergeLocationsIntoMap(
 		const postcode = String(loc.postcode || '').trim();
 		const city = String(loc.city || '').toLowerCase().replace(/\s+/g, ' ').trim();
 		const addrKey = canonicalizeAddress(addr1, postcode || undefined);
-		if (!addrKey) continue;
-		const key = city ? `${city}|${addrKey}` : addrKey;
+		const key = addrKey ? (city ? `${city}|${addrKey}` : addrKey) : city;
+		if (!key) continue;
 		if (!locationMap.has(key)) {
 			locationMap.set(key, { ...loc });
 		} else {
