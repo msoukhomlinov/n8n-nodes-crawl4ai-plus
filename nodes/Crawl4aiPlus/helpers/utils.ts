@@ -108,7 +108,7 @@ const SMART_DEDUP_EXCLUDE_PATTERNS = [
 
 /**
  * Build a deep crawl strategy config.
- * Uses BestFirstCrawlStrategy with KeywordRelevanceScorer when keywords are provided;
+ * Uses BestFirstCrawlingStrategy with KeywordRelevanceScorer when keywords are provided;
  * falls back to BFSDeepCrawlStrategy for generic crawls.
  */
 export function buildDeepCrawlStrategy(
@@ -173,7 +173,7 @@ export function buildDeepCrawlStrategy(
 			type: 'KeywordRelevanceScorer',
 			params: { keywords, weight: 1.0 },
 		};
-		return { type: 'BestFirstCrawlStrategy', params: strategyParams };
+		return { type: 'BestFirstCrawlingStrategy', params: strategyParams };
 	}
 
 	return { type: 'BFSDeepCrawlStrategy', params: strategyParams };

@@ -113,7 +113,7 @@ export const description: INodeProperties[] = [
 				options: [
 					{
 						name: 'Best-First (Recommended)',
-						value: 'BestFirstCrawlStrategy',
+						value: 'BestFirstCrawlingStrategy',
 						description: 'Visit highest-scoring pages first. Best for finding relevant content quickly.',
 					},
 					{
@@ -288,7 +288,7 @@ export async function execute(
 				}
 				const strategyType = String(ds.crawlStrategy ?? 'BFSDeepCrawlStrategy');
 
-				if (!query && strategyType === 'BestFirstCrawlStrategy') {
+				if (!query && strategyType === 'BestFirstCrawlingStrategy') {
 					throw new NodeOperationError(this.getNode(), 'Discovery query is required for Best-First strategy.', { itemIndex: i });
 				}
 
