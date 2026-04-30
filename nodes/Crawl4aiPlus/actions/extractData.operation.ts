@@ -20,14 +20,6 @@ import {
 } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
 
-// --- Regex patterns for contact info extraction ---
-const ADDRESS_PATTERNS: RegExp[] = [
-	// AU/US/CA: street + state abbreviation + numeric postcode
-	/\d{1,5}\s+[\w\s]{2,40}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl|Parade|Pde|Highway|Hwy|Crescent|Cres|Terrace|Tce|Circuit|Cct)\.?(?:\s*,?\s*(?:Suite|Ste|Apt|Unit|Level|#)\s*[\w\d-]+)?(?:\s*,?\s*[\w\s]{2,30})?\s*,?\s*(?:VIC|NSW|QLD|WA|SA|TAS|ACT|NT|[A-Z]{2})\s*\d{4,6}(?:-\d{4})?/gi,
-	// UK: street + town/city + UK postcode (e.g. SW1A 1AA, EC1A 1BB, W1A 0AX)
-	/\d{1,5}\s+[\w\s]{2,40}(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Court|Ct|Way|Place|Pl|Crescent|Cres|Terrace|Tce)\.?(?:\s*,?\s*(?:Flat|Apt|Unit|Floor)\s*[\w\d-]+)?(?:\s*,?\s*[\w\s]{2,30})?\s*,?\s*[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/gi,
-];
-
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
@@ -38,17 +30,12 @@ const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
 	numbers: [/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g],
 };
 
-/**
- * Extract contact info from crawl results using libphonenumber-js for phones
- * and targeted regex for emails and addresses.
- */
 function extractContactInfo(
 	results: CrawlResult[],
 	defaultCountry: string,
-): { emails: string[]; phones: string[]; addresses: string[] } {
+): { emails: string[]; phones: string[] } {
 	const emails = new Set<string>();
 	const phoneMap = new Map<string, string>(); // E.164 → formatted
-	const addresses = new Set<string>();
 
 	for (const result of results) {
 		let text = '';
@@ -80,25 +67,15 @@ function extractContactInfo(
 				}
 			}
 		}
-
-		// Addresses
-		for (const pattern of ADDRESS_PATTERNS) {
-			pattern.lastIndex = 0;
-			const addrMatches = text.match(pattern);
-			if (addrMatches) {
-				for (const a of addrMatches) addresses.add(a.trim());
-			}
-		}
 	}
 
 	return {
 		emails: [...emails],
 		phones: [...phoneMap.values()],
-		addresses: [...addresses],
 	};
 }
 
-const LLM_VALIDATION_SCHEMA = {
+const LLM_VALIDATION_SCHEMA: IDataObject = {
 	type: 'object',
 	properties: {
 		emails: {
@@ -111,16 +88,11 @@ const LLM_VALIDATION_SCHEMA = {
 			items: { type: 'string' },
 			description: 'Validated phone numbers in international format (+XX XX XXXX XXXX)',
 		},
-		addresses: {
-			type: 'array',
-			items: { type: 'string' },
-			description: 'Validated physical postal addresses — complete addresses only',
-		},
 	},
-	required: ['emails', 'phones', 'addresses'],
+	required: ['emails', 'phones'],
 };
 
-const LLM_VALIDATION_INSTRUCTION = `You are a contact information validator. You receive a list of extracted emails, phone numbers, and addresses that may contain false positives. Your task:
+const LLM_VALIDATION_INSTRUCTION = `You are a contact information validator. You receive a list of extracted emails and phone numbers that may contain false positives. Your task:
 1. Remove any items that are clearly NOT real contact details (e.g. example@domain.com, placeholder numbers, version strings mistaken for phones)
 2. Remove duplicate entries (same number in different formats)
 3. Format phone numbers consistently in international format (+XX XX XXXX XXXX)
@@ -129,12 +101,12 @@ Return the cleaned data as JSON matching the provided schema.`;
 
 async function runLlmContactValidation(
 	this: IExecuteFunctions,
-	contacts: { emails: string[]; phones: string[]; addresses: string[] },
+	contacts: { emails: string[]; phones: string[] },
 	credentials: Crawl4aiApiCredentials,
 	crawler: Crawl4aiClient,
 	modelOverride: string | undefined,
 	itemIndex: number,
-): Promise<{ emails: string[]; phones: string[]; addresses: string[] }> {
+): Promise<{ emails: string[]; phones: string[] }> {
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
 
 	const jsonStr = JSON.stringify(contacts, null, 2)
@@ -180,18 +152,155 @@ async function runLlmContactValidation(
 		const merged = {
 			emails: [...new Set(items.flatMap((c) => Array.isArray(c.emails) ? (c.emails as string[]) : []))],
 			phones: [...new Set(items.flatMap((c) => Array.isArray(c.phones) ? (c.phones as string[]) : []))],
-			addresses: [...new Set(items.flatMap((c) => Array.isArray(c.addresses) ? (c.addresses as string[]) : []))],
 		};
 		const anyHas = (key: string) => items.some((c) => Array.isArray(c[key]));
 		return {
 			emails: anyHas('emails') ? merged.emails : contacts.emails,
 			phones: anyHas('phones') ? merged.phones : contacts.phones,
-			addresses: anyHas('addresses') ? merged.addresses : contacts.addresses,
 		};
 	} catch (err) {
 		if (err instanceof NodeOperationError) throw err;
 		return contacts;
 	}
+}
+
+function buildLocationsSchema(includePhones: boolean): IDataObject {
+	const itemProperties: IDataObject = {
+		name: { type: 'string', description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.' },
+		address: { type: 'string', description: 'Full postal address including street number, street name, suburb/city, state/region, postcode' },
+		city: { type: 'string', description: 'City or suburb' },
+		country: { type: 'string', description: 'Country name' },
+	};
+	if (includePhones) {
+		(itemProperties as Record<string, IDataObject>).phone = {
+			type: 'string',
+			description: 'Direct phone number for this location in international format (e.g. +61 3 9000 0000)',
+		};
+	}
+	return {
+		type: 'object',
+		properties: {
+			locations: {
+				type: 'array',
+				description: 'All physical locations found on the page',
+				items: {
+					type: 'object',
+					properties: itemProperties,
+					required: ['name', 'address', 'city', 'country'],
+				},
+			},
+		},
+		required: ['locations'],
+	} as IDataObject;
+}
+
+function buildLocationsInstruction(includePhones: boolean): string {
+	const phoneStep = includePhones
+		? '\n4. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
+		: '';
+	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters) mentioned on this page.
+
+For each location:
+1. Extract the complete postal address including street, city, state/region, and postcode.
+2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label exists, derive one from the city or suburb (e.g. "Melbourne Office"). If multiple locations share the same city, add the suburb to differentiate (e.g. "Melbourne CBD Office", "Melbourne Docklands Office"). Every name MUST be unique across all locations.
+3. Extract city and country.${phoneStep}
+
+Return only genuine physical locations. Exclude: P.O. boxes, virtual offices, and registered agent addresses.`;
+}
+
+async function runLocationsExtraction(
+	this: IExecuteFunctions,
+	results: CrawlResult[],
+	credentials: Crawl4aiApiCredentials,
+	crawler: Crawl4aiClient,
+	modelOverride: string | undefined,
+	includePhones: boolean,
+	itemIndex: number,
+): Promise<IDataObject[]> {
+	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
+
+	// Concatenate all pages into one payload so a single LLM pass sees all content
+	const textParts: string[] = [];
+	for (const result of results) {
+		let text = '';
+		if (typeof result.markdown === 'object' && result.markdown !== null) {
+			text = result.markdown.raw_markdown || '';
+		} else if (typeof result.markdown === 'string') {
+			text = result.markdown;
+		}
+		if (text) textParts.push(text);
+	}
+	if (textParts.length === 0) return [];
+
+	const combinedText = textParts.join('\n\n---\n\n');
+	const escaped = combinedText
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			buildLocationsSchema(includePhones),
+			buildLocationsInstruction(includePhones),
+			provider,
+			apiKey,
+			baseUrl,
+		),
+	};
+
+	const llmResult = await crawler.crawlUrl(rawUrl, config);
+	if (!llmResult.success) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`Locations extraction failed: ${llmResult.error_message || 'crawl request failed'}`,
+			{ itemIndex },
+		);
+	}
+
+	const llmError = checkLlmExtractionError(llmResult);
+	if (llmError) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`Locations extraction failed: ${llmError}`,
+			{ itemIndex },
+		);
+	}
+
+	if (!llmResult.extracted_content) return [];
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(llmResult.extracted_content);
+	} catch {
+		return [];
+	}
+	const chunks = Array.isArray(parsed)
+		? (parsed as IDataObject[])
+		: [(parsed as IDataObject)];
+
+	const locationMap = new Map<string, IDataObject>();
+
+	for (const chunk of chunks) {
+		if (chunk.error) continue;
+		const locations = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
+		for (const loc of locations) {
+			const normalizedAddr = String(loc.address || '').toLowerCase().replace(/\s+/g, ' ').trim();
+			if (!normalizedAddr) continue;
+			if (!locationMap.has(normalizedAddr)) {
+				locationMap.set(normalizedAddr, { ...loc });
+			} else {
+				// Merge non-empty fields from later chunks to avoid data loss when the same
+				// location appears across multiple chunks with varying detail levels
+				const existing = locationMap.get(normalizedAddr)!;
+				for (const [key, value] of Object.entries(loc)) {
+					if (value !== null && value !== undefined && value !== '' && !existing[key]) {
+						existing[key] = value;
+					}
+				}
+			}
+		}
+	}
+
+	return [...locationMap.values()];
 }
 
 /**
@@ -288,12 +397,17 @@ export const description: INodeProperties[] = [
 			{
 				name: 'Contact Info',
 				value: 'contactInfo',
-				description: 'Extract emails, phone numbers, and addresses (no LLM required)',
+				description: 'Extract emails and phone numbers (no LLM required)',
 			},
 			{
 				name: 'Financial Data',
 				value: 'financialData',
 				description: 'Extract currencies, credit cards, IBANs, percentages (no LLM required)',
+			},
+			{
+				name: 'Locations & Addresses',
+				value: 'locationsAddresses',
+				description: 'Find all physical locations (offices, branches, stores) with unique names and addresses. Requires LLM.',
 			},
 			{
 				name: 'Custom (LLM)',
@@ -404,6 +518,19 @@ export const description: INodeProperties[] = [
 		},
 	},
 	{
+		displayName:
+			'Locations extraction requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		name: 'locationsLlmNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['locationsAddresses'],
+			},
+		},
+	},
+	{
 		displayName: 'Crawl Scope',
 		name: 'crawlScope',
 		type: 'options',
@@ -485,6 +612,18 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Include Phones',
+				name: 'includePhones',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to extract phone numbers for each location in addition to address details',
+				displayOptions: {
+					show: {
+						'/extractionType': ['locationsAddresses'],
+					},
+				},
+			},
+			{
 				displayName: 'LLM Validation',
 				name: 'llmValidation',
 				type: 'boolean',
@@ -519,7 +658,7 @@ export const description: INodeProperties[] = [
 				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
-						'/extractionType': ['customLlm', 'contactInfo'],
+						'/extractionType': ['contactInfo', 'customLlm', 'locationsAddresses'],
 					},
 				},
 			},
@@ -566,6 +705,15 @@ export async function execute(
 
 			if (options.waitFor) {
 				config.waitFor = String(options.waitFor);
+			}
+
+			// Pre-flight LLM credential checks — before any crawl is initiated
+			if (extractionType === 'locationsAddresses') {
+				try {
+					validateLlmCredentials(credentials, 'Locations extraction');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				}
 			}
 
 			// For customLlm, build LLM extraction strategy
@@ -670,6 +818,18 @@ export async function execute(
 				data = contacts;
 			} else if (extractionType === 'financialData') {
 				data = extractWithRegex(results, FINANCIAL_PATTERNS);
+			} else if (extractionType === 'locationsAddresses') {
+				const includePhones = options.includePhones === true;
+				const modelOverride = options.llmModel as string | undefined;
+				data = await runLocationsExtraction.call(
+					this,
+					results,
+					credentials,
+					client,
+					modelOverride || undefined,
+					includePhones,
+					i,
+				);
 			} else {
 				// customLlm — parse extracted JSON from each result and merge
 				const extractedItems: IDataObject[] = [];
