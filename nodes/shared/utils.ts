@@ -12,6 +12,104 @@ import {
 } from './interfaces';
 import { Crawl4aiClient, createCrawlerInstance } from './apiClient';
 
+/** Common browser header sets for bot-detection bypass */
+export const BROWSER_PROFILES: Record<string, Record<string, string>> = {
+  chrome_windows: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+  },
+  chrome_macos: {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+  },
+  chrome_android: {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?1',
+    'sec-ch-ua-platform': '"Android"',
+  },
+  chrome_linux: {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Linux"',
+  },
+  edge_windows: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'sec-ch-ua': '"Chromium";v="124", "Microsoft Edge";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+  },
+  firefox_macos: {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:125.0) Gecko/20100101 Firefox/125.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+  },
+  firefox_windows: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+  },
+  googlebot: {
+    'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+  },
+  safari_ios: {
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-AU,en;q=0.9',
+  },
+  safari_macos: {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-AU,en;q=0.9',
+  },
+};
+
+/**
+ * Merge a browser profile preset with optional Key: Value custom headers.
+ * Custom headers override profile headers. Returns undefined if nothing to apply.
+ */
+export function resolveRequestHeaders(
+  profile: string | undefined,
+  customHeadersRaw: string | undefined,
+): Record<string, string> | undefined {
+  const profileHeaders: Record<string, string> =
+    profile && profile !== 'none' && profile !== 'custom'
+      ? (BROWSER_PROFILES[profile] ?? {})
+      : {};
+
+  const customHeaders: Record<string, string> = {};
+  if (customHeadersRaw) {
+    for (const line of customHeadersRaw.split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx > 0) {
+        const key = line.substring(0, idx).trim();
+        const value = line.substring(idx + 1).trim();
+        if (key && value) customHeaders[key] = value;
+      }
+    }
+  }
+
+  const merged = { ...profileHeaders, ...customHeaders };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 /**
  * Get Crawl4AI client instance from context
  */
@@ -97,19 +195,30 @@ export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
     }
   }
 
+  // Browser profile headers (base layer) + custom JSON headers (override layer)
+  const profileKey = options.browserProfile as string | undefined;
+  const profileHeaders: Record<string, string> =
+    profileKey && profileKey !== 'none' ? (BROWSER_PROFILES[profileKey] ?? {}) : {};
+
+  let customJsonHeaders: Record<string, string> = {};
   if (options.headers) {
     if (typeof options.headers === 'string' && options.headers.trim()) {
       try {
         const parsed = JSON.parse(options.headers);
-        if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length > 0) {
-          config.headers = parsed as object;
+        if (typeof parsed === 'object' && parsed !== null) {
+          customJsonHeaders = parsed as Record<string, string>;
         }
       } catch (e) {
         throw new Error(`Invalid headers JSON: ${(e as Error).message}`);
       }
     } else if (typeof options.headers === 'object' && Object.keys(options.headers as object).length > 0) {
-      config.headers = options.headers as object;
+      customJsonHeaders = options.headers as Record<string, string>;
     }
+  }
+
+  const mergedHeaders = { ...profileHeaders, ...customJsonHeaders };
+  if (Object.keys(mergedHeaders).length > 0) {
+    config.headers = mergedHeaders;
   }
 
   if (options.textMode === true) {

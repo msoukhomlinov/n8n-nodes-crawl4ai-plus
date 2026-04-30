@@ -1,4 +1,4 @@
-import { IDataObject } from 'n8n-workflow';
+import { IDataObject, INode, NodeOperationError } from 'n8n-workflow';
 import { Crawl4aiClient } from '../../shared/apiClient';
 import { DeepCrawlStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
 
@@ -9,7 +9,31 @@ export {
 	validateLlmCredentials,
 	createLlmExtractionStrategy,
 	createCssSelectorExtractionStrategy,
+	resolveRequestHeaders,
 } from '../../shared/utils';
+
+/**
+ * Validate that a URL is non-empty and uses http/https protocol.
+ * Throws NodeOperationError with a human-readable message on failure.
+ */
+export function assertValidHttpUrl(url: string, node: INode, itemIndex: number): void {
+	if (!url) {
+		throw new NodeOperationError(node, 'URL cannot be empty.', { itemIndex });
+	}
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		throw new NodeOperationError(node, `Invalid URL: "${url}" — check for typos (e.g. missing or extra characters in "https://").`, { itemIndex });
+	}
+	if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+		throw new NodeOperationError(
+			node,
+			`URL must use http or https — got "${parsed.protocol.replace(':', '')}" instead. Check for typos in the URL.`,
+			{ itemIndex },
+		);
+	}
+}
 
 /**
  * Default config values for the simple node.

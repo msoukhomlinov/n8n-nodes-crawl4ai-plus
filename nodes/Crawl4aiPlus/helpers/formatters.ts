@@ -3,6 +3,17 @@ import { CrawlResult, Link } from '../../shared/interfaces';
 import { parseExtractedJson } from '../../shared/formatters';
 
 /**
+ * Strip verbose Python traceback noise from Crawl4AI error messages.
+ * Removes Code context block, Call log block, and Python file paths.
+ */
+function cleanCrawlError(msg: string): string {
+	let out = msg.replace(/\n\nCode context:[\s\S]*$/, '');
+	out = out.replace(/\nCall log:[\s\S]*$/, '');
+	out = out.replace(/\s*\(\.\.\/[^)]+\.py\)/g, '');
+	return out.trim();
+}
+
+/**
  * Resolve markdown from a CrawlResult (API returns string or object)
  */
 function resolveMarkdown(result: CrawlResult): { raw: string; fit: string } {
@@ -90,6 +101,7 @@ export function formatPageContentResult(
 	if (primaryResult?.server_memory_delta_mb != null) pageMetrics.memoryDeltaMb = primaryResult.server_memory_delta_mb;
 	if (primaryResult?.server_peak_memory_mb != null) pageMetrics.peakMemoryMb = primaryResult.server_peak_memory_mb;
 
+	const overallSuccess = results.some((r) => r.success);
 	const output: IDataObject = {
 		domain,
 		url: primaryUrl,
@@ -98,11 +110,15 @@ export function formatPageContentResult(
 		markdown: markdownParts.join(separator),
 		...(options.includeLinks !== false ? { links: allLinks } : {}),
 		...(options.includeHtml ? { html: primaryResult?.html || null } : {}),
-		success: results.some((r) => r.success),
+		success: overallSuccess,
 		pagesScanned: results.length,
 		fetchedAt,
 		metrics: pageMetrics,
 	};
+	if (!overallSuccess) {
+		const firstError = results.find((r) => r.error_message)?.error_message;
+		if (firstError) output.errorMessage = cleanCrawlError(firstError);
+	}
 
 	if (primaryResult?.js_execution_result != null) {
 		output.jsExecutionResult = primaryResult.js_execution_result;
@@ -181,7 +197,8 @@ export function formatQuestionResult(
 	const primaryUrl = primaryResult.url || '';
 	const redirectedUrl = primaryResult.redirected_url;
 
-	return {
+	const questionSuccess = results.some((r) => r.success);
+	const questionOutput: IDataObject = {
 		domain,
 		url: primaryUrl,
 		...(redirectedUrl && redirectedUrl !== primaryUrl ? { redirectedUrl } : {}),
@@ -190,12 +207,17 @@ export function formatQuestionResult(
 		answer: bestAnswer,
 		details: [...new Set(allDetails)],
 		sourceQuotes: [...new Set(allSourceQuotes)],
-		success: results.some((r) => r.success),
+		success: questionSuccess,
 		pagesScanned,
 		pagesWithAnswers: results.filter((r) => r.extracted_content).length,
 		fetchedAt,
 		metrics,
 	};
+	if (!questionSuccess) {
+		const firstError = results.find((r) => r.error_message)?.error_message;
+		if (firstError) questionOutput.errorMessage = cleanCrawlError(firstError);
+	}
+	return questionOutput;
 }
 
 /**
@@ -212,19 +234,25 @@ export function formatExtractedDataResult(
 
 	const primaryExtractResult = results[0] || ({} as CrawlResult);
 	const redirectedExtractUrl = primaryExtractResult.redirected_url;
+	const extractSuccess = results.some((r) => r.success);
 
-	return {
+	const extractOutput: IDataObject = {
 		domain,
 		url: primaryUrl,
 		...(redirectedExtractUrl && redirectedExtractUrl !== primaryUrl ? { redirectedUrl: redirectedExtractUrl } : {}),
 		...(results.length > 1 ? { urls: results.map((r) => r.url) } : {}),
 		extractionType,
 		data,
-		success: results.some((r) => r.success),
+		success: extractSuccess,
 		pagesScanned: results.length,
 		fetchedAt,
 		metrics: buildMetrics(primaryExtractResult),
 	};
+	if (!extractSuccess) {
+		const firstError = results.find((r) => r.error_message)?.error_message;
+		if (firstError) extractOutput.errorMessage = cleanCrawlError(firstError);
+	}
+	return extractOutput;
 }
 
 /**
@@ -239,7 +267,7 @@ export function formatCssExtractorResult(
 
 	const redirectedCssUrl = result.redirected_url;
 
-	return {
+	const cssOutput: IDataObject = {
 		domain,
 		url: result.url,
 		...(redirectedCssUrl && redirectedCssUrl !== result.url ? { redirectedUrl: redirectedCssUrl } : {}),
@@ -249,4 +277,8 @@ export function formatCssExtractorResult(
 		fetchedAt,
 		metrics: buildMetrics(result),
 	};
+	if (!result.success && result.error_message) {
+		cssOutput.errorMessage = cleanCrawlError(result.error_message);
+	}
+	return cssOutput;
 }

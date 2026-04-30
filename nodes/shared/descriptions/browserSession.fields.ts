@@ -22,6 +22,26 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 			options: [
 				// --- Browser Type ---
 				{
+					displayName: 'Browser Profile',
+					name: 'browserProfile',
+					type: 'options',
+					options: [
+						{ name: 'Chrome (Android)', value: 'chrome_android' },
+						{ name: 'Chrome (Linux)', value: 'chrome_linux' },
+						{ name: 'Chrome (macOS)', value: 'chrome_macos' },
+						{ name: 'Chrome (Windows)', value: 'chrome_windows' },
+						{ name: 'Edge (Windows)', value: 'edge_windows' },
+						{ name: 'Firefox (macOS)', value: 'firefox_macos' },
+						{ name: 'Firefox (Windows)', value: 'firefox_windows' },
+						{ name: 'Googlebot', value: 'googlebot' },
+						{ name: 'None', value: 'none' },
+						{ name: 'Safari (iOS)', value: 'safari_ios' },
+						{ name: 'Safari (macOS)', value: 'safari_macos' },
+					],
+					default: 'none',
+					description: 'Preset browser headers (User-Agent, Accept, sec-ch-ua, etc.) to send with requests. Helps bypass server-side bot detection. Custom headers in the Headers field override profile values.',
+				},
+				{
 					displayName: 'Browser Type',
 					name: 'browserType',
 					type: 'options',
