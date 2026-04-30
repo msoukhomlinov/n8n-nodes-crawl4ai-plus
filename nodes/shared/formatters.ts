@@ -56,10 +56,21 @@ export function formatCrawlResult(
     };
   }
 
+  // Build metrics — omit keys with no data
+  const metrics: IDataObject = {};
+  if (result.crawl_time != null) {
+    metrics.crawlTime = result.crawl_time;
+    metrics.durationMs = Math.round(result.crawl_time * 1000);
+  }
+  if (result.cache_status != null) metrics.cacheStatus = result.cache_status;
+  if (result.server_memory_delta_mb != null) metrics.memoryDeltaMb = result.server_memory_delta_mb;
+  if (result.server_peak_memory_mb != null) metrics.peakMemoryMb = result.server_peak_memory_mb;
+
   // Build base output
   const output: IDataObject = {
     domain,
     url: result.url,
+    ...(result.redirected_url && result.redirected_url !== result.url ? { redirectedUrl: result.redirected_url } : {}),
     fetchedAt: options.fetchedAt,
     success: result.success,
     statusCode: result.status_code ?? null,
@@ -76,10 +87,7 @@ export function formatCrawlResult(
     links: (options.includeLinks !== false)
       ? { internal: (result.links?.internal ?? []) as Link[], external: (result.links?.external ?? []) as Link[] }
       : { internal: [], external: [] },
-    metrics: {
-      crawlTime: result.crawl_time ?? null,
-      durationMs: result.crawl_time != null ? Math.round(result.crawl_time * 1000) : null,
-    },
+    metrics,
   };
 
   // Error message only on failure
@@ -118,6 +126,14 @@ export function formatCrawlResult(
     output.tableCount = result.tables.length;
   }
 
+  if (result.js_execution_result != null) {
+    output.jsExecutionResult = result.js_execution_result;
+  }
+
+  if (result.downloaded_files && result.downloaded_files.length > 0) {
+    output.downloadedFiles = result.downloaded_files;
+  }
+
   return output;
 }
 
@@ -151,9 +167,19 @@ export function formatExtractionResult(
     markdownFit = result.markdown;
   }
 
+  const extractionMetrics: IDataObject = {};
+  if (result.crawl_time != null) {
+    extractionMetrics.crawlTime = result.crawl_time;
+    extractionMetrics.durationMs = Math.round(result.crawl_time * 1000);
+  }
+  if (result.cache_status != null) extractionMetrics.cacheStatus = result.cache_status;
+  if (result.server_memory_delta_mb != null) extractionMetrics.memoryDeltaMb = result.server_memory_delta_mb;
+  if (result.server_peak_memory_mb != null) extractionMetrics.peakMemoryMb = result.server_peak_memory_mb;
+
   const output: IDataObject = {
     domain,
     url: result.url,
+    ...(result.redirected_url && result.redirected_url !== result.url ? { redirectedUrl: result.redirected_url } : {}),
     fetchedAt: options.fetchedAt,
     success: result.success,
     statusCode: result.status_code ?? null,
@@ -168,10 +194,7 @@ export function formatExtractionResult(
     links: (options.includeLinks !== false)
       ? { internal: (result.links?.internal ?? []) as Link[], external: (result.links?.external ?? []) as Link[] }
       : { internal: [], external: [] },
-    metrics: {
-      crawlTime: result.crawl_time ?? null,
-      durationMs: result.crawl_time != null ? Math.round(result.crawl_time * 1000) : null,
-    },
+    metrics: extractionMetrics,
   };
 
   if (!result.success && result.error_message) {
@@ -180,6 +203,14 @@ export function formatExtractionResult(
 
   if (options.includeFullText) {
     output.originalText = result.text || '';
+  }
+
+  if (result.js_execution_result != null) {
+    output.jsExecutionResult = result.js_execution_result;
+  }
+
+  if (result.downloaded_files && result.downloaded_files.length > 0) {
+    output.downloadedFiles = result.downloaded_files;
   }
 
   return output;

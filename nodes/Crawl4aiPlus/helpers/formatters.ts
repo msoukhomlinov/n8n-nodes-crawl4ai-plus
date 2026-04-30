@@ -28,12 +28,15 @@ function resolveDomain(url: string): string {
 }
 
 /**
- * Build a metrics object from a CrawlResult
+ * Build a metrics object from a CrawlResult — omits keys with no data
  */
 function buildMetrics(result: CrawlResult): IDataObject {
-	return {
-		crawlTime: result.crawl_time ?? null,
-	};
+	const metrics: IDataObject = {};
+	if (result.crawl_time != null) metrics.crawlTime = result.crawl_time;
+	if (result.cache_status != null) metrics.cacheStatus = result.cache_status;
+	if (result.server_memory_delta_mb != null) metrics.memoryDeltaMb = result.server_memory_delta_mb;
+	if (result.server_peak_memory_mb != null) metrics.peakMemoryMb = result.server_peak_memory_mb;
+	return metrics;
 }
 
 /**
@@ -73,29 +76,45 @@ export function formatPageContentResult(
 		}
 
 		if (result.crawl_time != null) {
-			totalCrawlTime += result.crawl_time;
+			if (result.crawl_time > totalCrawlTime) totalCrawlTime = result.crawl_time;
 			hasValidDuration = true;
 		}
 	}
 
 	const separator = '\n\n---\n\n';
+	const primaryResult = results[0];
+	const redirectedUrl = primaryResult?.redirected_url;
+	const pageMetrics: IDataObject = {};
+	if (hasValidDuration) pageMetrics.crawlTime = totalCrawlTime;
+	if (primaryResult?.cache_status != null) pageMetrics.cacheStatus = primaryResult.cache_status;
+	if (primaryResult?.server_memory_delta_mb != null) pageMetrics.memoryDeltaMb = primaryResult.server_memory_delta_mb;
+	if (primaryResult?.server_peak_memory_mb != null) pageMetrics.peakMemoryMb = primaryResult.server_peak_memory_mb;
+
 	const output: IDataObject = {
 		domain,
 		url: primaryUrl,
+		...(redirectedUrl && redirectedUrl !== primaryUrl ? { redirectedUrl } : {}),
 		...(results.length > 1 ? { urls: results.map((r) => r.url) } : {}),
 		markdown: markdownParts.join(separator),
 		...(options.includeLinks !== false ? { links: allLinks } : {}),
-		...(options.includeHtml ? { html: results[0]?.html || null } : {}),
+		...(options.includeHtml ? { html: primaryResult?.html || null } : {}),
 		success: results.some((r) => r.success),
 		pagesScanned: results.length,
 		fetchedAt,
-		metrics: {
-			crawlTime: hasValidDuration ? totalCrawlTime : null,
-		},
+		metrics: pageMetrics,
 	};
+
+	if (primaryResult?.js_execution_result != null) {
+		output.jsExecutionResult = primaryResult.js_execution_result;
+	}
+
+	const allDownloaded = results.flatMap((r) => r.downloaded_files ?? []);
+	if (allDownloaded.length > 0) output.downloadedFiles = allDownloaded;
 
 	return output;
 }
+
+const LLM_FALLBACK_ANSWER = "I couldn't find enough information on the page to answer this question.";
 
 /**
  * Format Ask Question result into a flat, user-friendly output.
@@ -111,9 +130,9 @@ export function formatQuestionResult(
 	const fetchedAt = new Date().toISOString();
 
 	// Parse extracted data from all results and merge
+	const allAnswers: string[] = [];
 	const allDetails: string[] = [];
 	const allSourceQuotes: string[] = [];
-	let bestAnswer = '';
 
 	for (const result of results) {
 		const parsed = parseExtractedJson(result);
@@ -121,8 +140,8 @@ export function formatQuestionResult(
 		const items = Array.isArray(parsed) ? (parsed as IDataObject[]) : (parsed ? [parsed] : []);
 		for (const item of items) {
 			if (item.error) continue;
-			if (item.answer && !bestAnswer) {
-				bestAnswer = item.answer as string;
+			if (item.answer) {
+				allAnswers.push(item.answer as string);
 			}
 			if (Array.isArray(item.details)) {
 				allDetails.push(...(item.details as string[]));
@@ -133,14 +152,39 @@ export function formatQuestionResult(
 		}
 	}
 
-	// Fallback if no structured data parsed
-	if (!bestAnswer) {
-		bestAnswer = primaryResult.extracted_content || '';
+	// Prefer real answers over the LLM's fallback "couldn't find" message, which appears
+	// when a single chunk/page lacks info but other chunks/pages found the answer.
+	const bestAnswer =
+		allAnswers.find((a) => a !== LLM_FALLBACK_ANSWER) ||
+		allAnswers[0] ||
+		primaryResult.extracted_content ||
+		'';
+
+	// Take the max crawl_time across all pages (batch results all share the same batch total,
+	// so summing would multiply it; max correctly returns the batch total for multi-URL calls
+	// and the single value for single-page calls)
+	let totalCrawlTime = 0;
+	let hasValidDuration = false;
+	for (const result of results) {
+		if (result.crawl_time != null) {
+			if (result.crawl_time > totalCrawlTime) totalCrawlTime = result.crawl_time;
+			hasValidDuration = true;
+		}
 	}
+
+	const metrics: IDataObject = {};
+	if (hasValidDuration) metrics.crawlTime = totalCrawlTime;
+	if (primaryResult.cache_status != null) metrics.cacheStatus = primaryResult.cache_status;
+	if (primaryResult.server_memory_delta_mb != null) metrics.memoryDeltaMb = primaryResult.server_memory_delta_mb;
+	if (primaryResult.server_peak_memory_mb != null) metrics.peakMemoryMb = primaryResult.server_peak_memory_mb;
+
+	const primaryUrl = primaryResult.url || '';
+	const redirectedUrl = primaryResult.redirected_url;
 
 	return {
 		domain,
-		url: primaryResult.url || '',
+		url: primaryUrl,
+		...(redirectedUrl && redirectedUrl !== primaryUrl ? { redirectedUrl } : {}),
 		...(results.length > 1 ? { urls: results.map((r) => r.url) } : {}),
 		question,
 		answer: bestAnswer,
@@ -150,7 +194,7 @@ export function formatQuestionResult(
 		pagesScanned,
 		pagesWithAnswers: results.filter((r) => r.extracted_content).length,
 		fetchedAt,
-		metrics: buildMetrics(primaryResult),
+		metrics,
 	};
 }
 
@@ -166,16 +210,20 @@ export function formatExtractedDataResult(
 	const domain = resolveDomain(primaryUrl);
 	const fetchedAt = new Date().toISOString();
 
+	const primaryExtractResult = results[0] || ({} as CrawlResult);
+	const redirectedExtractUrl = primaryExtractResult.redirected_url;
+
 	return {
 		domain,
 		url: primaryUrl,
+		...(redirectedExtractUrl && redirectedExtractUrl !== primaryUrl ? { redirectedUrl: redirectedExtractUrl } : {}),
 		...(results.length > 1 ? { urls: results.map((r) => r.url) } : {}),
 		extractionType,
 		data,
 		success: results.some((r) => r.success),
 		pagesScanned: results.length,
 		fetchedAt,
-		metrics: buildMetrics(results[0] || ({} as CrawlResult)),
+		metrics: buildMetrics(primaryExtractResult),
 	};
 }
 
@@ -189,9 +237,12 @@ export function formatCssExtractorResult(
 	const domain = resolveDomain(result.url);
 	const fetchedAt = new Date().toISOString();
 
+	const redirectedCssUrl = result.redirected_url;
+
 	return {
 		domain,
 		url: result.url,
+		...(redirectedCssUrl && redirectedCssUrl !== result.url ? { redirectedUrl: redirectedCssUrl } : {}),
 		items,
 		itemCount: items.length,
 		success: result.success,
