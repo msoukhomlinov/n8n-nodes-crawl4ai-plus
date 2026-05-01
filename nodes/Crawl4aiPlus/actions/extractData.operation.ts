@@ -28,7 +28,7 @@ import { extractJsonLd } from '../../shared/seo-helpers';
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
-	currencies: [/[$\u00A3\u20AC\u00A5]\s?\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?/g],
+	currencies: [/[$£€¥]\s?\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?/g],
 	creditCards: [/\b(?:\d[ -]*?){13,19}\b/g],
 	ibans: [/[A-Z]{2}\d{2}[\s-]?[\dA-Z]{4}[\s-]?(?:[\dA-Z]{4}[\s-]?){2,7}[\dA-Z]{1,4}/g],
 	percentages: [/\d+(?:\.\d+)?%/g],
@@ -382,6 +382,11 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 			description: 'Direct phone number for this location in international format (e.g. +61 3 9000 0000)',
 		};
 	}
+	(itemProperties as Record<string, IDataObject>).emails = {
+		type: 'array',
+		items: { type: 'string' },
+		description: 'Email addresses found in the same contact block as this location address. Omit if none — do not include site-wide header/footer emails.',
+	};
 	return {
 		type: 'object',
 		properties: {
@@ -403,6 +408,8 @@ function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): st
 	const phoneStep = includePhones
 		? '\n5. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
 		: '';
+	const emailStepNum = includePhones ? '6' : '5';
+	const emailStep = `\n${emailStepNum}. If email addresses are found in the same content block as this address (e.g. a contact card, sidebar section, or footer block specific to this location), include them in the emails array. Do not include site-wide emails from page headers, navigation, or unrelated sections. Omit the field if none found.`;
 	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
 	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
 	// Second example omits phone — teaches LLM to skip field when unknown
@@ -413,7 +420,7 @@ For each location:
 1. Extract address1 (street number + street name only, e.g. "200 Collins Street"), address2 (unit/level/floor/suite if present, e.g. "Level 12"), city, state, postcode, and country separately.
 2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb. Every name MUST be unique.
 3. Assign confidence: "high" if address1 + postcode + city present; "medium" if missing postcode or state; "low" if city/country only.
-4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}
+4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}${emailStep}
 
 Include: offices, branches, stores, showrooms, warehouses, distribution centres, factories, partner/dealer/stockist locations (if an address is given).
 Exclude: P.O. boxes, virtual offices, registered agent addresses, locations with no street address.
@@ -853,19 +860,6 @@ export const description: INodeProperties[] = [
 	},
 	{
 		displayName:
-			'Optional: enable LLM Validation in Options below to use AI to clean false positives from extracted contacts. Requires LLM credentials configured in the Crawl4AI Plus credentials.',
-		name: 'llmValidationNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['contactInfo'],
-			},
-		},
-	},
-	{
-		displayName:
 			'Locations extraction requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
 		name: 'locationsLlmNotice',
 		type: 'notice',
@@ -903,6 +897,98 @@ export const description: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				operation: ['extractData'],
+			},
+		},
+	},
+	{
+		displayName: 'Max Pages',
+		name: 'maxPages',
+		type: 'number',
+		default: 10,
+		description: 'Maximum number of pages to crawl',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				crawlScope: ['followLinks', 'fullSite'],
+			},
+		},
+	},
+	{
+		displayName: 'Include Location Details',
+		name: 'includeLocationDetails',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to group contact info by location — adds a locations array where each entry has address, phone, and any location-specific emails. Requires LLM credentials.',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+			},
+		},
+	},
+	{
+		displayName:
+			'Include Location Details requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		name: 'includeLocationDetailsLlmNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+				includeLocationDetails: [true],
+			},
+		},
+	},
+	{
+		displayName: 'Include Phones',
+		name: 'includePhones',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to extract phone numbers for each location in addition to address details',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['locationsAddresses'],
+			},
+		},
+	},
+	{
+		displayName: 'LLM Validation',
+		name: 'llmValidation',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to send extracted contacts to the configured LLM for a final validation and cleanup pass. Removes false positives and normalises formats. Requires LLM credentials.',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+			},
+		},
+	},
+	{
+		displayName: 'Smart URL Selection',
+		name: 'smartUrlSelection',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				crawlScope: ['followLinks', 'fullSite'],
+			},
+		},
+	},
+	{
+		displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		name: 'smartUrlLlmNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				smartUrlSelection: [true],
+				extractionType: ['contactInfo', 'financialData'],
 			},
 		},
 	},
@@ -1042,43 +1128,7 @@ export const description: INodeProperties[] = [
 				description: 'How many levels deep to crawl explore-hint sections suggested by the LLM. Default 1 crawls one level into a section (e.g. /about/ to /about/contact/).',
 				displayOptions: {
 					show: {
-						smartUrlSelection: [true],
-						'/crawlScope': ['followLinks', 'fullSite'],
-					},
-				},
-			},
-			{
-				displayName: 'Include Phones',
-				name: 'includePhones',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to extract phone numbers for each location in addition to address details',
-				displayOptions: {
-					show: {
-						'/extractionType': ['locationsAddresses'],
-					},
-				},
-			},
-			{
-				displayName: 'LLM Validation',
-				name: 'llmValidation',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to send extracted contacts to the configured LLM for a final validation and cleanup pass. Removes false positives and normalises formats. Requires LLM credentials.',
-				displayOptions: {
-					show: {
-						'/extractionType': ['contactInfo'],
-					},
-				},
-			},
-			{
-				displayName: 'Max Pages',
-				name: 'maxPages',
-				type: 'number',
-				default: 10,
-				description: 'Maximum number of pages to crawl',
-				displayOptions: {
-					show: {
+						'/smartUrlSelection': [true],
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
@@ -1095,30 +1145,6 @@ export const description: INodeProperties[] = [
 				displayOptions: {
 					show: {
 						'/extractionType': ['contactInfo', 'customLlm', 'financialData', 'locationsAddresses'],
-					},
-				},
-			},
-			{
-				displayName: 'Smart URL Selection',
-				name: 'smartUrlSelection',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
-				displayOptions: {
-					show: {
-						'/crawlScope': ['followLinks', 'fullSite'],
-					},
-				},
-			},
-			{
-				displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
-				name: 'smartUrlLlmNotice',
-				type: 'notice',
-				default: '',
-				displayOptions: {
-					show: {
-						smartUrlSelection: [true],
-						'/extractionType': ['contactInfo', 'financialData'],
 					},
 				},
 			},
@@ -1165,6 +1191,11 @@ export async function execute(
 			const extractionType = this.getNodeParameter('extractionType', i, 'contactInfo') as string;
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+			const smartUrlSelection = this.getNodeParameter('smartUrlSelection', i, false) as boolean;
+			const maxPages = this.getNodeParameter('maxPages', i, 10) as number;
+			const includePhones = this.getNodeParameter('includePhones', i, false) as boolean;
+			const llmValidation = this.getNodeParameter('llmValidation', i, false) as boolean;
+			const includeLocationDetails = this.getNodeParameter('includeLocationDetails', i, false) as boolean;
 			const instruction = extractionType === 'customLlm'
 				? this.getNodeParameter('instruction', i, '') as string
 				: '';
@@ -1221,7 +1252,7 @@ export async function execute(
 				}
 			}
 
-			if (options.smartUrlSelection === true && crawlScope !== 'singlePage' &&
+			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
 				(extractionType === 'contactInfo' || extractionType === 'financialData')) {
 				try {
 					validateLlmCredentials(credentials, 'Smart URL selection');
@@ -1295,14 +1326,13 @@ export async function execute(
 
 			// For customLlm + smart URL: detach strategy — applied only to final crawl, not seed crawl
 			let finalExtractionStrategy: ExtractionStrategy | undefined;
-			if (options.smartUrlSelection === true && crawlScope !== 'singlePage' &&
+			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
 				extractionType === 'customLlm' && config.extractionStrategy) {
 				finalExtractionStrategy = config.extractionStrategy;
 				delete config.extractionStrategy;
 			}
 
-			const useSmartUrlSelection =
-				options.smartUrlSelection === true && crawlScope !== 'singlePage';
+			const useSmartUrlSelection = smartUrlSelection === true && crawlScope !== 'singlePage';
 
 			let results: CrawlResult[];
 			let smartUrlMeta: SmartUrlSelectionMeta | undefined;
@@ -1324,7 +1354,7 @@ export async function execute(
 					url,
 					config,
 					{
-						maxPages: (options.maxPages as number) ?? 10,
+						maxPages: maxPages ?? 10,
 						excludePatterns: options.excludePatterns as string | undefined,
 					},
 					{
@@ -1348,7 +1378,7 @@ export async function execute(
 					crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
 					config,
 					{
-						maxPages: options.maxPages as number | undefined,
+						maxPages: maxPages || undefined,
 						excludePatterns: options.excludePatterns as string | undefined,
 						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
 					},
@@ -1362,7 +1392,7 @@ export async function execute(
 				const defaultCountry = (options.defaultCountry as string) || 'AU';
 				let contacts = extractContactInfo(results, defaultCountry);
 
-				if (options.llmValidation === true) {
+				if (llmValidation === true) {
 					try {
 						validateLlmCredentials(credentials, 'LLM validation');
 					} catch (err) {
@@ -1379,11 +1409,23 @@ export async function execute(
 					);
 				}
 
-				data = contacts;
+				if (includeLocationDetails === true) {
+					try {
+						validateLlmCredentials(credentials, 'location details extraction');
+					} catch (err) {
+						throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+					}
+					const modelOverride = options.llmModel as string | undefined;
+					const locations = await runLocationsExtraction.call(
+						this, results, credentials, client, modelOverride || undefined, true, i,
+					);
+					data = { emails: contacts.emails, locations };
+				} else {
+					data = contacts;
+				}
 			} else if (extractionType === 'financialData') {
 				data = extractWithRegex(results, FINANCIAL_PATTERNS);
 			} else if (extractionType === 'locationsAddresses') {
-				const includePhones = options.includePhones === true;
 				const modelOverride = options.llmModel as string | undefined;
 				const isZeroUrlFallback = smartUrlMeta?.warnings.some(
 					(w) => w.startsWith('LLM returned no candidate URLs'),
