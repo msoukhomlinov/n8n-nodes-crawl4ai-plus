@@ -39,14 +39,34 @@ function resolveDomain(url: string): string {
 }
 
 /**
- * Build a metrics object from a CrawlResult — omits keys with no data
+ * Build a metrics object from an array of CrawlResults — aggregates cache hits/misses across all pages
  */
-function buildMetrics(result: CrawlResult): IDataObject {
+function buildMetrics(results: CrawlResult[]): IDataObject {
+	const primary = results[0];
 	const metrics: IDataObject = {};
-	if (result.crawl_time != null) metrics.crawlTime = result.crawl_time;
-	if (result.cache_status != null) metrics.cacheStatus = result.cache_status;
-	if (result.server_memory_delta_mb != null) metrics.memoryDeltaMb = result.server_memory_delta_mb;
-	if (result.server_peak_memory_mb != null) metrics.peakMemoryMb = result.server_peak_memory_mb;
+
+	let maxCrawlTime: number | undefined;
+	for (const r of results) {
+		if (r.crawl_time != null) {
+			maxCrawlTime = maxCrawlTime === undefined ? r.crawl_time : Math.max(maxCrawlTime, r.crawl_time);
+		}
+	}
+	if (maxCrawlTime !== undefined) metrics.crawlTime = maxCrawlTime;
+
+	let cacheHits = 0;
+	let cacheMisses = 0;
+	for (const r of results) {
+		if (r.cache_status === 'hit') cacheHits++;
+		else if (r.cache_status != null) cacheMisses++;
+	}
+	if (cacheHits > 0 || cacheMisses > 0) {
+		metrics.cacheHits = cacheHits;
+		metrics.cacheMisses = cacheMisses;
+	}
+
+	if (primary?.server_memory_delta_mb != null) metrics.memoryDeltaMb = primary.server_memory_delta_mb;
+	if (primary?.server_peak_memory_mb != null) metrics.peakMemoryMb = primary.server_peak_memory_mb;
+
 	return metrics;
 }
 
@@ -68,8 +88,6 @@ export function formatPageContentResult(
 	// Merge markdown from all pages
 	const markdownParts: string[] = [];
 	const allLinks: { internal: Link[]; external: Link[] } = { internal: [], external: [] };
-	let totalCrawlTime = 0;
-	let hasValidDuration = false;
 
 	for (const result of results) {
 		const md = resolveMarkdown(result);
@@ -85,21 +103,11 @@ export function formatPageContentResult(
 			allLinks.internal.push(...(result.links.internal || []));
 			allLinks.external.push(...(result.links.external || []));
 		}
-
-		if (result.crawl_time != null) {
-			if (result.crawl_time > totalCrawlTime) totalCrawlTime = result.crawl_time;
-			hasValidDuration = true;
-		}
 	}
 
 	const separator = '\n\n---\n\n';
 	const primaryResult = results[0];
 	const redirectedUrl = primaryResult?.redirected_url;
-	const pageMetrics: IDataObject = {};
-	if (hasValidDuration) pageMetrics.crawlTime = totalCrawlTime;
-	if (primaryResult?.cache_status != null) pageMetrics.cacheStatus = primaryResult.cache_status;
-	if (primaryResult?.server_memory_delta_mb != null) pageMetrics.memoryDeltaMb = primaryResult.server_memory_delta_mb;
-	if (primaryResult?.server_peak_memory_mb != null) pageMetrics.peakMemoryMb = primaryResult.server_peak_memory_mb;
 
 	const overallSuccess = results.some((r) => r.success);
 	const output: IDataObject = {
@@ -113,7 +121,7 @@ export function formatPageContentResult(
 		success: overallSuccess,
 		pagesScanned: results.length,
 		fetchedAt,
-		metrics: pageMetrics,
+		metrics: buildMetrics(results),
 	};
 	if (!overallSuccess) {
 		const firstError = results.find((r) => r.error_message)?.error_message;
@@ -176,23 +184,7 @@ export function formatQuestionResult(
 		primaryResult.extracted_content ||
 		'';
 
-	// Take the max crawl_time across all pages (batch results all share the same batch total,
-	// so summing would multiply it; max correctly returns the batch total for multi-URL calls
-	// and the single value for single-page calls)
-	let totalCrawlTime = 0;
-	let hasValidDuration = false;
-	for (const result of results) {
-		if (result.crawl_time != null) {
-			if (result.crawl_time > totalCrawlTime) totalCrawlTime = result.crawl_time;
-			hasValidDuration = true;
-		}
-	}
-
-	const metrics: IDataObject = {};
-	if (hasValidDuration) metrics.crawlTime = totalCrawlTime;
-	if (primaryResult.cache_status != null) metrics.cacheStatus = primaryResult.cache_status;
-	if (primaryResult.server_memory_delta_mb != null) metrics.memoryDeltaMb = primaryResult.server_memory_delta_mb;
-	if (primaryResult.server_peak_memory_mb != null) metrics.peakMemoryMb = primaryResult.server_peak_memory_mb;
+	const metrics = buildMetrics(results);
 
 	const primaryUrl = primaryResult.url || '';
 	const redirectedUrl = primaryResult.redirected_url;
@@ -246,7 +238,7 @@ export function formatExtractedDataResult(
 		success: extractSuccess,
 		pagesScanned: results.length,
 		fetchedAt,
-		metrics: buildMetrics(primaryExtractResult),
+		metrics: buildMetrics(results),
 	};
 	if (!extractSuccess) {
 		const firstError = results.find((r) => r.error_message)?.error_message;
@@ -275,7 +267,7 @@ export function formatCssExtractorResult(
 		itemCount: items.length,
 		success: result.success,
 		fetchedAt,
-		metrics: buildMetrics(result),
+		metrics: buildMetrics([result]),
 	};
 	if (!result.success && result.error_message) {
 		cssOutput.errorMessage = cleanCrawlError(result.error_message);
