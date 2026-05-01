@@ -57,7 +57,7 @@ function buildMetrics(results: CrawlResult[]): IDataObject {
 	let cacheMisses = 0;
 	for (const r of results) {
 		if (r.cache_status === 'hit') cacheHits++;
-		else if (r.cache_status != null) cacheMisses++;
+		else if (r.cache_status === 'miss') cacheMisses++;
 	}
 	if (cacheHits > 0 || cacheMisses > 0) {
 		metrics.cacheHits = cacheHits;
