@@ -343,10 +343,10 @@ export async function execute(
 				config.waitFor = String(options.waitFor);
 			}
 
-			if (options.waitUntil && options.waitUntil !== 'load') {
+			if (options.waitUntil) {
 				config.waitUntil = String(options.waitUntil);
 			}
-			if (options.delayBeforeReturnHtml) {
+			if (options.delayBeforeReturnHtml != null) {
 				config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml);
 			}
 
