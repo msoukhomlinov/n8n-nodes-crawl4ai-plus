@@ -6,7 +6,7 @@
 - `extractData` Locations & Addresses: LLM few-shot example for "no phone found" case now omits the phone field entirely — previously used `"(not stated)"` as the value, teaching the model to output that literal string
 - `extractData` Contact Info: LLM validation notice now clearly states the feature is optional (only needed when LLM Validation option is enabled)
 - `cssExtractor`: renamed internal variable `items_extracted` to camelCase `itemsExtracted`; fixed 4-space/tab indentation inconsistency in location helper functions
-- All four simple node operations (`Get Page Content`, `Ask Question`, `Extract Data`, `Extract with CSS Selectors`): `metrics.cacheStatus` replaced by `metrics.cacheHits` / `metrics.cacheMisses` — aggregated across all crawled pages so multi-page runs show accurate cache hit/miss counts instead of only page 1's status
+- All four simple node operations (`Get Page Content`, `Ask Question`, `Extract Data`, `Extract with CSS Selectors`): `metrics.cacheStatus` replaced by `metrics.cacheHits` / `metrics.cacheMisses` — aggregated across all crawled pages; only explicit `hit`/`miss` statuses counted (bypass/disabled modes no longer misclassified as misses)
 - All four simple node operations: `statusCode` field added to output (HTTP status of the primary URL); previously absent from all simple node outputs despite being present in the advanced node
 
 ### Added
