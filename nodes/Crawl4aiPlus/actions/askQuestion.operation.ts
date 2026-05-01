@@ -347,7 +347,7 @@ export async function execute(
 				config.waitUntil = String(options.waitUntil);
 			}
 			if (options.delayBeforeReturnHtml != null) {
-				config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml);
+				config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml) / 1000;
 			}
 
 			if (options.avoidAds === true) {
