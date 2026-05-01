@@ -371,8 +371,9 @@ export async function executeSmartUrlCrawl(
 		...seedConfig,
 		extractionStrategy: createLlmExtractionStrategy(selectionSchema, selectionPrompt, provider, apiKey, baseUrl),
 	};
+	const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const candidateHtml = candidates
-		.map((c) => `<li>${c.url} | ${c.anchorText || ''}</li>`)
+		.map((c) => `<li>${escHtml(c.url)} | ${escHtml(c.anchorText || '')}</li>`)
 		.join('\n');
 	const rawSelectionUrl = `raw:<ul>\n${candidateHtml}\n</ul>`;
 	const selectionResult = await client.crawlUrl(rawSelectionUrl, selectionConfig);
