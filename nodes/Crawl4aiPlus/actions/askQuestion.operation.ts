@@ -123,6 +123,20 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'Avoid Ads',
+				name: 'avoidAds',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to block ad-related network requests during crawl (reduces noise, speeds up page load)',
+			},
+			{
+				displayName: 'Avoid CSS',
+				name: 'avoidCss',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to block CSS resource requests during crawl (faster for text-only extraction)',
+			},
+			{
 				displayName: 'Browser Profile',
 				name: 'browserProfile',
 				type: 'options',
@@ -307,6 +321,13 @@ export async function execute(
 
 			if (options.waitFor) {
 				config.waitFor = String(options.waitFor);
+			}
+
+			if (options.avoidAds === true) {
+				config.avoidAds = true;
+			}
+			if (options.avoidCss === true) {
+				config.avoidCss = true;
 			}
 
 			const results = await executeCrawl(
