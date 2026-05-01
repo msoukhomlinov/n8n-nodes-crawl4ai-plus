@@ -333,23 +333,23 @@ export async function execute(
 
 			// Parse extracted JSON
 			const extractedData = parseExtractedJson(result);
-			let items_extracted: IDataObject[] = [];
+			let itemsExtracted: IDataObject[] = [];
 
 			if (extractedData) {
 				if (Array.isArray(extractedData)) {
-					items_extracted = extractedData as IDataObject[];
+					itemsExtracted = extractedData as IDataObject[];
 				} else if (typeof extractedData === 'object') {
-					items_extracted = [extractedData];
+					itemsExtracted = [extractedData];
 				}
 			}
 
 			// Apply text cleaning if requested
 			const shouldClean = options.cleanText !== false;
-			if (shouldClean && items_extracted.length > 0) {
-				items_extracted = cleanExtractedData(items_extracted) as IDataObject[];
+			if (shouldClean && itemsExtracted.length > 0) {
+				itemsExtracted = cleanExtractedData(itemsExtracted) as IDataObject[];
 			}
 
-			const formatted = formatCssExtractorResult(result, items_extracted);
+			const formatted = formatCssExtractorResult(result, itemsExtracted);
 
 			// Include original page text if requested
 			if (options.includeOriginalText) {

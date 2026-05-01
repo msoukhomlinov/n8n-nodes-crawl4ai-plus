@@ -179,167 +179,167 @@ async function runLlmContactValidation(
 }
 
 const JSON_LD_LOCATION_TYPES = new Set([
-    'AutoDealer', 'AutomotiveBusiness', 'ChildCare', 'Corporation',
-    'DryCleaningOrLaundry', 'EducationalOrganization', 'EmergencyService',
-    'EmploymentAgency', 'EntertainmentBusiness', 'FinancialService',
-    'FoodEstablishment', 'GovernmentOffice', 'HealthAndBeautyBusiness',
-    'HomeAndConstructionBusiness', 'LegalService', 'LocalBusiness',
-    'LodgingBusiness', 'MedicalBusiness', 'Organization', 'Place',
-    'ProfessionalService', 'RealEstateAgent', 'RecyclingCenter',
-    'SelfStorage', 'ShoppingCenter', 'SportsActivityLocation', 'Store',
-    'TouristInformationCenter', 'TravelAgency',
+	'AutoDealer', 'AutomotiveBusiness', 'ChildCare', 'Corporation',
+	'DryCleaningOrLaundry', 'EducationalOrganization', 'EmergencyService',
+	'EmploymentAgency', 'EntertainmentBusiness', 'FinancialService',
+	'FoodEstablishment', 'GovernmentOffice', 'HealthAndBeautyBusiness',
+	'HomeAndConstructionBusiness', 'LegalService', 'LocalBusiness',
+	'LodgingBusiness', 'MedicalBusiness', 'Organization', 'Place',
+	'ProfessionalService', 'RealEstateAgent', 'RecyclingCenter',
+	'SelfStorage', 'ShoppingCenter', 'SportsActivityLocation', 'Store',
+	'TouristInformationCenter', 'TravelAgency',
 ]);
 
 function splitStreetAddress(streetAddress: string): { address1: string; address2?: string } {
-    // "Level 2/343 Collins St" → address1="343 Collins St", address2="Level 2"
-    const slashMatch = streetAddress.match(/^(level|floor|fl?)\s*\d+\s*\//i);
-    if (slashMatch) {
-        const slashIdx = streetAddress.indexOf('/');
-        return {
-            address1: streetAddress.slice(slashIdx + 1).trim(),
-            address2: streetAddress.slice(0, slashIdx).trim(),
-        };
-    }
-    // "Level 2, Suites 214/215, 343 Collins St" → strip all leading unit qualifiers, collect in parts
-    const prefixRe = /^((?:level|floor|fl?|suite|suites?|unit|apt|flat|ste|room)\s+[^,]+),\s*/i;
-    let remaining = streetAddress;
-    const parts: string[] = [];
-    let m: RegExpMatchArray | null;
-    while ((m = remaining.match(prefixRe))) {
-        parts.push(m[1].trim());
-        remaining = remaining.slice(m[0].length).trim();
-    }
-    if (parts.length > 0) {
-        return { address1: remaining, address2: parts.join(', ') };
-    }
-    return { address1: streetAddress };
+	// "Level 2/343 Collins St" → address1="343 Collins St", address2="Level 2"
+	const slashMatch = streetAddress.match(/^(level|floor|fl?)\s*\d+\s*\//i);
+	if (slashMatch) {
+		const slashIdx = streetAddress.indexOf('/');
+		return {
+			address1: streetAddress.slice(slashIdx + 1).trim(),
+			address2: streetAddress.slice(0, slashIdx).trim(),
+		};
+	}
+	// "Level 2, Suites 214/215, 343 Collins St" → strip all leading unit qualifiers, collect in parts
+	const prefixRe = /^((?:level|floor|fl?|suite|suites?|unit|apt|flat|ste|room)\s+[^,]+),\s*/i;
+	let remaining = streetAddress;
+	const parts: string[] = [];
+	let m: RegExpMatchArray | null;
+	while ((m = remaining.match(prefixRe))) {
+		parts.push(m[1].trim());
+		remaining = remaining.slice(m[0].length).trim();
+	}
+	if (parts.length > 0) {
+		return { address1: remaining, address2: parts.join(', ') };
+	}
+	return { address1: streetAddress };
 }
 
 function mapJsonLdPostalAddress(
-    orgName: string | undefined,
-    addr: IDataObject,
-    telephone: string | undefined,
-    includePhones: boolean,
+	orgName: string | undefined,
+	addr: IDataObject,
+	telephone: string | undefined,
+	includePhones: boolean,
 ): IDataObject | null {
-    const street = String(addr.streetAddress || '').trim();
-    const city = String(addr.addressLocality || '').trim();
-    const country = String(addr.addressCountry || '').trim();
-    if (!street) return null; // city-only entries cause dedup collisions; LLM handles partial addresses
-    const state = String(addr.addressRegion || '').trim();
-    const postcode = String(addr.postalCode || '').trim();
-    const { address1, address2 } = splitStreetAddress(street);
-    const loc: IDataObject = {
-        name: orgName || (city ? `${city} Location` : 'Location'),
-        city,
-        country,
-        confidence: 'high',
-        source: 'json-ld',
-    };
-    if (address1) loc.address1 = address1;
-    if (address2) loc.address2 = address2;
-    if (state) loc.state = state;
-    if (postcode) loc.postcode = postcode;
-    if (includePhones && telephone) loc.phone = telephone;
-    return loc;
+	const street = String(addr.streetAddress || '').trim();
+	const city = String(addr.addressLocality || '').trim();
+	const country = String(addr.addressCountry || '').trim();
+	if (!street) return null; // city-only entries cause dedup collisions; LLM handles partial addresses
+	const state = String(addr.addressRegion || '').trim();
+	const postcode = String(addr.postalCode || '').trim();
+	const { address1, address2 } = splitStreetAddress(street);
+	const loc: IDataObject = {
+		name: orgName || (city ? `${city} Location` : 'Location'),
+		city,
+		country,
+		confidence: 'high',
+		source: 'json-ld',
+	};
+	if (address1) loc.address1 = address1;
+	if (address2) loc.address2 = address2;
+	if (state) loc.state = state;
+	if (postcode) loc.postcode = postcode;
+	if (includePhones && telephone) loc.phone = telephone;
+	return loc;
 }
 
 function extractLocationsFromJsonLd(html: string, includePhones: boolean): IDataObject[] {
-    if (!html) return [];
-    const { data } = extractJsonLd(html);
-    const locations: IDataObject[] = [];
+	if (!html) return [];
+	const { data } = extractJsonLd(html);
+	const locations: IDataObject[] = [];
 
-    function processNode(node: IDataObject): void {
-        // Walk @graph arrays recursively
-        if (Array.isArray(node['@graph'])) {
-            for (const child of node['@graph'] as IDataObject[]) {
-                processNode(child);
-            }
-        }
+	function processNode(node: IDataObject): void {
+		// Walk @graph arrays recursively
+		if (Array.isArray(node['@graph'])) {
+			for (const child of node['@graph'] as IDataObject[]) {
+				processNode(child);
+			}
+		}
 
-        const rawType = node['@type'];
-        const types: string[] = Array.isArray(rawType)
-            ? (rawType as string[])
-            : rawType ? [String(rawType)] : [];
+		const rawType = node['@type'];
+		const types: string[] = Array.isArray(rawType)
+			? (rawType as string[])
+			: rawType ? [String(rawType)] : [];
 
-        const isLocationNode = types.some(
-            (t) => JSON_LD_LOCATION_TYPES.has(t) || t.endsWith('Business') || t.endsWith('Store'),
-        );
-        if (!isLocationNode) return;
+		const isLocationNode = types.some(
+			(t) => JSON_LD_LOCATION_TYPES.has(t) || t.endsWith('Business') || t.endsWith('Store'),
+		);
+		if (!isLocationNode) return;
 
-        const orgName = node.name ? String(node.name) : undefined;
-        const telephone = node.telephone ? String(node.telephone) : undefined;
+		const orgName = node.name ? String(node.name) : undefined;
+		const telephone = node.telephone ? String(node.telephone) : undefined;
 
-        // Walk child properties BEFORE checking address — parent may have no address
-        // but its hasPOS/location/containsPlace children hold the actual PostalAddress nodes
-        for (const prop of ['hasPOS', 'location', 'containsPlace'] as const) {
-            const val = node[prop];
-            if (!val) continue;
-            const children = Array.isArray(val) ? (val as IDataObject[]) : [val as IDataObject];
-            for (const child of children) processNode(child);
-        }
+		// Walk child properties BEFORE checking address — parent may have no address
+		// but its hasPOS/location/containsPlace children hold the actual PostalAddress nodes
+		for (const prop of ['hasPOS', 'location', 'containsPlace'] as const) {
+			const val = node[prop];
+			if (!val) continue;
+			const children = Array.isArray(val) ? (val as IDataObject[]) : [val as IDataObject];
+			for (const child of children) processNode(child);
+		}
 
-        const rawAddress = node.address;
-        if (!rawAddress) return;
+		const rawAddress = node.address;
+		if (!rawAddress) return;
 
-        // address can be a single PostalAddress object or an array (multi-location)
-        const addrs = Array.isArray(rawAddress)
-            ? (rawAddress as IDataObject[])
-            : [rawAddress as IDataObject];
+		// address can be a single PostalAddress object or an array (multi-location)
+		const addrs = Array.isArray(rawAddress)
+			? (rawAddress as IDataObject[])
+			: [rawAddress as IDataObject];
 
-        for (const addr of addrs) {
-            if (typeof addr !== 'object' || !addr) continue;
-            // Accept PostalAddress nodes; also accept plain objects with streetAddress
-            const addrTypes = Array.isArray(addr['@type'])
-                ? (addr['@type'] as string[])
-                : addr['@type'] ? [String(addr['@type'])] : [];
-            if (addrTypes.length > 0 && !addrTypes.includes('PostalAddress')) continue;
-            const loc = mapJsonLdPostalAddress(orgName, addr, telephone, includePhones);
-            if (loc) locations.push(loc);
-        }
-    }
+		for (const addr of addrs) {
+			if (typeof addr !== 'object' || !addr) continue;
+			// Accept PostalAddress nodes; also accept plain objects with streetAddress
+			const addrTypes = Array.isArray(addr['@type'])
+				? (addr['@type'] as string[])
+				: addr['@type'] ? [String(addr['@type'])] : [];
+			if (addrTypes.length > 0 && !addrTypes.includes('PostalAddress')) continue;
+			const loc = mapJsonLdPostalAddress(orgName, addr, telephone, includePhones);
+			if (loc) locations.push(loc);
+		}
+	}
 
-    for (const item of data) {
-        // Some JSON-LD scripts emit an array of objects at the top level
-        if (Array.isArray(item)) {
-            for (const child of item as IDataObject[]) processNode(child);
-        } else {
-            processNode(item);
-        }
-    }
-    return locations;
+	for (const item of data) {
+		// Some JSON-LD scripts emit an array of objects at the top level
+		if (Array.isArray(item)) {
+			for (const child of item as IDataObject[]) processNode(child);
+		} else {
+			processNode(item);
+		}
+	}
+	return locations;
 }
 
 const ADDRESS_ABBREVIATIONS: Array<[RegExp, string]> = [
-    [/\bst\.?\b/gi, 'street'],
-    [/\brd\.?\b/gi, 'road'],
-    [/\bave?\.?\b/gi, 'avenue'],
-    [/\bblvd\.?\b/gi, 'boulevard'],
-    [/\bln\.?\b/gi, 'lane'],
-    [/\bdr\.?\b/gi, 'drive'],
-    [/\bcr?t\.?\b/gi, 'court'],
-    [/\bcres\.?\b/gi, 'crescent'],
-    [/\bhwy\.?\b/gi, 'highway'],
-    [/\bpde\.?\b/gi, 'parade'],
-    [/\bpl\.?\b/gi, 'place'],
-    [/\bsq\.?\b/gi, 'square'],
-    [/\btce\.?\b/gi, 'terrace'],
-    [/\bcct\.?\b/gi, 'circuit'],
-    [/\bcl\.?\b/gi, 'close'],
-    [/\bgrv\.?\b/gi, 'grove'],
+	[/\bst\.?\b/gi, 'street'],
+	[/\brd\.?\b/gi, 'road'],
+	[/\bave?\.?\b/gi, 'avenue'],
+	[/\bblvd\.?\b/gi, 'boulevard'],
+	[/\bln\.?\b/gi, 'lane'],
+	[/\bdr\.?\b/gi, 'drive'],
+	[/\bcr?t\.?\b/gi, 'court'],
+	[/\bcres\.?\b/gi, 'crescent'],
+	[/\bhwy\.?\b/gi, 'highway'],
+	[/\bpde\.?\b/gi, 'parade'],
+	[/\bpl\.?\b/gi, 'place'],
+	[/\bsq\.?\b/gi, 'square'],
+	[/\btce\.?\b/gi, 'terrace'],
+	[/\bcct\.?\b/gi, 'circuit'],
+	[/\bcl\.?\b/gi, 'close'],
+	[/\bgrv\.?\b/gi, 'grove'],
 ];
 
 function canonicalizeAddress(address: string, postcode?: string): string {
-    let s = address.toLowerCase();
-    for (const [pattern, replacement] of ADDRESS_ABBREVIATIONS) {
-        s = s.replace(pattern, replacement);
-    }
-    s = s.replace(/[.,#\-/]/g, ' ').replace(/\s+/g, ' ').trim();
-    // Strip leading unit/suite/level when postcode is present (same building, different unit = same location)
-    if (postcode) {
-        s = s.replace(/^(unit|suite|level|ste|apt|flat|floor)\s+[\w\d-]+\s*/i, '');
-    }
-    const pc = postcode ? String(postcode).replace(/\s/g, '').toLowerCase() : '';
-    return pc ? `${s}|${pc}` : s;
+	let s = address.toLowerCase();
+	for (const [pattern, replacement] of ADDRESS_ABBREVIATIONS) {
+		s = s.replace(pattern, replacement);
+	}
+	s = s.replace(/[.,#\-/]/g, ' ').replace(/\s+/g, ' ').trim();
+	// Strip leading unit/suite/level when postcode is present (same building, different unit = same location)
+	if (postcode) {
+		s = s.replace(/^(unit|suite|level|ste|apt|flat|floor)\s+[\w\d-]+\s*/i, '');
+	}
+	const pc = postcode ? String(postcode).replace(/\s/g, '').toLowerCase() : '';
+	return pc ? `${s}|${pc}` : s;
 }
 
 function buildLocationsSchema(includePhones: boolean): IDataObject {
