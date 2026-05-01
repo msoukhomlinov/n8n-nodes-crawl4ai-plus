@@ -117,8 +117,9 @@ export function buildDeepCrawlStrategy(
 	seedUrl: string,
 	excludePatterns?: string,
 	keywords?: string[],
+	maxDepthOverride?: number,
 ): DeepCrawlStrategy {
-	const maxDepth = scope === 'followLinks' ? 1 : 3;
+	const maxDepth = maxDepthOverride ?? (scope === 'followLinks' ? 1 : 3);
 
 	// Build filter chain
 	const filters: IDataObject[] = [];
