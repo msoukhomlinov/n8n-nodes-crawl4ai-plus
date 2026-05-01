@@ -7,7 +7,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 import { findNumbers, isSupportedCountry, type CountryCode } from 'libphonenumber-js';
 
-import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, ExtractionStrategy, FullCrawlConfig } from '../../shared/interfaces';
 import { checkLlmExtractionError } from '../../shared/formatters';
 import { Crawl4aiClient } from '../../shared/apiClient';
 import {
@@ -15,11 +15,13 @@ import {
 	getCrawl4aiClient,
 	getSimpleDefaults,
 	executeCrawl,
+	executeSmartUrlCrawl,
 	validateLlmCredentials,
 	buildLlmConfig,
 	createLlmExtractionStrategy,
 	resolveRequestHeaders,
 } from '../helpers/utils';
+import type { SmartUrlSelectionMeta } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
 import { extractJsonLd } from '../../shared/seo-helpers';
 
@@ -1032,6 +1034,20 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Explore Depth',
+				name: 'exploreDepth',
+				type: 'number',
+				default: 1,
+				typeOptions: { minValue: 1, maxValue: 3 },
+				description: 'How many levels deep to crawl explore-hint sections suggested by the LLM. Default 1 crawls one level into a section (e.g. /about/ to /about/contact/).',
+				displayOptions: {
+					show: {
+						smartUrlSelection: [true],
+						'/crawlScope': ['followLinks', 'fullSite'],
+					},
+				},
+			},
+			{
 				displayName: 'Include Phones',
 				name: 'includePhones',
 				type: 'boolean',
@@ -1078,7 +1094,31 @@ export const description: INodeProperties[] = [
 				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
-						'/extractionType': ['contactInfo', 'customLlm', 'locationsAddresses'],
+						'/extractionType': ['contactInfo', 'customLlm', 'financialData', 'locationsAddresses'],
+					},
+				},
+			},
+			{
+				displayName: 'Smart URL Selection',
+				name: 'smartUrlSelection',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
+				displayOptions: {
+					show: {
+						'/crawlScope': ['followLinks', 'fullSite'],
+					},
+				},
+			},
+			{
+				displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+				name: 'smartUrlLlmNotice',
+				type: 'notice',
+				default: '',
+				displayOptions: {
+					show: {
+						smartUrlSelection: [true],
+						'/extractionType': ['contactInfo', 'financialData'],
 					},
 				},
 			},
@@ -1125,6 +1165,9 @@ export async function execute(
 			const extractionType = this.getNodeParameter('extractionType', i, 'contactInfo') as string;
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+			const instruction = extractionType === 'customLlm'
+				? this.getNodeParameter('instruction', i, '') as string
+				: '';
 
 			assertValidHttpUrl(url, this.getNode(), i);
 
@@ -1178,6 +1221,15 @@ export async function execute(
 				}
 			}
 
+			if (options.smartUrlSelection === true && crawlScope !== 'singlePage' &&
+				(extractionType === 'contactInfo' || extractionType === 'financialData')) {
+				try {
+					validateLlmCredentials(credentials, 'Smart URL selection');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				}
+			}
+
 			// For customLlm, build LLM extraction strategy
 			if (extractionType === 'customLlm') {
 				try {
@@ -1186,7 +1238,6 @@ export async function execute(
 					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
 				}
 
-				const instruction = this.getNodeParameter('instruction', i, '') as string;
 				if (!instruction) {
 					throw new NodeOperationError(
 						this.getNode(),
@@ -1242,17 +1293,67 @@ export async function execute(
 				);
 			}
 
-			const results = await executeCrawl(
-				client,
-				url,
-				crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
-				config,
-				{
-					maxPages: options.maxPages as number | undefined,
-					excludePatterns: options.excludePatterns as string | undefined,
-					keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
-				},
-			);
+			// For customLlm + smart URL: detach strategy — applied only to final crawl, not seed crawl
+			let finalExtractionStrategy: ExtractionStrategy | undefined;
+			if (options.smartUrlSelection === true && crawlScope !== 'singlePage' &&
+				extractionType === 'customLlm' && config.extractionStrategy) {
+				finalExtractionStrategy = config.extractionStrategy;
+				delete config.extractionStrategy;
+			}
+
+			const useSmartUrlSelection =
+				options.smartUrlSelection === true && crawlScope !== 'singlePage';
+
+			let results: CrawlResult[];
+			let smartUrlMeta: SmartUrlSelectionMeta | undefined;
+
+			if (useSmartUrlSelection) {
+				const exploreDepth = Math.max(1, Math.min(3, Number(options.exploreDepth ?? 1)));
+				const modelOverride = options.llmModel as string | undefined;
+				const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
+
+				const extractionContextMap: Record<string, string> = {
+					contactInfo: 'email addresses and phone numbers',
+					financialData: 'prices, financial figures, or transaction data',
+					locationsAddresses: 'physical addresses, offices, branches, or store locations',
+					customLlm: `Find pages most likely to be helpful in answering or completing: ${instruction}`,
+				};
+
+				const smartResult = await executeSmartUrlCrawl(
+					client,
+					url,
+					config,
+					{
+						maxPages: (options.maxPages as number) ?? 10,
+						excludePatterns: options.excludePatterns as string | undefined,
+					},
+					{
+						extractionContext: extractionContextMap[extractionType] ?? 'relevant content',
+						exploreDepth,
+						provider,
+						apiKey,
+						baseUrl,
+						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
+						finalExtractionStrategy,
+					},
+					this.getNode(),
+					i,
+				);
+				results = smartResult.results;
+				smartUrlMeta = smartResult.meta;
+			} else {
+				results = await executeCrawl(
+					client,
+					url,
+					crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
+					config,
+					{
+						maxPages: options.maxPages as number | undefined,
+						excludePatterns: options.excludePatterns as string | undefined,
+						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
+					},
+				);
+			}
 
 			// Extract data based on type
 			let data: IDataObject | IDataObject[];
@@ -1284,15 +1385,23 @@ export async function execute(
 			} else if (extractionType === 'locationsAddresses') {
 				const includePhones = options.includePhones === true;
 				const modelOverride = options.llmModel as string | undefined;
-				data = await runLocationsExtraction.call(
-					this,
-					results,
-					credentials,
-					client,
-					modelOverride || undefined,
-					includePhones,
-					i,
-				);
+				const isZeroUrlFallback = smartUrlMeta?.warnings.some(
+					(w) => w.startsWith('LLM returned no candidate URLs'),
+				) ?? false;
+				if (isZeroUrlFallback) {
+					try {
+						data = await runLocationsExtraction.call(
+							this, results, credentials, client, modelOverride || undefined, includePhones, i,
+						);
+					} catch (err) {
+						if (smartUrlMeta) smartUrlMeta.warnings.push(`Locations extraction error: ${(err as Error).message}`);
+						data = [];
+					}
+				} else {
+					data = await runLocationsExtraction.call(
+						this, results, credentials, client, modelOverride || undefined, includePhones, i,
+					);
+				}
 			} else {
 				// customLlm — parse extracted JSON from each result and merge
 				const extractedItems: IDataObject[] = [];
@@ -1344,7 +1453,7 @@ export async function execute(
 				}
 			}
 
-			const formatted = formatExtractedDataResult(results, data, extractionType);
+			const formatted = formatExtractedDataResult(results, data, extractionType, smartUrlMeta);
 
 			allResults.push({
 				json: formatted,

@@ -1,16 +1,27 @@
 import { IDataObject, INode, NodeOperationError } from 'n8n-workflow';
 import { Crawl4aiClient } from '../../shared/apiClient';
-import { DeepCrawlStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
+import { DeepCrawlStrategy, ExtractionStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
+import { createLlmExtractionStrategy } from '../../shared/utils';
 
 // Re-export shared utilities needed by operations
 export {
 	getCrawl4aiClient,
 	buildLlmConfig,
 	validateLlmCredentials,
-	createLlmExtractionStrategy,
 	createCssSelectorExtractionStrategy,
 	resolveRequestHeaders,
 } from '../../shared/utils';
+export { createLlmExtractionStrategy };
+
+export interface SmartUrlSelectionMeta {
+	enabled: true;
+	seedUrl: string;
+	candidatesFound: number;
+	directUrls: string[];
+	exploreSections: Array<{ url: string; reason: string }>;
+	finalUrlsCrawled: string[];
+	warnings: string[];
+}
 
 /**
  * Validate that a URL is non-empty and uses http/https protocol.
@@ -117,8 +128,9 @@ export function buildDeepCrawlStrategy(
 	seedUrl: string,
 	excludePatterns?: string,
 	keywords?: string[],
+	maxDepthOverride?: number,
 ): DeepCrawlStrategy {
-	const maxDepth = scope === 'followLinks' ? 1 : 3;
+	const maxDepth = maxDepthOverride ?? (scope === 'followLinks' ? 1 : 3);
 
 	// Build filter chain
 	const filters: IDataObject[] = [];
@@ -177,6 +189,310 @@ export function buildDeepCrawlStrategy(
 	}
 
 	return { type: 'BFSDeepCrawlStrategy', params: strategyParams };
+}
+
+const SKIP_LINK_EXTENSIONS = /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|pdf|zip|woff|woff2|ttf|eot)$/i;
+const SKIP_LINK_PATHS = ['/cdn-cgi/', '/wp-content/'];
+
+export function extractLinksFromSeedResult(
+	result: CrawlResult,
+	seedUrl: string,
+): Array<{ url: string; anchorText: string }> {
+	let seedHostname: string;
+	try {
+		seedHostname = new URL(seedUrl).hostname;
+	} catch {
+		return [];
+	}
+
+	const seen = new Set<string>();
+	const candidates: Array<{ url: string; anchorText: string }> = [];
+
+	function addCandidate(href: string, text: string): void {
+		try {
+			const parsed = new URL(href);
+			if (parsed.hostname !== seedHostname) return;
+			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+			if (SKIP_LINK_EXTENSIONS.test(parsed.pathname)) return;
+			if (SKIP_LINK_PATHS.some((p) => parsed.pathname.includes(p))) return;
+			const normalised = normalizeUrl(href);
+			if (seen.has(normalised)) return;
+			seen.add(normalised);
+			candidates.push({ url: href, anchorText: text.trim() });
+		} catch {
+			// skip malformed URLs
+		}
+	}
+
+	if (result.links?.internal && result.links.internal.length > 0) {
+		for (const link of result.links.internal) {
+			addCandidate(link.href, link.text || '');
+		}
+	} else {
+		// Fallback: regex over raw_markdown
+		let markdown = '';
+		if (typeof result.markdown === 'object' && result.markdown !== null) {
+			markdown = result.markdown.raw_markdown || '';
+		} else if (typeof result.markdown === 'string') {
+			markdown = result.markdown;
+		}
+		const LINK_REGEX = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+		let match: RegExpExecArray | null;
+		while ((match = LINK_REGEX.exec(markdown)) !== null) {
+			addCandidate(match[2], match[1]);
+		}
+	}
+
+	return candidates.slice(0, 200);
+}
+
+export function buildUrlSelectionSchema(): IDataObject {
+	return {
+		type: 'object',
+		properties: {
+			directUrls: {
+				type: 'array',
+				items: { type: 'string' },
+				description: 'URLs from the candidates list to crawl directly — clearly relevant to the extraction goal',
+			},
+			exploreSections: {
+				type: 'array',
+				items: {
+					type: 'object',
+					properties: {
+						url: { type: 'string' },
+						reason: { type: 'string' },
+					},
+					required: ['url', 'reason'],
+				},
+				description: 'Section URLs worth crawling one level deeper to find relevant sub-pages',
+			},
+		},
+		required: ['directUrls', 'exploreSections'],
+	} as IDataObject;
+}
+
+export function buildUrlSelectionPrompt(
+	seedUrl: string,
+	extractionContext: string,
+	maxPages: number,
+	candidates: Array<{ url: string; anchorText: string }>,
+): string {
+	const candidateList = candidates
+		.map((c) => `${c.url} | ${c.anchorText || '(no anchor text)'}`)
+		.join('\n');
+	return `You are a URL relevance analyst. Given a list of links from ${seedUrl}, select the URLs most likely to contain: ${extractionContext}.
+
+Rules:
+- directUrls: exact URLs from the candidate list that are clearly and directly relevant
+- exploreSections: section index URLs (e.g. /about/, /locations/) where relevant content is likely one level deeper — only include if the exact target page is not already in directUrls
+- Only use URLs from the provided candidate list — do not invent or guess URLs
+- Total directUrls + exploreSections must not exceed ${maxPages}
+- If no relevant URLs are found, return empty arrays
+
+Candidate links (url | anchor text):
+${candidateList}`;
+}
+
+interface LlmUrlSelectionResponse {
+	directUrls: string[];
+	exploreSections: Array<{ url: string; reason: string }>;
+}
+
+interface LlmSelectionOptions {
+	extractionContext: string;
+	exploreDepth: number;
+	provider: string;
+	apiKey: string;
+	baseUrl: string | undefined;
+	keywords?: string[];
+	finalExtractionStrategy?: ExtractionStrategy;
+}
+
+interface SmartUrlCrawlResult {
+	results: CrawlResult[];
+	meta: SmartUrlSelectionMeta;
+}
+
+export async function executeSmartUrlCrawl(
+	client: Crawl4aiClient,
+	url: string,
+	config: FullCrawlConfig,
+	options: { maxPages?: number; excludePatterns?: string },
+	llmSelectionOptions: LlmSelectionOptions,
+	node: INode,
+	itemIndex: number,
+): Promise<SmartUrlCrawlResult> {
+	const maxPages = options.maxPages ?? 10;
+	const {
+		extractionContext,
+		exploreDepth,
+		provider,
+		apiKey,
+		baseUrl,
+		keywords,
+		finalExtractionStrategy,
+	} = llmSelectionOptions;
+	const warnings: string[] = [];
+
+	// Strip extraction + deep crawl strategies — seed crawl is plain single-page
+	const extendedConfig = config as FullCrawlConfig & {
+		extractionStrategy?: ExtractionStrategy;
+		deepCrawlStrategy?: DeepCrawlStrategy;
+	};
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { extractionStrategy: _es, deepCrawlStrategy: _dcs, ...seedConfigRest } = extendedConfig;
+	const seedConfig = seedConfigRest as FullCrawlConfig;
+
+	// 1. Seed crawl
+	const seedResult = await client.crawlUrl(url, seedConfig);
+	if (!seedResult.success) {
+		throw new NodeOperationError(
+			node,
+			`Smart URL selection: seed crawl failed — ${seedResult.error_message || 'unknown error'}`,
+			{ itemIndex },
+		);
+	}
+
+	// 2. Link extraction
+	const candidates = extractLinksFromSeedResult(seedResult, url);
+	if (candidates.length === 0) {
+		throw new NodeOperationError(
+			node,
+			'Smart URL selection enabled but no same-domain links found on seed page.',
+			{ itemIndex },
+		);
+	}
+
+	// 3. LLM URL selection via raw: synthetic HTML
+	const selectionPrompt = buildUrlSelectionPrompt(url, extractionContext, maxPages, candidates);
+	const selectionSchema = buildUrlSelectionSchema();
+	const selectionConfig: FullCrawlConfig = {
+		...seedConfig,
+		extractionStrategy: createLlmExtractionStrategy(selectionSchema, selectionPrompt, provider, apiKey, baseUrl),
+	};
+	const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const candidateHtml = candidates
+		.map((c) => `<li>${escHtml(c.url)} | ${escHtml(c.anchorText || '')}</li>`)
+		.join('\n');
+	const rawSelectionUrl = `raw:<ul>\n${candidateHtml}\n</ul>`;
+	const selectionResult = await client.crawlUrl(rawSelectionUrl, selectionConfig);
+
+	let directUrls: string[] = [];
+	let exploreSections: Array<{ url: string; reason: string }> = [];
+
+	if (selectionResult.success && selectionResult.extracted_content) {
+		try {
+			const parsed = JSON.parse(selectionResult.extracted_content) as unknown;
+			const items = Array.isArray(parsed)
+				? (parsed as LlmUrlSelectionResponse[])
+				: [(parsed as LlmUrlSelectionResponse)];
+			const first = items.find((item) => !(item as unknown as IDataObject).error);
+			if (first) {
+				directUrls = Array.isArray(first.directUrls) ? first.directUrls : [];
+				exploreSections = Array.isArray(first.exploreSections) ? first.exploreSections : [];
+			}
+		} catch {
+			warnings.push('LLM URL selection: failed to parse response as JSON');
+		}
+	} else {
+		warnings.push(`LLM URL selection: ${selectionResult.error_message || 'request failed'}`);
+	}
+
+	// 4. Hallucination guard — discard URLs not in candidate list
+	const candidateNormSet = new Set(candidates.map((c) => normalizeUrl(c.url)));
+
+	const discardedDirectCount = directUrls.filter((u) => !candidateNormSet.has(normalizeUrl(u))).length;
+	if (discardedDirectCount > 0) warnings.push(`Discarded ${discardedDirectCount} hallucinated URL(s) from directUrls`);
+	directUrls = directUrls.filter((u) => candidateNormSet.has(normalizeUrl(u)));
+
+	const discardedExploreCount = exploreSections.filter((s) => !candidateNormSet.has(normalizeUrl(s.url))).length;
+	if (discardedExploreCount > 0) warnings.push(`Discarded ${discardedExploreCount} hallucinated URL(s) from exploreSections`);
+	exploreSections = exploreSections.filter((s) => candidateNormSet.has(normalizeUrl(s.url)));
+
+	// 5. Explore mini-crawls
+	const exploreDiscovered: string[] = [];
+	if (directUrls.length < maxPages && exploreSections.length > 0) {
+		const sectionBudget = Math.max(
+			1,
+			Math.ceil((maxPages - directUrls.length) / exploreSections.length),
+		);
+		const directNormSet = new Set(directUrls.map(normalizeUrl));
+		for (const section of exploreSections) {
+			try {
+				const deepStrategy = buildDeepCrawlStrategy(
+					'followLinks',
+					sectionBudget,
+					section.url,
+					options.excludePatterns,
+					keywords,
+					exploreDepth,
+				);
+				const exploreResults = await client.crawlMultipleUrls(
+					[section.url],
+					{ ...seedConfig, deepCrawlStrategy: deepStrategy },
+				);
+				const deduped = deduplicateResults(exploreResults);
+				for (const r of deduped) {
+					const norm = normalizeUrl(r.url);
+					if (norm !== normalizeUrl(section.url) && !directNormSet.has(norm)) {
+						exploreDiscovered.push(r.url);
+					}
+				}
+			} catch (err) {
+				warnings.push(`Explore crawl failed for ${section.url}: ${(err as Error).message}`);
+			}
+		}
+	}
+
+	// 6. Merge + cap — directUrls take priority
+	const mergeDirectNormSet = new Set(directUrls.map(normalizeUrl));
+	const exploreNormSet = new Set<string>();
+	const uniqueExplore: string[] = [];
+	for (const u of exploreDiscovered) {
+		const norm = normalizeUrl(u);
+		if (!mergeDirectNormSet.has(norm) && !exploreNormSet.has(norm)) {
+			exploreNormSet.add(norm);
+			uniqueExplore.push(u);
+		}
+	}
+	const allCandidates = [...directUrls, ...uniqueExplore];
+	const finalUrls = allCandidates.slice(0, maxPages);
+	if (allCandidates.length > maxPages) {
+		warnings.push(`Truncated candidate URLs from ${allCandidates.length} to ${maxPages} (maxPages limit)`);
+	}
+
+	// 7 + 8. Final crawl or zero-URL fallback
+	let finalResults: CrawlResult[];
+
+	if (finalUrls.length === 0) {
+		warnings.push('LLM returned no candidate URLs — using seed page result only');
+		if (finalExtractionStrategy) {
+			// Re-crawl seed with extraction strategy (customLlm needs extracted_content)
+			finalResults = [await client.crawlUrl(url, { ...seedConfig, extractionStrategy: finalExtractionStrategy })];
+		} else {
+			finalResults = [seedResult];
+		}
+	} else {
+		const finalConfig: FullCrawlConfig = { ...seedConfig };
+		if (finalExtractionStrategy) {
+			finalConfig.extractionStrategy = finalExtractionStrategy;
+		}
+		// deepCrawlStrategy must be absent — flat list crawl, not deep crawl
+		finalResults = await client.crawlMultipleUrls(finalUrls, finalConfig);
+	}
+
+	const meta: SmartUrlSelectionMeta = {
+		enabled: true,
+		seedUrl: url,
+		candidatesFound: candidates.length,
+		directUrls,
+		exploreSections,
+		finalUrlsCrawled: finalResults.map((r) => r.url),
+		warnings,
+	};
+
+	return { results: finalResults, meta };
 }
 
 /**

@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.2.0] - 2026-05-01
+
+### Added
+- **Smart URL Selection** (Extract Data operation): New opt-in toggle that uses LLM to pre-select the most relevant pages before crawling. Crawls the seed page first, extracts all same-domain links, then asks the LLM to pick direct URLs and explore-hint sections. Explore hints trigger targeted mini-crawls to discover deeper candidate pages. Results are capped at Max Pages. Feature is hidden for Single Page scope and requires LLM credentials when enabled on Contact Info or Financial Data extraction types. Adds `_smartUrlSelection` metadata block to output showing seed URL, candidates found, LLM picks, final URLs crawled, and any warnings.
+- **Explore Depth** option: Controls how many levels deep explore-hint sections are crawled (1-3, default 1).
+
 ## 5.1.5 (2026-05-01)
 
 ### Fixed
