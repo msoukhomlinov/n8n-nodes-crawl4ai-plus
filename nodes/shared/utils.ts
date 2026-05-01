@@ -473,7 +473,7 @@ export function createCrawlerRunConfig(options: IDataObject): CrawlerRunConfig {
 
   // Timing controls
   if (options.delayBeforeReturnHtml !== undefined) {
-    config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml);
+    config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml) / 1000;
   }
 
   // Verbose/debug mode
