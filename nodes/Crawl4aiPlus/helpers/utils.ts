@@ -12,6 +12,16 @@ export {
 	resolveRequestHeaders,
 } from '../../shared/utils';
 
+export interface SmartUrlSelectionMeta {
+	enabled: true;
+	seedUrl: string;
+	candidatesFound: number;
+	directUrls: string[];
+	exploreSections: Array<{ url: string; reason: string }>;
+	finalUrlsCrawled: string[];
+	warnings: string[];
+}
+
 /**
  * Validate that a URL is non-empty and uses http/https protocol.
  * Throws NodeOperationError with a human-readable message on failure.
