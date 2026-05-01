@@ -191,6 +191,61 @@ export function buildDeepCrawlStrategy(
 	return { type: 'BFSDeepCrawlStrategy', params: strategyParams };
 }
 
+const SKIP_LINK_EXTENSIONS = /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|pdf|zip|woff|woff2|ttf|eot)$/i;
+const SKIP_LINK_PATHS = ['/cdn-cgi/', '/wp-content/'];
+
+export function extractLinksFromSeedResult(
+	result: CrawlResult,
+	seedUrl: string,
+): Array<{ url: string; anchorText: string }> {
+	let seedHostname: string;
+	try {
+		seedHostname = new URL(seedUrl).hostname;
+	} catch {
+		return [];
+	}
+
+	const seen = new Set<string>();
+	const candidates: Array<{ url: string; anchorText: string }> = [];
+
+	function addCandidate(href: string, text: string): void {
+		try {
+			const parsed = new URL(href);
+			if (parsed.hostname !== seedHostname) return;
+			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+			if (SKIP_LINK_EXTENSIONS.test(parsed.pathname)) return;
+			if (SKIP_LINK_PATHS.some((p) => parsed.pathname.includes(p))) return;
+			const normalised = normalizeUrl(href);
+			if (seen.has(normalised)) return;
+			seen.add(normalised);
+			candidates.push({ url: href, anchorText: text.trim() });
+		} catch {
+			// skip malformed URLs
+		}
+	}
+
+	if (result.links?.internal && result.links.internal.length > 0) {
+		for (const link of result.links.internal) {
+			addCandidate(link.href, link.text || '');
+		}
+	} else {
+		// Fallback: regex over raw_markdown
+		let markdown = '';
+		if (typeof result.markdown === 'object' && result.markdown !== null) {
+			markdown = result.markdown.raw_markdown || '';
+		} else if (typeof result.markdown === 'string') {
+			markdown = result.markdown;
+		}
+		const LINK_REGEX = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+		let match: RegExpExecArray | null;
+		while ((match = LINK_REGEX.exec(markdown)) !== null) {
+			addCandidate(match[2], match[1]);
+		}
+	}
+
+	return candidates.slice(0, 200);
+}
+
 /**
  * Execute a crawl at the given scope, returning an array of results regardless of scope.
  * Single-page crawls wrap the result in an array for consistent downstream handling.
