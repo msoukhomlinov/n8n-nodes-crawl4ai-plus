@@ -15,6 +15,7 @@ import {
 	resolveRequestHeaders,
 } from '../helpers/utils';
 import { createMarkdownGenerator } from '../../shared/utils';
+import { parseDenylist } from '../../shared/urlSafety';
 import { formatPageContentResult } from '../helpers/formatters';
 
 // --- UI Definition ---
@@ -191,6 +192,20 @@ export const description: INodeProperties[] = [
 				description: 'Milliseconds to wait after page load before returning HTML. Use for pages where content loads after the initial render (e.g. AJAX-heavy sites).',
 			},
 			{
+				displayName: 'Denylist Paths',
+				name: 'denylistPaths',
+				type: 'string',
+				typeOptions: { rows: 4 },
+				default: '',
+				placeholder: '/path/to/block\n/another/path\n*/pattern/*',
+				description: 'Paths or URL patterns to block before crawling — one per line. Supports * wildcards. Only applies when crawling multiple pages.',
+				displayOptions: {
+					show: {
+						'/crawlScope': ['followLinks', 'fullSite'],
+					},
+				},
+			},
+			{
 				displayName: 'Exclude URL Patterns',
 				name: 'excludePatterns',
 				type: 'string',
@@ -328,6 +343,13 @@ export async function execute(
 				});
 			}
 
+			// Merge explicit denylist into exclude patterns for multi-page crawls
+			const denylistPaths = parseDenylist(options.denylistPaths as string | undefined);
+			const baseExclude = (options.excludePatterns as string | undefined) || '';
+			const mergedExclude = denylistPaths.length > 0
+				? [baseExclude, ...denylistPaths].filter((p) => p.trim().length > 0).join(',')
+				: baseExclude || undefined;
+
 			const results = await executeCrawl(
 				client,
 				url,
@@ -335,7 +357,7 @@ export async function execute(
 				config,
 				{
 					maxPages: options.maxPages as number | undefined,
-					excludePatterns: options.excludePatterns as string | undefined,
+					excludePatterns: mergedExclude,
 				},
 			);
 
