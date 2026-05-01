@@ -11,7 +11,7 @@
 
 ### Added
 - All four simple node operations (`Get Page Content`, `Ask Question`, `Extract Data`, `Extract with CSS Selectors`) now expose **Avoid Ads** and **Avoid CSS** options (Crawl4AI v0.8.5 `CrawlerRunConfig` params) — block ad-related and CSS network requests during crawl for faster, cleaner text extraction
-- All four simple node operations now expose **Wait Until** (load / DOM content loaded / network idle / commit) and **Delay Before Return (Ms)** options — essential for AJAX-rendered and JS-heavy sites (e.g. CommerceVision, ASP.NET) where content loads after initial page load
+- All four simple node operations now expose **Wait Until** (networkidle / load / domcontentloaded / commit) and **Delay Before Return (Ms)** options for reliable scraping of AJAX-rendered and JS-heavy sites
 
 ## 5.1.4 (2026-04-30)
 
