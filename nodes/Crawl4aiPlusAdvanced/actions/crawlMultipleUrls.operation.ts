@@ -15,6 +15,7 @@ import {
 	isValidUrl,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
+import { parseDenylist, filterUrlsAgainstDenylist } from '../../shared/urlSafety';
 import {
 	getBrowserSessionFields,
 	getCrawlSettingsFields,
@@ -131,6 +132,15 @@ export const description: INodeProperties[] = [
 				description: 'Strategy for discovering and following links',
 			},
 			{
+				displayName: 'Denylist Paths',
+				name: 'denylistPaths',
+				type: 'string',
+				typeOptions: { rows: 4 },
+				default: '',
+				placeholder: '/path/to/block\n/another/path\n*/pattern/*',
+				description: 'Paths or URL patterns to never crawl — one per line, supports * wildcards. Merged into the server-side <code>URLPatternFilter</code> via <code>FilterChain</code>.',
+			},
+			{
 				displayName: 'Exclude Domains',
 				name: 'excludeDomains',
 				type: 'string',
@@ -207,6 +217,30 @@ export const description: INodeProperties[] = [
 			},
 		],
 	},
+	{
+		displayName: 'Options',
+		name: 'manualOptions',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
+		displayOptions: {
+			show: {
+				operation: ['crawlMultipleUrls'],
+				crawlMode: ['manual'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Denylist Paths',
+				name: 'denylistPaths',
+				type: 'string',
+				typeOptions: { rows: 4 },
+				default: '',
+				placeholder: '/path/to/block\n/another/path\n*/pattern/*',
+				description: 'Paths or URL patterns to never crawl — one per line, supports * wildcards. Matching URLs are removed before the API call and reported in <code>_safetyFilter</code> on the first output item.',
+			},
+		],
+	},
 	...getBrowserSessionFields(['crawlMultipleUrls']),
 	...getCrawlSettingsFields(['crawlMultipleUrls']),
 	...getOutputFilteringFields(['crawlMultipleUrls']),
@@ -228,6 +262,8 @@ export async function execute(
 			const bs = this.getNodeParameter('browserSession', i, {}) as IDataObject;
 			const cs = this.getNodeParameter('crawlSettings', i, {}) as IDataObject;
 			const of = this.getNodeParameter('outputFiltering', i, {}) as IDataObject;
+			const ds = this.getNodeParameter('discoveryStrategy', i, {}) as IDataObject;
+			let blockedByDenylist: string[] = [];
 
 			// Build config from shared collections
 			const config: FullCrawlConfig = {
@@ -274,11 +310,26 @@ export async function execute(
 						{ itemIndex: i },
 					);
 				}
+
+				// Apply denylist to manual URL list before sending to API
+				const mo = this.getNodeParameter('manualOptions', i, {}) as IDataObject;
+				const manualDenylist = parseDenylist(mo.denylistPaths as string | undefined);
+				if (manualDenylist.length > 0) {
+					const { safeUrls, blockedUrls } = filterUrlsAgainstDenylist(urls, manualDenylist);
+					blockedByDenylist = blockedUrls;
+					urls = safeUrls;
+					if (urls.length === 0) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`All provided URLs were blocked by the denylist (${blockedUrls.length} URL(s) blocked).`,
+							{ itemIndex: i },
+						);
+					}
+				}
 			} else {
 				// discover mode
 				const seedUrl = String(this.getNodeParameter('seedUrl', i, '')).trim();
 				const query = String(this.getNodeParameter('query', i, '')).trim();
-				const ds = this.getNodeParameter('discoveryStrategy', i, {}) as IDataObject;
 
 				if (!seedUrl) {
 					throw new NodeOperationError(this.getNode(), 'Seed URL is required for discovery mode.', { itemIndex: i });
@@ -319,10 +370,13 @@ export async function execute(
 					});
 				}
 
-				if (excludePatterns.length > 0) {
+				const denylistPaths = parseDenylist(ds.denylistPaths as string | undefined);
+				const allExcludePatterns = [...excludePatterns, ...denylistPaths];
+
+				if (allExcludePatterns.length > 0) {
 					filters.push({
 						type: 'URLPatternFilter',
-						params: { patterns: excludePatterns, reverse: true },
+						params: { patterns: allExcludePatterns, reverse: true },
 					});
 				}
 
@@ -397,6 +451,7 @@ export async function execute(
 					json: {
 						success: false,
 						error: 'Crawl returned no results. The URLs may be inaccessible or blocked.',
+						...(blockedByDenylist.length > 0 ? { blockedByDenylist } : {}),
 					},
 					pairedItem: { item: i },
 				});
@@ -404,6 +459,7 @@ export async function execute(
 			}
 
 			const fetchedAt = new Date().toISOString();
+			let safetyAttached = false;
 			for (const result of limitedResults) {
 				const formattedResult = formatCrawlResult(result, {
 					cacheMode: cs.cacheMode as string | undefined,
@@ -417,6 +473,14 @@ export async function execute(
 					includeTables: of.includeTables as boolean,
 					fetchedAt,
 				});
+
+				if (blockedByDenylist.length > 0 && !safetyAttached) {
+					(formattedResult as IDataObject)._safetyFilter = {
+						blockedUrls: blockedByDenylist,
+						blockedCount: blockedByDenylist.length,
+					};
+					safetyAttached = true;
+				}
 
 				allResults.push({
 					json: formattedResult,

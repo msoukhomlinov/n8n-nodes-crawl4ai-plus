@@ -17,6 +17,7 @@ import {
 	urlField,
 	getBrowserSessionFields,
 } from '../../shared/descriptions';
+import { checkSuspiciousUrl } from '../../shared/urlSafety';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
@@ -89,6 +90,13 @@ export const description: INodeProperties[] = [
 				description: 'Whether to exclude links to social media platforms',
 			},
 			{
+				displayName: 'Flag Suspicious URLs',
+				name: 'flagSuspiciousUrls',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to annotate links that match suspicious URL patterns with a suspicious flag in the output',
+			},
+			{
 				displayName: 'Include Patterns',
 				name: 'includePatterns',
 				type: 'string',
@@ -102,6 +110,20 @@ export const description: INodeProperties[] = [
 				type: 'boolean',
 				default: false,
 				description: 'Whether to only include links that have visible anchor text',
+			},
+			{
+				displayName: 'Suspicious URL Patterns',
+				name: 'suspiciousPatterns',
+				type: 'string',
+				typeOptions: { rows: 3 },
+				default: '',
+				placeholder: '*-HP, */trap/*, */canary/*',
+				description: 'Comma-separated or newline-separated URL patterns that should be flagged as suspicious. Supports * wildcards.',
+				displayOptions: {
+					show: {
+						flagSuspiciousUrls: [true],
+					},
+				},
 			},
 		],
 	},
@@ -242,6 +264,10 @@ export async function execute(
 			const excludeFileTypes = parseFileTypes(filterOptions.excludeFileTypes as string);
 			const excludeSocialMedia = filterOptions.excludeSocialMedia === true;
 			const requireText = filterOptions.requireText === true;
+			const flagSuspiciousUrls = filterOptions.flagSuspiciousUrls === true;
+			const suspiciousPatterns = flagSuspiciousUrls
+				? parseSuspiciousPatterns(filterOptions.suspiciousPatterns as string)
+				: [];
 			const deduplicate = outputOptions.deduplicate !== false;
 			const includeMetadata = outputOptions.includeMetadata !== false;
 
@@ -282,6 +308,8 @@ export async function execute(
 				];
 
 				for (const link of allLinks) {
+					const suspicion = flagSuspiciousUrls ? checkSuspiciousUrl(link.href, suspiciousPatterns) : null;
+
 					const linkOutput: IDataObject = {
 						url: link.href,
 						type: link.type,
@@ -291,6 +319,11 @@ export async function execute(
 					if (includeMetadata) {
 						linkOutput.text = link.text || '';
 						linkOutput.title = link.title || '';
+					}
+
+					if (suspicion !== null) {
+						linkOutput.suspicious = suspicion.suspicious;
+						if (suspicion.reason) linkOutput.suspicionReason = suspicion.reason;
 					}
 
 					allResults.push({
@@ -312,22 +345,36 @@ export async function execute(
 				}
 			} else {
 				const formattedInternal = processedInternal.map((link) => {
+					const suspicion = flagSuspiciousUrls ? checkSuspiciousUrl(link.href, suspiciousPatterns) : null;
 					const output: IDataObject = { href: link.href };
 					if (includeMetadata) {
 						output.text = link.text || '';
 						output.title = link.title || '';
+					}
+					if (suspicion !== null) {
+						output.suspicious = suspicion.suspicious;
+						if (suspicion.reason) output.suspicionReason = suspicion.reason;
 					}
 					return output;
 				});
 
 				const formattedExternal = processedExternal.map((link) => {
+					const suspicion = flagSuspiciousUrls ? checkSuspiciousUrl(link.href, suspiciousPatterns) : null;
 					const output: IDataObject = { href: link.href };
 					if (includeMetadata) {
 						output.text = link.text || '';
 						output.title = link.title || '';
 					}
+					if (suspicion !== null) {
+						output.suspicious = suspicion.suspicious;
+						if (suspicion.reason) output.suspicionReason = suspicion.reason;
+					}
 					return output;
 				});
+
+				const suspiciousCount = flagSuspiciousUrls
+					? [...formattedInternal, ...formattedExternal].filter((l) => l.suspicious === true).length
+					: undefined;
 
 				allResults.push({
 					json: {
@@ -338,6 +385,7 @@ export async function execute(
 						totalInternal: formattedInternal.length,
 						totalExternal: formattedExternal.length,
 						totalLinks: formattedInternal.length + formattedExternal.length,
+						...(suspiciousCount !== undefined ? { suspiciousCount } : {}),
 					},
 					pairedItem: { item: i },
 				});
@@ -444,6 +492,14 @@ function deduplicateLinks(links: Link[]): Link[] {
 		seen.add(normalizedHref);
 		return true;
 	});
+}
+
+function parseSuspiciousPatterns(raw: string | undefined): string[] {
+	if (!raw) return [];
+	return raw
+		.split(/[\n,]/)
+		.map((p) => p.trim())
+		.filter((p) => p.length > 0);
 }
 
 function normalizeUrl(url: string): string {
