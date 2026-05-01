@@ -138,7 +138,7 @@ export const description: INodeProperties[] = [
 				typeOptions: { rows: 4 },
 				default: '',
 				placeholder: '/path/to/block\n/another/path\n*/pattern/*',
-				description: 'Paths or URL patterns to never crawl — one per line, supports * wildcards. Applied to both discover and manual modes.',
+				description: 'Paths or URL patterns to never crawl — one per line, supports * wildcards. Merged into the server-side <code>URLPatternFilter</code> via <code>FilterChain</code>.',
 			},
 			{
 				displayName: 'Exclude Domains',
@@ -217,6 +217,30 @@ export const description: INodeProperties[] = [
 			},
 		],
 	},
+	{
+		displayName: 'Options',
+		name: 'manualOptions',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
+		displayOptions: {
+			show: {
+				operation: ['crawlMultipleUrls'],
+				crawlMode: ['manual'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Denylist Paths',
+				name: 'denylistPaths',
+				type: 'string',
+				typeOptions: { rows: 4 },
+				default: '',
+				placeholder: '/path/to/block\n/another/path\n*/pattern/*',
+				description: 'Paths or URL patterns to never crawl — one per line, supports * wildcards. Matching URLs are removed before the API call and reported in <code>_safetyFilter</code> on the first output item.',
+			},
+		],
+	},
 	...getBrowserSessionFields(['crawlMultipleUrls']),
 	...getCrawlSettingsFields(['crawlMultipleUrls']),
 	...getOutputFilteringFields(['crawlMultipleUrls']),
@@ -288,7 +312,8 @@ export async function execute(
 				}
 
 				// Apply denylist to manual URL list before sending to API
-				const manualDenylist = parseDenylist(ds.denylistPaths as string | undefined);
+				const mo = this.getNodeParameter('manualOptions', i, {}) as IDataObject;
+				const manualDenylist = parseDenylist(mo.denylistPaths as string | undefined);
 				if (manualDenylist.length > 0) {
 					const { safeUrls, blockedUrls } = filterUrlsAgainstDenylist(urls, manualDenylist);
 					blockedByDenylist = blockedUrls;
