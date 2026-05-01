@@ -851,7 +851,7 @@ export const description: INodeProperties[] = [
 	},
 	{
 		displayName:
-			'LLM validation requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+			'Optional: enable LLM Validation in Options below to use AI to clean false positives from extracted contacts. Requires LLM credentials configured in the Crawl4AI Plus credentials.',
 		name: 'llmValidationNotice',
 		type: 'notice',
 		default: '',
