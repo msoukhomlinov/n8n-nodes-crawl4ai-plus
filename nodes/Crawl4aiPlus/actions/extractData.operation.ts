@@ -1032,6 +1032,20 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Explore Depth',
+				name: 'exploreDepth',
+				type: 'number',
+				default: 1,
+				typeOptions: { minValue: 1, maxValue: 3 },
+				description: 'How many levels deep to crawl explore-hint sections suggested by the LLM. Default 1 crawls one level into a section (e.g. /about/ to /about/contact/).',
+				displayOptions: {
+					show: {
+						smartUrlSelection: [true],
+						'/crawlScope': ['followLinks', 'fullSite'],
+					},
+				},
+			},
+			{
 				displayName: 'Include Phones',
 				name: 'includePhones',
 				type: 'boolean',
@@ -1078,7 +1092,31 @@ export const description: INodeProperties[] = [
 				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
-						'/extractionType': ['contactInfo', 'customLlm', 'locationsAddresses'],
+						'/extractionType': ['contactInfo', 'customLlm', 'financialData', 'locationsAddresses'],
+					},
+				},
+			},
+			{
+				displayName: 'Smart URL Selection',
+				name: 'smartUrlSelection',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
+				displayOptions: {
+					show: {
+						'/crawlScope': ['followLinks', 'fullSite'],
+					},
+				},
+			},
+			{
+				displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+				name: 'smartUrlLlmNotice',
+				type: 'notice',
+				default: '',
+				displayOptions: {
+					show: {
+						smartUrlSelection: [true],
+						'/extractionType': ['contactInfo', 'financialData'],
 					},
 				},
 			},
