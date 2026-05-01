@@ -246,6 +246,54 @@ export function extractLinksFromSeedResult(
 	return candidates.slice(0, 200);
 }
 
+export function buildUrlSelectionSchema(): IDataObject {
+	return {
+		type: 'object',
+		properties: {
+			directUrls: {
+				type: 'array',
+				items: { type: 'string' },
+				description: 'URLs from the candidates list to crawl directly — clearly relevant to the extraction goal',
+			},
+			exploreSections: {
+				type: 'array',
+				items: {
+					type: 'object',
+					properties: {
+						url: { type: 'string' },
+						reason: { type: 'string' },
+					},
+					required: ['url', 'reason'],
+				},
+				description: 'Section URLs worth crawling one level deeper to find relevant sub-pages',
+			},
+		},
+		required: ['directUrls', 'exploreSections'],
+	} as IDataObject;
+}
+
+export function buildUrlSelectionPrompt(
+	seedUrl: string,
+	extractionContext: string,
+	maxPages: number,
+	candidates: Array<{ url: string; anchorText: string }>,
+): string {
+	const candidateList = candidates
+		.map((c) => `${c.url} | ${c.anchorText || '(no anchor text)'}`)
+		.join('\n');
+	return `You are a URL relevance analyst. Given a list of links from ${seedUrl}, select the URLs most likely to contain: ${extractionContext}.
+
+Rules:
+- directUrls: exact URLs from the candidate list that are clearly and directly relevant
+- exploreSections: section index URLs (e.g. /about/, /locations/) where relevant content is likely one level deeper — only include if the exact target page is not already in directUrls
+- Only use URLs from the provided candidate list — do not invent or guess URLs
+- Total directUrls + exploreSections must not exceed ${maxPages}
+- If no relevant URLs are found, return empty arrays
+
+Candidate links (url | anchor text):
+${candidateList}`;
+}
+
 /**
  * Execute a crawl at the given scope, returning an array of results regardless of scope.
  * Single-page crawls wrap the result in an array for consistent downstream handling.
