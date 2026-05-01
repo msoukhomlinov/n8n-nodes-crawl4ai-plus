@@ -1,6 +1,7 @@
 import { IDataObject, INode, NodeOperationError } from 'n8n-workflow';
 import { Crawl4aiClient } from '../../shared/apiClient';
-import { DeepCrawlStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { DeepCrawlStrategy, ExtractionStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
 
 // Re-export shared utilities needed by operations
 export {
