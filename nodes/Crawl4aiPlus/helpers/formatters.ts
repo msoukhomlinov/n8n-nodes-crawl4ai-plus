@@ -1,6 +1,7 @@
 import { IDataObject } from 'n8n-workflow';
 import { CrawlResult, Link } from '../../shared/interfaces';
 import { parseExtractedJson } from '../../shared/formatters';
+import type { SmartUrlSelectionMeta } from './utils';
 
 /**
  * Strip verbose Python traceback noise from Crawl4AI error messages.
@@ -221,6 +222,7 @@ export function formatExtractedDataResult(
 	results: CrawlResult[],
 	data: IDataObject | IDataObject[],
 	extractionType: string,
+	smartUrlMeta?: SmartUrlSelectionMeta,
 ): IDataObject {
 	const primaryUrl = results[0]?.url || '';
 	const domain = resolveDomain(primaryUrl);
@@ -242,6 +244,7 @@ export function formatExtractedDataResult(
 		pagesScanned: results.length,
 		fetchedAt,
 		metrics: buildMetrics(results),
+		...(smartUrlMeta ? { _smartUrlSelection: smartUrlMeta } : {}),
 	};
 	if (!extractSuccess) {
 		const firstError = results.find((r) => r.error_message)?.error_message;
