@@ -230,6 +230,13 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Delay Before Return (Ms)',
+				name: 'delayBeforeReturnHtml',
+				type: 'number',
+				default: 0,
+				description: 'Milliseconds to wait after page load before returning HTML. Use for pages where content loads after the initial render (e.g. AJAX-heavy sites).',
+			},
+			{
 				displayName: 'Include Original Text',
 				name: 'includeOriginalText',
 				type: 'boolean',
@@ -244,6 +251,19 @@ export const description: INodeProperties[] = [
 				placeholder: '.content-loaded or js:() => document.readyState === "complete"',
 				description:
 					'CSS selector or JS expression (prefixed with js:) to wait for before extracting content',
+			},
+			{
+				displayName: 'Wait Until',
+				name: 'waitUntil',
+				type: 'options',
+				options: [
+					{ name: 'Commit (First Byte)', value: 'commit', description: 'Return as soon as the first byte of the response is received' },
+					{ name: 'DOM Content Loaded', value: 'domcontentloaded', description: 'Wait for the DOMContentLoaded event' },
+					{ name: 'Load', value: 'load', description: 'Wait for the load event (default browser behaviour)' },
+					{ name: 'Network Idle', value: 'networkidle', description: 'Wait until no network requests for 500ms — best for AJAX/SPA sites' },
+				],
+				default: 'load',
+				description: 'Navigation event to wait for before extracting content. Use Network Idle for JS-heavy or AJAX-rendered pages.',
 			},
 		],
 	},
@@ -319,6 +339,13 @@ export async function execute(
 
 			if (options.waitFor) {
 				config.waitFor = String(options.waitFor);
+			}
+
+			if (options.waitUntil && options.waitUntil !== 'load') {
+				config.waitUntil = String(options.waitUntil);
+			}
+			if (options.delayBeforeReturnHtml) {
+				config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml);
 			}
 
 			if (options.avoidAds === true) {
