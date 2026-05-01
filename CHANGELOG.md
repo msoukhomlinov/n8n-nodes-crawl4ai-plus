@@ -1,14 +1,5 @@
 # Changelog
 
-## [5.2.1] - 2026-05-02
-
-### Added
-- **Include Location Details** (Extract Data — Contact Info): New opt-in toggle that runs the location extraction pipeline on the same crawl results. When enabled, `data` becomes `{ emails[], locations[] }` where each location record has name, full address, per-location phone, and any location-specific emails found in the same contact block. Site-wide emails remain in the top-level `emails` array.
-- **Per-location emails** in location extraction LLM schema: LLM now extracts `emails` found adjacent to each address (same contact block). Applied to both the standalone Locations & Addresses extraction type and the new Include Location Details mode.
-
-### Changed
-- **Extract Data UI**: Max Pages, Include Phones, LLM Validation, and Smart URL Selection promoted from Options collection to always-visible main UI.
-
 ## [5.2.0] - 2026-05-01
 
 ### Added
@@ -17,6 +8,11 @@
 - **Suspicious URL detection** (Discover Links): New "Flag Suspicious URLs" option (with companion "Suspicious URL Patterns" field) annotates output links with `suspicious: true/false` and `suspicionReason` when a link matches a user-defined pattern. Available in both split and grouped output formats; `suspiciousCount` summary added to grouped output.
 - **Smart URL Selection** (Extract Data operation): New opt-in toggle that uses LLM to pre-select the most relevant pages before crawling. Crawls the seed page first, extracts all same-domain links, then asks the LLM to pick direct URLs and explore-hint sections. Explore hints trigger targeted mini-crawls to discover deeper candidate pages. Results are capped at Max Pages. Feature is hidden for Single Page scope and requires LLM credentials when enabled on Contact Info or Financial Data extraction types. Adds `_smartUrlSelection` metadata block to output showing seed URL, candidates found, LLM picks, final URLs crawled, and any warnings.
 - **Explore Depth** option: Controls how many levels deep explore-hint sections are crawled (1-3, default 1).
+- **Include Location Details** (Extract Data — Contact Info): New opt-in toggle that runs the location extraction pipeline on the same crawl results. When enabled, `data` becomes `{ emails[], locations[] }` where each location record has name, full address, per-location phone, and any location-specific emails found in the same contact block. Site-wide emails remain in the top-level `emails` array.
+- **Per-location emails** in location extraction LLM schema: LLM now extracts `emails` found adjacent to each address (same contact block). Applied to both the standalone Locations & Addresses extraction type and the new Include Location Details mode.
+
+### Changed
+- **Extract Data UI**: Max Pages, Include Phones, LLM Validation, and Smart URL Selection promoted from Options collection to always-visible main UI.
 
 ## 5.1.5 (2026-05-01)
 
