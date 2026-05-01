@@ -403,7 +403,8 @@ function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): st
 		: '';
 	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
 	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
-	const phoneFewShot2 = includePhones ? ', "phone": "(not stated)"' : '';
+	// Second example omits phone — teaches LLM to skip field when unknown
+	const phoneFewShot2 = '';
 	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters, distributors, stockists, dealers) mentioned on this page.${urlContext}
 
 For each location:
