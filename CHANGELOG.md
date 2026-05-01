@@ -3,6 +3,9 @@
 ## [5.2.0] - 2026-05-01
 
 ### Added
+- **URL denylist filtering** (Get Page Content — Follow Links/Full Site scope): New "Denylist Paths" option blocks specified paths or URL patterns from being crawled in multi-page modes. Supports exact paths and `*` wildcards; one entry per line.
+- **URL denylist filtering** (Crawl Multiple URLs — Discover and Manual modes): "Denylist Paths" option added to Discovery Strategy collection. In discover mode the denylist is enforced server-side via the FilterChain's URLPatternFilter. In manual mode, URLs are filtered client-side before the API call; blocked URLs are reported in `_safetyFilter` on the first output item.
+- **Suspicious URL detection** (Discover Links): New "Flag Suspicious URLs" option (with companion "Suspicious URL Patterns" field) annotates output links with `suspicious: true/false` and `suspicionReason` when a link matches a user-defined pattern. Available in both split and grouped output formats; `suspiciousCount` summary added to grouped output.
 - **Smart URL Selection** (Extract Data operation): New opt-in toggle that uses LLM to pre-select the most relevant pages before crawling. Crawls the seed page first, extracts all same-domain links, then asks the LLM to pick direct URLs and explore-hint sections. Explore hints trigger targeted mini-crawls to discover deeper candidate pages. Results are capped at Max Pages. Feature is hidden for Single Page scope and requires LLM credentials when enabled on Contact Info or Financial Data extraction types. Adds `_smartUrlSelection` metadata block to output showing seed URL, candidates found, LLM picks, final URLs crawled, and any warnings.
 - **Explore Depth** option: Controls how many levels deep explore-hint sections are crawled (1-3, default 1).
 
