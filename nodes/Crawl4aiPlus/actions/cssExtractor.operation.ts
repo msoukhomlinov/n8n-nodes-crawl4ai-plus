@@ -140,6 +140,20 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'Avoid Ads',
+				name: 'avoidAds',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to block ad-related network requests during crawl (reduces noise, speeds up page load)',
+			},
+			{
+				displayName: 'Avoid CSS',
+				name: 'avoidCss',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to block CSS resource requests during crawl (faster for text-only extraction)',
+			},
+			{
 				displayName: 'Browser Profile',
 				name: 'browserProfile',
 				type: 'options',
@@ -307,28 +321,35 @@ export async function execute(
 				config.waitFor = String(options.waitFor);
 			}
 
+			if (options.avoidAds === true) {
+				config.avoidAds = true;
+			}
+			if (options.avoidCss === true) {
+				config.avoidCss = true;
+			}
+
 			// Execute crawl
 			const result = await client.crawlUrl(url, config);
 
 			// Parse extracted JSON
 			const extractedData = parseExtractedJson(result);
-			let items_extracted: IDataObject[] = [];
+			let itemsExtracted: IDataObject[] = [];
 
 			if (extractedData) {
 				if (Array.isArray(extractedData)) {
-					items_extracted = extractedData as IDataObject[];
+					itemsExtracted = extractedData as IDataObject[];
 				} else if (typeof extractedData === 'object') {
-					items_extracted = [extractedData];
+					itemsExtracted = [extractedData];
 				}
 			}
 
 			// Apply text cleaning if requested
 			const shouldClean = options.cleanText !== false;
-			if (shouldClean && items_extracted.length > 0) {
-				items_extracted = cleanExtractedData(items_extracted) as IDataObject[];
+			if (shouldClean && itemsExtracted.length > 0) {
+				itemsExtracted = cleanExtractedData(itemsExtracted) as IDataObject[];
 			}
 
-			const formatted = formatCssExtractorResult(result, items_extracted);
+			const formatted = formatCssExtractorResult(result, itemsExtracted);
 
 			// Include original page text if requested
 			if (options.includeOriginalText) {

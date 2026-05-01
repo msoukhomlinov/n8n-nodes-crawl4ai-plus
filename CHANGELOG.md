@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.1.5 (2026-05-01)
+
+### Fixed
+- `extractData` Locations & Addresses: LLM few-shot example for "no phone found" case now omits the phone field entirely — previously used `"(not stated)"` as the value, teaching the model to output that literal string
+- `extractData` Contact Info: LLM validation notice now clearly states the feature is optional (only needed when LLM Validation option is enabled)
+- `cssExtractor`: renamed internal variable `items_extracted` to camelCase `itemsExtracted`; fixed 4-space/tab indentation inconsistency in location helper functions
+
+### Added
+- All four simple node operations (`Get Page Content`, `Ask Question`, `Extract Data`, `Extract with CSS Selectors`) now expose **Avoid Ads** and **Avoid CSS** options (Crawl4AI v0.8.5 `CrawlerRunConfig` params) — block ad-related and CSS network requests during crawl for faster, cleaner text extraction
+
 ## 5.1.4 (2026-04-30)
 
 ### Changed
