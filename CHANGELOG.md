@@ -14,6 +14,12 @@
 ### Changed
 - **Extract Data UI**: Max Pages, Include Phones, LLM Validation, and Smart URL Selection promoted from Options collection to always-visible main UI.
 
+### Fixed
+- **Location extraction grounding check**: Replaced exact-substring match with a token-window sliding scan. LLM snippets with framing prose ("Our address is … Australia") or markdown formatting (`**bold**`) no longer fail grounding. Any consecutive run of ≥60% of snippet tokens (≥20 chars) present in the source counts as grounded, while genuinely hallucinated content still fails.
+- **Include Location Details output**: `phones[]` was silently dropped when `includeLocationDetails` was enabled. Output is now `{ emails[], phones[], locations[] }` in full parity with the non-location-details branch.
+- **Location name suffix**: LLM now constrained to generic suffixes (Office, Location, Branch) when deriving names from city/suburb — prevents industry-specific terms such as "Facility" or "Site" appearing in derived names.
+- **Max Pages boundary**: Fixed `maxPages || undefined` coercing an explicit `0` to the default 10; changed to `maxPages ?? undefined`.
+
 ## 5.1.5 (2026-05-01)
 
 ### Fixed
