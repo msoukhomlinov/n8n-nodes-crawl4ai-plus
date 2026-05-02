@@ -51,7 +51,7 @@ function extractContactInfo(
 	defaultCountry: string,
 ): { emails: string[]; phones: string[] } {
 	const emails = new Set<string>();
-	const phoneMap = new Map<string, string>(); // E.164 → formatted
+	const phoneMap = new Map<string, string>();
 
 	for (const result of results) {
 		let text = '';
@@ -62,14 +62,12 @@ function extractContactInfo(
 		}
 		if (!text) continue;
 
-		// Emails
 		EMAIL_PATTERN.lastIndex = 0;
 		const emailMatches = text.match(EMAIL_PATTERN);
 		if (emailMatches) {
 			for (const e of emailMatches) emails.add(e.toLowerCase());
 		}
 
-		// Phones via libphonenumber-js — finds and validates in one pass
 		const normalizedCountry = String(defaultCountry || '').toUpperCase();
 		const findOpts = isSupportedCountry(normalizedCountry as CountryCode)
 			? { defaultCountry: normalizedCountry as CountryCode, v2: true as const }
@@ -606,13 +604,13 @@ async function extractLocationsFromPage(
 		const rawLocs = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
 		for (const loc of rawLocs) {
 			const snippet = String(loc.sourceSnippet || '').trim();
-			if (!snippet) continue; // No grounding evidence — reject
+			if (!snippet) continue;
 			const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
 			let found = textLower.includes(normSnippet);
 			if (!found && normSnippet.length > 30) {
 				found = textLower.includes(normSnippet.slice(0, 30));
 			}
-			if (!found) continue; // Hallucination — skip
+			if (!found) continue;
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { sourceSnippet: _ss, ...cleanLoc } = loc as Record<string, unknown>;
 			llmLocations.push({ ...(cleanLoc as IDataObject), source: 'llm' });
@@ -657,9 +655,6 @@ async function runLocationsExtraction(
 	return deduplicateLocations([...locationMap.values()]);
 }
 
-/**
- * Extract data using regex patterns from markdown content
- */
 function extractWithRegex(
 	results: CrawlResult[],
 	patterns: Record<string, RegExp[]>,
@@ -670,7 +665,6 @@ function extractWithRegex(
 		const matches = new Set<string>();
 
 		for (const result of results) {
-			// Get markdown text from result
 			let text = '';
 			if (typeof result.markdown === 'object' && result.markdown !== null) {
 				text = result.markdown.raw_markdown || '';
@@ -678,7 +672,6 @@ function extractWithRegex(
 				text = result.markdown;
 			}
 			for (const regex of regexList) {
-				// Reset regex lastIndex for global patterns
 				regex.lastIndex = 0;
 				const found = text.match(regex);
 				if (found) {
@@ -692,7 +685,6 @@ function extractWithRegex(
 		extracted[category] = [...matches];
 	}
 
-	// Mask credit card numbers for security
 	if (extracted.creditCards) {
 		extracted.creditCards = extracted.creditCards.map((card) => {
 			const digits = card.replace(/[\s-]/g, '');
@@ -706,9 +698,6 @@ function extractWithRegex(
 	return extracted as unknown as IDataObject;
 }
 
-/**
- * Merge extracted data from multiple pages, deduplicating arrays by value
- */
 function mergeExtractedData(items: IDataObject[]): IDataObject {
 	const merged: IDataObject = {};
 
@@ -727,7 +716,6 @@ function mergeExtractedData(items: IDataObject[]): IDataObject {
 	return merged;
 }
 
-// --- UI Definition ---
 export const description: INodeProperties[] = [
 	{
 		displayName: 'URL',
@@ -1174,7 +1162,6 @@ export const description: INodeProperties[] = [
 	},
 ];
 
-// --- Execution Logic ---
 export async function execute(
 	this: IExecuteFunctions,
 	items: INodeExecutionData[],
@@ -1202,7 +1189,6 @@ export async function execute(
 
 			assertValidHttpUrl(url, this.getNode(), i);
 
-			// Build base config
 			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
@@ -1243,7 +1229,7 @@ export async function execute(
 				config.avoidCss = true;
 			}
 
-			// Pre-flight LLM credential checks — before any crawl is initiated
+			// Validate LLM credentials before crawl — surfaces credential errors without consuming a crawl request.
 			if (extractionType === 'locationsAddresses') {
 				try {
 					validateLlmCredentials(credentials, 'Locations extraction');
@@ -1261,7 +1247,6 @@ export async function execute(
 				}
 			}
 
-			// For customLlm, build LLM extraction strategy
 			if (extractionType === 'customLlm') {
 				try {
 					validateLlmCredentials(credentials, 'Custom extraction');
@@ -1277,7 +1262,6 @@ export async function execute(
 					);
 				}
 
-				// Build schema from fields
 				const schemaFieldsRaw = this.getNodeParameter(
 					'schemaFields.fields',
 					i,
@@ -1305,7 +1289,7 @@ export async function execute(
 					required.push(name);
 				}
 
-				// Fallback generic schema if no fields defined
+				// No fields configured — generic schema prevents API rejection of an empty properties object.
 				if (Object.keys(properties).length === 0) {
 					properties.data = { type: 'array', items: { type: 'string' } };
 					required.push('data');
@@ -1324,7 +1308,7 @@ export async function execute(
 				);
 			}
 
-			// For customLlm + smart URL: detach strategy — applied only to final crawl, not seed crawl
+			// Strategy detached so the seed crawl fetches plain markdown; reattached via executeSmartUrlCrawl for the final crawl only.
 			let finalExtractionStrategy: ExtractionStrategy | undefined;
 			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
 				extractionType === 'customLlm' && config.extractionStrategy) {
@@ -1385,7 +1369,6 @@ export async function execute(
 				);
 			}
 
-			// Extract data based on type
 			let data: IDataObject | IDataObject[];
 
 			if (extractionType === 'contactInfo') {
@@ -1445,7 +1428,6 @@ export async function execute(
 					);
 				}
 			} else {
-				// customLlm — parse extracted JSON from each result and merge
 				const extractedItems: IDataObject[] = [];
 				let parseFailures = 0;
 				const llmPageErrors: string[] = [];
@@ -1489,7 +1471,6 @@ export async function execute(
 					};
 				}
 
-				// Surface parse failures so users know some pages' data was lost
 				if (parseFailures > 0 && typeof data === 'object' && !Array.isArray(data)) {
 					(data as IDataObject)._parseWarning = `${parseFailures} page(s) returned content that could not be parsed as JSON`;
 				}
