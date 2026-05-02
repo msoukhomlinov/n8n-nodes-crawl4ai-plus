@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.3.0] - 2026-05-02
+
+### Changed
+
+- **extractData** — replaced `extractionType` picklist with six independent boolean toggles: Official Org Name, Phone Numbers, Email Addresses, Locations, About Organisation, and Custom (LLM). Multiple types can be selected simultaneously; results are combined in one output object.
+- **extractData emails** — email addresses now return as `[{email, suggestedName?}]` objects instead of a flat string array. When LLM credentials are configured, each email is annotated with the associated person name or office label.
+- **extractData locations** — enabling Locations now always includes global phone numbers and email addresses alongside per-location contact details.
+
+### Added
+
+- **extractData / About Organisation** — new boolean toggle generates a concise ≤60-word organisation description using LLM. Pre-canned prompt uses plain Australian English; fully editable.
+- **extractData / Official Org Name** — new boolean toggle extracts the official registered or trading name with a confidence rating.
+- **extractData / Custom (LLM)** — simplified custom LLM extraction: provide a field name and a prompt; result is stored at `data[fieldName]`.
+
+### Removed
+
+- **extractData / Financial Data** extraction type removed.
+- **extractData / LLM Validation** option removed (contact validation now absorbed into email name suggestion).
+- **extractData / Include Location Details** option removed (selecting Locations now always includes per-location and global contacts).
+- **extractData / Include Phones** option removed (phones always included when Locations is enabled).
+
 ## [5.2.0] - 2026-05-01
 
 ### Added
