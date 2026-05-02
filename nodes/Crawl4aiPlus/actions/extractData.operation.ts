@@ -27,6 +27,267 @@ import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
+const ABOUT_ORG_DEFAULT_PROMPT =
+	`Extract a concise description of this organisation in 60 words or fewer. ` +
+	`Include: the type of organisation and what it offers, the products or services it provides, and who it serves. ` +
+	`Write in plain, direct Australian English. Do not quote the organisation name. ` +
+	`Do not use vague, promotional or fluffy language. Return only the description text, no headings or labels.`;
+
+const ORG_NAME_SCHEMA: IDataObject = {
+	type: 'object',
+	properties: {
+		officialName: {
+			type: 'string',
+			description: 'The official registered or trading name of the organisation, exactly as it appears on the page. null if not determinable.',
+		},
+		confidence: {
+			type: 'string',
+			enum: ['high', 'medium', 'low'],
+			description: 'high: name in title/header/copyright; medium: appears once in body; low: inferred from context',
+		},
+	},
+	required: ['officialName', 'confidence'],
+};
+
+const ORG_NAME_INSTRUCTION =
+	`You are extracting the official name of an organisation from a web page. ` +
+	`Return the official registered or trading name as it appears on the page — not a description. ` +
+	`Prefer the name from the page title, header, or copyright notice over body text mentions. ` +
+	`If multiple names appear, return the most formal or legal-sounding one. ` +
+	`If no organisation name can be determined, return null for officialName.`;
+
+async function runOrgNameExtraction(
+	this: IExecuteFunctions,
+	results: CrawlResult[],
+	credentials: Crawl4aiApiCredentials,
+	crawler: Crawl4aiClient,
+	modelOverride: string | undefined,
+	itemIndex: number,
+): Promise<{ officialName: string | null; confidence: 'high' | 'medium' | 'low' }> {
+	const combinedText = results.map((r) => {
+		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
+		if (typeof r.markdown === 'string') return r.markdown;
+		return '';
+	}).filter(Boolean).join('\n\n---\n\n');
+
+	if (!combinedText) return { officialName: null, confidence: 'low' };
+
+	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
+	const truncated = combinedText.slice(0, 20000);
+	const escaped = truncated.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			ORG_NAME_SCHEMA, ORG_NAME_INSTRUCTION, provider, apiKey, baseUrl,
+		),
+	};
+
+	try {
+		const result = await crawler.crawlUrl(rawUrl, config);
+		if (!result.success || !result.extracted_content) return { officialName: null, confidence: 'low' };
+		const parsed = JSON.parse(result.extracted_content) as unknown;
+		const items = Array.isArray(parsed)
+			? (parsed as IDataObject[]).filter((c) => !c.error)
+			: parsed ? [parsed as IDataObject] : [];
+		if (items.length === 0) return { officialName: null, confidence: 'low' };
+		const item = items[0];
+		return {
+			officialName: (item.officialName as string | null) ?? null,
+			confidence: (item.confidence as 'high' | 'medium' | 'low') || 'low',
+		};
+	} catch {
+		return { officialName: null, confidence: 'low' };
+	}
+}
+
+const EMAIL_NAME_SCHEMA: IDataObject = {
+	type: 'object',
+	properties: {
+		emails: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: {
+					email: { type: 'string', description: 'The email address' },
+					suggestedName: {
+						type: 'string',
+						description: "Person name, role, or office/location label associated with this email (e.g. 'John Smith', 'Sydney Office', 'Accounts'). null if unknown.",
+					},
+				},
+				required: ['email'],
+			},
+		},
+	},
+	required: ['emails'],
+};
+
+const EMAIL_NAME_INSTRUCTION =
+	`You are annotating a list of email addresses found on a web page. ` +
+	`For each email address, find any associated name from the surrounding page context. ` +
+	`The name may be a person's full name, a role title (e.g. "Accounts", "Reception"), or an office/location label (e.g. "Sydney Office"). ` +
+	`Set suggestedName to null when no name can be determined from context. ` +
+	`Do not fabricate names. Only use names clearly associated with the email on the page.`;
+
+async function runEmailNameSuggestion(
+	this: IExecuteFunctions,
+	emails: string[],
+	results: CrawlResult[],
+	credentials: Crawl4aiApiCredentials,
+	crawler: Crawl4aiClient,
+	modelOverride: string | undefined,
+	itemIndex: number,
+): Promise<Array<{ email: string; suggestedName?: string }>> {
+	if (emails.length === 0) return [];
+
+	const combinedText = results.map((r) => {
+		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
+		if (typeof r.markdown === 'string') return r.markdown;
+		return '';
+	}).filter(Boolean).join('\n\n---\n\n');
+
+	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
+	const emailListJson = JSON.stringify({ emails }, null, 2);
+	const truncatedContent = combinedText.slice(0, 15000);
+	const combined = `EMAILS TO ANNOTATE:\n${emailListJson}\n\nPAGE CONTENT:\n${truncatedContent}`;
+	const escaped = combined.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			EMAIL_NAME_SCHEMA, EMAIL_NAME_INSTRUCTION, provider, apiKey, baseUrl,
+		),
+	};
+
+	try {
+		const result = await crawler.crawlUrl(rawUrl, config);
+		if (!result.success || !result.extracted_content) return emails.map((email) => ({ email }));
+		const parsed = JSON.parse(result.extracted_content) as unknown;
+		const items = Array.isArray(parsed)
+			? (parsed as IDataObject[]).filter((c) => !c.error)
+			: parsed ? [parsed as IDataObject] : [];
+		if (items.length === 0) return emails.map((email) => ({ email }));
+
+		const resultEmails = items[0].emails as Array<{ email: string; suggestedName?: string }> | undefined;
+		if (!Array.isArray(resultEmails)) return emails.map((email) => ({ email }));
+
+		const resultMap = new Map(resultEmails.map((e) => [e.email.toLowerCase(), e]));
+		return emails.map((email) => {
+			const match = resultMap.get(email.toLowerCase());
+			return match?.suggestedName
+				? { email, suggestedName: match.suggestedName }
+				: { email };
+		});
+	} catch {
+		return emails.map((email) => ({ email }));
+	}
+}
+
+const ABOUT_ORG_SCHEMA: IDataObject = {
+	type: 'object',
+	properties: {
+		description: {
+			type: 'string',
+			description: 'Concise organisation description matching the prompt instructions',
+		},
+	},
+	required: ['description'],
+};
+
+async function runAboutOrgExtraction(
+	this: IExecuteFunctions,
+	results: CrawlResult[],
+	credentials: Crawl4aiApiCredentials,
+	crawler: Crawl4aiClient,
+	modelOverride: string | undefined,
+	instruction: string,
+	itemIndex: number,
+): Promise<string | null> {
+	const combinedText = results.map((r) => {
+		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
+		if (typeof r.markdown === 'string') return r.markdown;
+		return '';
+	}).filter(Boolean).join('\n\n---\n\n');
+
+	if (!combinedText) return null;
+
+	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
+	const truncated = combinedText.slice(0, 20000);
+	const escaped = truncated.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			ABOUT_ORG_SCHEMA, instruction, provider, apiKey, baseUrl,
+		),
+	};
+
+	try {
+		const result = await crawler.crawlUrl(rawUrl, config);
+		if (!result.success || !result.extracted_content) return null;
+		const parsed = JSON.parse(result.extracted_content) as unknown;
+		const items = Array.isArray(parsed)
+			? (parsed as IDataObject[]).filter((c) => !c.error)
+			: parsed ? [parsed as IDataObject] : [];
+		if (items.length === 0) return null;
+		return (items[0].description as string) || null;
+	} catch {
+		return null;
+	}
+}
+
+const CUSTOM_EXTRACTION_SCHEMA: IDataObject = {
+	type: 'object',
+	properties: {
+		value: {
+			type: 'string',
+			description: 'The extracted content as specified in the instruction',
+		},
+	},
+	required: ['value'],
+};
+
+async function runCustomExtraction(
+	this: IExecuteFunctions,
+	results: CrawlResult[],
+	credentials: Crawl4aiApiCredentials,
+	crawler: Crawl4aiClient,
+	modelOverride: string | undefined,
+	instruction: string,
+	itemIndex: number,
+): Promise<string | null> {
+	const combinedText = results.map((r) => {
+		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
+		if (typeof r.markdown === 'string') return r.markdown;
+		return '';
+	}).filter(Boolean).join('\n\n---\n\n');
+
+	if (!combinedText) return null;
+
+	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
+	const truncated = combinedText.slice(0, 20000);
+	const escaped = truncated.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const rawUrl = `raw:<pre>${escaped}</pre>`;
+
+	const config: FullCrawlConfig = {
+		extractionStrategy: createLlmExtractionStrategy(
+			CUSTOM_EXTRACTION_SCHEMA, instruction, provider, apiKey, baseUrl,
+		),
+	};
+
+	try {
+		const result = await crawler.crawlUrl(rawUrl, config);
+		if (!result.success || !result.extracted_content) return null;
+		const parsed = JSON.parse(result.extracted_content) as unknown;
+		const items = Array.isArray(parsed)
+			? (parsed as IDataObject[]).filter((c) => !c.error)
+			: parsed ? [parsed as IDataObject] : [];
+		if (items.length === 0) return null;
+		return (items[0].value as string) || null;
+	} catch {
+		return null;
+	}
+}
 
 const LOCATION_QUERY_KEYWORDS = [
 	'address', 'avenue', 'boulevard', 'branch', 'branches', 'campus', 'centre', 'center',
