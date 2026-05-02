@@ -27,6 +27,10 @@ import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
+const RESERVED_DATA_KEYS = new Set([
+	'orgName', 'orgNameConfidence', 'phones', 'emails', 'locations', 'aboutOrg',
+]);
+
 const ABOUT_ORG_DEFAULT_PROMPT =
 	`Extract a concise description of this organisation in 60 words or fewer. ` +
 	`Include: the type of organisation and what it offers, the products or services it provides, and who it serves. ` +
@@ -1183,9 +1187,6 @@ export async function execute(
 				? (this.getNodeParameter('customPrompt', i, '') as string)
 				: '';
 
-			const RESERVED_DATA_KEYS = new Set([
-				'orgName', 'orgNameConfidence', 'phones', 'emails', 'locations', 'aboutOrg',
-			]);
 			if (extractCustom && RESERVED_DATA_KEYS.has(customFieldName)) {
 				throw new NodeOperationError(
 					this.getNode(),
