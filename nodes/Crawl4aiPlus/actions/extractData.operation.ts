@@ -1390,7 +1390,7 @@ export async function execute(
 					crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
 					config,
 					{
-						maxPages: maxPages || undefined,
+						maxPages: maxPages ?? undefined,
 						excludePatterns: options.excludePatterns as string | undefined,
 						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
 					},
