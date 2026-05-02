@@ -15,6 +15,7 @@
 - **Smart URL selection — verbose error** — "no same-domain links found" error now includes input vs actual hostname, internal/external link counts, markdown length, and a context-specific hint (redirect detected / JS rendering needed / bot detection suspected).
 - **Smart URL selection — seed redirect captured in output** — `_smartUrlSelection` block now includes `seedRedirectedUrl` when the seed URL redirected. Top-level `url` field uses the seed URL (user's input); `redirectedUrl` reflects the final destination.
 - **extractData output — canonical URL with Smart URL selection** — `url` in output now always reflects the user's input URL (seed), not the first result URL from the LLM-selected page set.
+- **extractData output — statusCode paired with seed URL** — when Smart URL selection is active, `statusCode` now reflects the seed crawl's HTTP status (kept paired with the reported `url`), falling back to the first result's status code if seed status is unavailable.
 
 ## [5.3.0] - 2026-05-02
 
