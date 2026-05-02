@@ -234,9 +234,7 @@ export function formatExtractedDataResult(
 	// For smart URL selection, redirect and status come from the seed crawl (stored in meta)
 	// so they stay paired with the reported url (seed URL). For regular crawls, use first result.
 	const redirectedExtractUrl = smartUrlMeta?.seedRedirectedUrl ?? primaryExtractResult.redirected_url;
-	const statusCode = smartUrlMeta != null
-		? (smartUrlMeta.seedStatusCode ?? null)
-		: (primaryExtractResult.status_code ?? null);
+	const statusCode = smartUrlMeta?.seedStatusCode ?? primaryExtractResult.status_code ?? null;
 	const extractSuccess = results.some((r) => r.success);
 
 	const extractOutput: IDataObject = {
