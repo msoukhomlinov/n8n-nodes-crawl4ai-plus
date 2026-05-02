@@ -1183,6 +1183,17 @@ export async function execute(
 				? (this.getNodeParameter('customPrompt', i, '') as string)
 				: '';
 
+			const RESERVED_DATA_KEYS = new Set([
+				'orgName', 'orgNameConfidence', 'phones', 'emails', 'locations', 'aboutOrg',
+			]);
+			if (extractCustom && RESERVED_DATA_KEYS.has(customFieldName)) {
+				throw new NodeOperationError(
+					this.getNode(),
+					`Custom Field Name "${customFieldName}" conflicts with a built-in extraction key (${[...RESERVED_DATA_KEYS].join(', ')}). Choose a different name.`,
+					{ itemIndex: i },
+				);
+			}
+
 			if (!extractOrgName && !extractPhones && !extractEmails && !extractLocations && !extractAboutOrg && !extractCustom) {
 				throw new NodeOperationError(
 					this.getNode(),
