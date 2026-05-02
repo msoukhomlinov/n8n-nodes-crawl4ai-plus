@@ -28,7 +28,7 @@ import { extractJsonLd } from '../../shared/seo-helpers';
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
-	currencies: [/[$\u00A3\u20AC\u00A5]\s?\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?/g],
+	currencies: [/[$£€¥]\s?\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?/g],
 	creditCards: [/\b(?:\d[ -]*?){13,19}\b/g],
 	ibans: [/[A-Z]{2}\d{2}[\s-]?[\dA-Z]{4}[\s-]?(?:[\dA-Z]{4}[\s-]?){2,7}[\dA-Z]{1,4}/g],
 	percentages: [/\d+(?:\.\d+)?%/g],
@@ -51,7 +51,7 @@ function extractContactInfo(
 	defaultCountry: string,
 ): { emails: string[]; phones: string[] } {
 	const emails = new Set<string>();
-	const phoneMap = new Map<string, string>(); // E.164 → formatted
+	const phoneMap = new Map<string, string>();
 
 	for (const result of results) {
 		let text = '';
@@ -62,14 +62,12 @@ function extractContactInfo(
 		}
 		if (!text) continue;
 
-		// Emails
 		EMAIL_PATTERN.lastIndex = 0;
 		const emailMatches = text.match(EMAIL_PATTERN);
 		if (emailMatches) {
 			for (const e of emailMatches) emails.add(e.toLowerCase());
 		}
 
-		// Phones via libphonenumber-js — finds and validates in one pass
 		const normalizedCountry = String(defaultCountry || '').toUpperCase();
 		const findOpts = isSupportedCountry(normalizedCountry as CountryCode)
 			? { defaultCountry: normalizedCountry as CountryCode, v2: true as const }
@@ -382,6 +380,11 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 			description: 'Direct phone number for this location in international format (e.g. +61 3 9000 0000)',
 		};
 	}
+	(itemProperties as Record<string, IDataObject>).emails = {
+		type: 'array',
+		items: { type: 'string' },
+		description: 'Email addresses found in the same contact block as this location address. Omit if none — do not include site-wide header/footer emails.',
+	};
 	return {
 		type: 'object',
 		properties: {
@@ -403,6 +406,8 @@ function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): st
 	const phoneStep = includePhones
 		? '\n5. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
 		: '';
+	const emailStepNum = includePhones ? '6' : '5';
+	const emailStep = `\n${emailStepNum}. If email addresses are found in the same content block as this address (e.g. a contact card, sidebar section, or footer block specific to this location), include them in the emails array. Do not include site-wide emails from page headers, navigation, or unrelated sections. Omit the field if none found.`;
 	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
 	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
 	// Second example omits phone — teaches LLM to skip field when unknown
@@ -411,9 +416,9 @@ function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): st
 
 For each location:
 1. Extract address1 (street number + street name only, e.g. "200 Collins Street"), address2 (unit/level/floor/suite if present, e.g. "Level 12"), city, state, postcode, and country separately.
-2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb. Every name MUST be unique.
+2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb with a generic suffix — use Office, Location, or Branch (never Facility, Site, Plant, or similar industry-specific terms). Every name MUST be unique.
 3. Assign confidence: "high" if address1 + postcode + city present; "medium" if missing postcode or state; "low" if city/country only.
-4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}
+4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}${emailStep}
 
 Include: offices, branches, stores, showrooms, warehouses, distribution centres, factories, partner/dealer/stockist locations (if an address is given).
 Exclude: P.O. boxes, virtual offices, registered agent addresses, locations with no street address.
@@ -591,7 +596,7 @@ async function extractLocationsFromPage(
 	}
 
 	const chunks = Array.isArray(parsed) ? (parsed as IDataObject[]) : [(parsed as IDataObject)];
-	const textLower = text.toLowerCase().replace(/\s+/g, ' ');
+	const textNorm = normalizeForGrounding(text);
 	const llmLocations: IDataObject[] = [];
 
 	for (const chunk of chunks) {
@@ -599,13 +604,8 @@ async function extractLocationsFromPage(
 		const rawLocs = Array.isArray(chunk.locations) ? (chunk.locations as IDataObject[]) : [];
 		for (const loc of rawLocs) {
 			const snippet = String(loc.sourceSnippet || '').trim();
-			if (!snippet) continue; // No grounding evidence — reject
-			const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
-			let found = textLower.includes(normSnippet);
-			if (!found && normSnippet.length > 30) {
-				found = textLower.includes(normSnippet.slice(0, 30));
-			}
-			if (!found) continue; // Hallucination — skip
+			if (!snippet) continue;
+			if (!snippetIsGrounded(snippet, textNorm)) continue;
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { sourceSnippet: _ss, ...cleanLoc } = loc as Record<string, unknown>;
 			llmLocations.push({ ...(cleanLoc as IDataObject), source: 'llm' });
@@ -613,6 +613,39 @@ async function extractLocationsFromPage(
 	}
 
 	return { jsonLdLocations, llmLocations };
+}
+
+function normalizeForGrounding(s: string): string {
+	return s
+		.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+		.toLowerCase()
+		.replace(/[*_`#>[\]()]/g, ' ')
+		.replace(/[,.:;\-–—]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+// Sliding token-window fallback so framing prefixes/suffixes ("Our address is … Australia") don't
+// cause valid snippets to fail — any ≥60% consecutive token run of ≥20 chars must appear in source.
+function snippetIsGrounded(snippet: string, textNorm: string): boolean {
+	const normSnippet = normalizeForGrounding(snippet);
+	if (!normSnippet) return false;
+	if (textNorm.includes(normSnippet)) return true;
+
+	const tokens = normSnippet.split(' ').filter((t) => t.length > 0);
+	if (tokens.length < 3) return false;
+
+	// Require any window covering at least 60% of snippet tokens AND ≥20 chars to land verbatim in source.
+	// Anchors a "real" copied phrase even when the LLM wraps the address with framing words.
+	const minWindowTokens = Math.max(3, Math.floor(tokens.length * 0.6));
+	for (let windowSize = tokens.length; windowSize >= minWindowTokens; windowSize--) {
+		for (let start = 0; start + windowSize <= tokens.length; start++) {
+			const window = tokens.slice(start, start + windowSize).join(' ');
+			if (window.length < 20) continue;
+			if (textNorm.includes(window)) return true;
+		}
+	}
+	return false;
 }
 
 async function runLocationsExtraction(
@@ -650,9 +683,6 @@ async function runLocationsExtraction(
 	return deduplicateLocations([...locationMap.values()]);
 }
 
-/**
- * Extract data using regex patterns from markdown content
- */
 function extractWithRegex(
 	results: CrawlResult[],
 	patterns: Record<string, RegExp[]>,
@@ -663,7 +693,6 @@ function extractWithRegex(
 		const matches = new Set<string>();
 
 		for (const result of results) {
-			// Get markdown text from result
 			let text = '';
 			if (typeof result.markdown === 'object' && result.markdown !== null) {
 				text = result.markdown.raw_markdown || '';
@@ -671,7 +700,6 @@ function extractWithRegex(
 				text = result.markdown;
 			}
 			for (const regex of regexList) {
-				// Reset regex lastIndex for global patterns
 				regex.lastIndex = 0;
 				const found = text.match(regex);
 				if (found) {
@@ -685,7 +713,6 @@ function extractWithRegex(
 		extracted[category] = [...matches];
 	}
 
-	// Mask credit card numbers for security
 	if (extracted.creditCards) {
 		extracted.creditCards = extracted.creditCards.map((card) => {
 			const digits = card.replace(/[\s-]/g, '');
@@ -699,9 +726,6 @@ function extractWithRegex(
 	return extracted as unknown as IDataObject;
 }
 
-/**
- * Merge extracted data from multiple pages, deduplicating arrays by value
- */
 function mergeExtractedData(items: IDataObject[]): IDataObject {
 	const merged: IDataObject = {};
 
@@ -720,7 +744,6 @@ function mergeExtractedData(items: IDataObject[]): IDataObject {
 	return merged;
 }
 
-// --- UI Definition ---
 export const description: INodeProperties[] = [
 	{
 		displayName: 'URL',
@@ -853,19 +876,6 @@ export const description: INodeProperties[] = [
 	},
 	{
 		displayName:
-			'Optional: enable LLM Validation in Options below to use AI to clean false positives from extracted contacts. Requires LLM credentials configured in the Crawl4AI Plus credentials.',
-		name: 'llmValidationNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['contactInfo'],
-			},
-		},
-	},
-	{
-		displayName:
 			'Locations extraction requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
 		name: 'locationsLlmNotice',
 		type: 'notice',
@@ -903,6 +913,98 @@ export const description: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				operation: ['extractData'],
+			},
+		},
+	},
+	{
+		displayName: 'Max Pages',
+		name: 'maxPages',
+		type: 'number',
+		default: 10,
+		description: 'Maximum number of pages to crawl',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				crawlScope: ['followLinks', 'fullSite'],
+			},
+		},
+	},
+	{
+		displayName: 'Include Location Details',
+		name: 'includeLocationDetails',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to group contact info by location — adds a locations array where each entry has address, phone, and any location-specific emails. Requires LLM credentials.',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+			},
+		},
+	},
+	{
+		displayName:
+			'Include Location Details requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		name: 'includeLocationDetailsLlmNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+				includeLocationDetails: [true],
+			},
+		},
+	},
+	{
+		displayName: 'Include Phones',
+		name: 'includePhones',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to extract phone numbers for each location in addition to address details',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['locationsAddresses'],
+			},
+		},
+	},
+	{
+		displayName: 'LLM Validation',
+		name: 'llmValidation',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to send extracted contacts to the configured LLM for a final validation and cleanup pass. Removes false positives and normalises formats. Requires LLM credentials.',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				extractionType: ['contactInfo'],
+			},
+		},
+	},
+	{
+		displayName: 'Smart URL Selection',
+		name: 'smartUrlSelection',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				crawlScope: ['followLinks', 'fullSite'],
+			},
+		},
+	},
+	{
+		displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		name: 'smartUrlLlmNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['extractData'],
+				smartUrlSelection: [true],
+				extractionType: ['contactInfo', 'financialData'],
 			},
 		},
 	},
@@ -1042,43 +1144,7 @@ export const description: INodeProperties[] = [
 				description: 'How many levels deep to crawl explore-hint sections suggested by the LLM. Default 1 crawls one level into a section (e.g. /about/ to /about/contact/).',
 				displayOptions: {
 					show: {
-						smartUrlSelection: [true],
-						'/crawlScope': ['followLinks', 'fullSite'],
-					},
-				},
-			},
-			{
-				displayName: 'Include Phones',
-				name: 'includePhones',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to extract phone numbers for each location in addition to address details',
-				displayOptions: {
-					show: {
-						'/extractionType': ['locationsAddresses'],
-					},
-				},
-			},
-			{
-				displayName: 'LLM Validation',
-				name: 'llmValidation',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to send extracted contacts to the configured LLM for a final validation and cleanup pass. Removes false positives and normalises formats. Requires LLM credentials.',
-				displayOptions: {
-					show: {
-						'/extractionType': ['contactInfo'],
-					},
-				},
-			},
-			{
-				displayName: 'Max Pages',
-				name: 'maxPages',
-				type: 'number',
-				default: 10,
-				description: 'Maximum number of pages to crawl',
-				displayOptions: {
-					show: {
+						'/smartUrlSelection': [true],
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
@@ -1095,30 +1161,6 @@ export const description: INodeProperties[] = [
 				displayOptions: {
 					show: {
 						'/extractionType': ['contactInfo', 'customLlm', 'financialData', 'locationsAddresses'],
-					},
-				},
-			},
-			{
-				displayName: 'Smart URL Selection',
-				name: 'smartUrlSelection',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
-				displayOptions: {
-					show: {
-						'/crawlScope': ['followLinks', 'fullSite'],
-					},
-				},
-			},
-			{
-				displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
-				name: 'smartUrlLlmNotice',
-				type: 'notice',
-				default: '',
-				displayOptions: {
-					show: {
-						smartUrlSelection: [true],
-						'/extractionType': ['contactInfo', 'financialData'],
 					},
 				},
 			},
@@ -1148,7 +1190,6 @@ export const description: INodeProperties[] = [
 	},
 ];
 
-// --- Execution Logic ---
 export async function execute(
 	this: IExecuteFunctions,
 	items: INodeExecutionData[],
@@ -1165,13 +1206,17 @@ export async function execute(
 			const extractionType = this.getNodeParameter('extractionType', i, 'contactInfo') as string;
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
+			const smartUrlSelection = this.getNodeParameter('smartUrlSelection', i, false) as boolean;
+			const maxPages = this.getNodeParameter('maxPages', i, 10) as number;
+			const includePhones = this.getNodeParameter('includePhones', i, false) as boolean;
+			const llmValidation = this.getNodeParameter('llmValidation', i, false) as boolean;
+			const includeLocationDetails = this.getNodeParameter('includeLocationDetails', i, false) as boolean;
 			const instruction = extractionType === 'customLlm'
 				? this.getNodeParameter('instruction', i, '') as string
 				: '';
 
 			assertValidHttpUrl(url, this.getNode(), i);
 
-			// Build base config
 			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
@@ -1212,7 +1257,7 @@ export async function execute(
 				config.avoidCss = true;
 			}
 
-			// Pre-flight LLM credential checks — before any crawl is initiated
+			// Validate LLM credentials before crawl — surfaces credential errors without consuming a crawl request.
 			if (extractionType === 'locationsAddresses') {
 				try {
 					validateLlmCredentials(credentials, 'Locations extraction');
@@ -1221,7 +1266,7 @@ export async function execute(
 				}
 			}
 
-			if (options.smartUrlSelection === true && crawlScope !== 'singlePage' &&
+			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
 				(extractionType === 'contactInfo' || extractionType === 'financialData')) {
 				try {
 					validateLlmCredentials(credentials, 'Smart URL selection');
@@ -1230,7 +1275,6 @@ export async function execute(
 				}
 			}
 
-			// For customLlm, build LLM extraction strategy
 			if (extractionType === 'customLlm') {
 				try {
 					validateLlmCredentials(credentials, 'Custom extraction');
@@ -1246,7 +1290,6 @@ export async function execute(
 					);
 				}
 
-				// Build schema from fields
 				const schemaFieldsRaw = this.getNodeParameter(
 					'schemaFields.fields',
 					i,
@@ -1274,7 +1317,7 @@ export async function execute(
 					required.push(name);
 				}
 
-				// Fallback generic schema if no fields defined
+				// No fields configured — generic schema prevents API rejection of an empty properties object.
 				if (Object.keys(properties).length === 0) {
 					properties.data = { type: 'array', items: { type: 'string' } };
 					required.push('data');
@@ -1293,16 +1336,15 @@ export async function execute(
 				);
 			}
 
-			// For customLlm + smart URL: detach strategy — applied only to final crawl, not seed crawl
+			// Strategy detached so the seed crawl fetches plain markdown; reattached via executeSmartUrlCrawl for the final crawl only.
 			let finalExtractionStrategy: ExtractionStrategy | undefined;
-			if (options.smartUrlSelection === true && crawlScope !== 'singlePage' &&
+			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
 				extractionType === 'customLlm' && config.extractionStrategy) {
 				finalExtractionStrategy = config.extractionStrategy;
 				delete config.extractionStrategy;
 			}
 
-			const useSmartUrlSelection =
-				options.smartUrlSelection === true && crawlScope !== 'singlePage';
+			const useSmartUrlSelection = smartUrlSelection === true && crawlScope !== 'singlePage';
 
 			let results: CrawlResult[];
 			let smartUrlMeta: SmartUrlSelectionMeta | undefined;
@@ -1324,7 +1366,7 @@ export async function execute(
 					url,
 					config,
 					{
-						maxPages: (options.maxPages as number) ?? 10,
+						maxPages: maxPages ?? 10,
 						excludePatterns: options.excludePatterns as string | undefined,
 					},
 					{
@@ -1348,21 +1390,20 @@ export async function execute(
 					crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
 					config,
 					{
-						maxPages: options.maxPages as number | undefined,
+						maxPages: maxPages ?? undefined,
 						excludePatterns: options.excludePatterns as string | undefined,
 						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
 					},
 				);
 			}
 
-			// Extract data based on type
 			let data: IDataObject | IDataObject[];
 
 			if (extractionType === 'contactInfo') {
 				const defaultCountry = (options.defaultCountry as string) || 'AU';
 				let contacts = extractContactInfo(results, defaultCountry);
 
-				if (options.llmValidation === true) {
+				if (llmValidation === true) {
 					try {
 						validateLlmCredentials(credentials, 'LLM validation');
 					} catch (err) {
@@ -1379,11 +1420,23 @@ export async function execute(
 					);
 				}
 
-				data = contacts;
+				if (includeLocationDetails === true) {
+					try {
+						validateLlmCredentials(credentials, 'location details extraction');
+					} catch (err) {
+						throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+					}
+					const modelOverride = options.llmModel as string | undefined;
+					const locations = await runLocationsExtraction.call(
+						this, results, credentials, client, modelOverride || undefined, true, i,
+					);
+					data = { emails: contacts.emails, phones: contacts.phones, locations };
+				} else {
+					data = contacts;
+				}
 			} else if (extractionType === 'financialData') {
 				data = extractWithRegex(results, FINANCIAL_PATTERNS);
 			} else if (extractionType === 'locationsAddresses') {
-				const includePhones = options.includePhones === true;
 				const modelOverride = options.llmModel as string | undefined;
 				const isZeroUrlFallback = smartUrlMeta?.warnings.some(
 					(w) => w.startsWith('LLM returned no candidate URLs'),
@@ -1403,7 +1456,6 @@ export async function execute(
 					);
 				}
 			} else {
-				// customLlm — parse extracted JSON from each result and merge
 				const extractedItems: IDataObject[] = [];
 				let parseFailures = 0;
 				const llmPageErrors: string[] = [];
@@ -1447,7 +1499,6 @@ export async function execute(
 					};
 				}
 
-				// Surface parse failures so users know some pages' data was lost
 				if (parseFailures > 0 && typeof data === 'object' && !Array.isArray(data)) {
 					(data as IDataObject)._parseWarning = `${parseFailures} page(s) returned content that could not be parsed as JSON`;
 				}
