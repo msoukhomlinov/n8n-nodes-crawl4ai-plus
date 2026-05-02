@@ -27,13 +27,6 @@ import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
-const FINANCIAL_PATTERNS: Record<string, RegExp[]> = {
-	currencies: [/[$£€¥]\s?\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?/g],
-	creditCards: [/\b(?:\d[ -]*?){13,19}\b/g],
-	ibans: [/[A-Z]{2}\d{2}[\s-]?[\dA-Z]{4}[\s-]?(?:[\dA-Z]{4}[\s-]?){2,7}[\dA-Z]{1,4}/g],
-	percentages: [/\d+(?:\.\d+)?%/g],
-	numbers: [/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g],
-};
 
 const LOCATION_QUERY_KEYWORDS = [
 	'address', 'avenue', 'boulevard', 'branch', 'branches', 'campus', 'centre', 'center',
@@ -89,94 +82,6 @@ function extractContactInfo(
 	};
 }
 
-const LLM_VALIDATION_SCHEMA: IDataObject = {
-	type: 'object',
-	properties: {
-		emails: {
-			type: 'array',
-			items: { type: 'string' },
-			description: 'Validated email addresses — real contact emails only, no noreply/system addresses unless clearly a contact',
-		},
-		phones: {
-			type: 'array',
-			items: { type: 'string' },
-			description: 'Validated phone numbers in international format (+XX XX XXXX XXXX)',
-		},
-	},
-	required: ['emails', 'phones'],
-};
-
-const LLM_VALIDATION_INSTRUCTION = `You are a contact information validator. You receive a list of extracted emails and phone numbers that may contain false positives. Your task:
-1. Remove any items that are clearly NOT real contact details (e.g. example@domain.com, placeholder numbers, version strings mistaken for phones)
-2. Remove duplicate entries (same number in different formats)
-3. Format phone numbers consistently in international format (+XX XX XXXX XXXX)
-4. Return only genuine contact information
-Return the cleaned data as JSON matching the provided schema.`;
-
-async function runLlmContactValidation(
-	this: IExecuteFunctions,
-	contacts: { emails: string[]; phones: string[] },
-	credentials: Crawl4aiApiCredentials,
-	crawler: Crawl4aiClient,
-	modelOverride: string | undefined,
-	itemIndex: number,
-): Promise<{ emails: string[]; phones: string[] }> {
-	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
-
-	const jsonStr = JSON.stringify(contacts, null, 2)
-		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	const syntheticHtml = `<pre>${jsonStr}</pre>`;
-	const rawUrl = `raw:${syntheticHtml}`;
-
-	const config: FullCrawlConfig = {
-		extractionStrategy: createLlmExtractionStrategy(
-			LLM_VALIDATION_SCHEMA,
-			LLM_VALIDATION_INSTRUCTION,
-			provider,
-			apiKey,
-			baseUrl,
-		),
-	};
-
-	try {
-		const result = await crawler.crawlUrl(rawUrl, config);
-		if (!result.success) {
-			throw new NodeOperationError(
-				this.getNode(),
-				`LLM validation failed: ${result.error_message || 'crawl request failed'}`,
-				{ itemIndex },
-			);
-		}
-		const llmError = checkLlmExtractionError(result);
-		if (llmError) {
-			throw new NodeOperationError(
-				this.getNode(),
-				`LLM validation failed: ${llmError}`,
-				{ itemIndex },
-			);
-		}
-		if (!result.extracted_content) return contacts;
-		const parsed = JSON.parse(result.extracted_content) as unknown;
-		const items = Array.isArray(parsed)
-			? (parsed as IDataObject[]).filter((c) => !c.error)
-			: parsed && !(parsed as IDataObject).error
-				? [(parsed as IDataObject)]
-				: [];
-		if (items.length === 0) return contacts;
-		const merged = {
-			emails: [...new Set(items.flatMap((c) => Array.isArray(c.emails) ? (c.emails as string[]) : []))],
-			phones: [...new Set(items.flatMap((c) => Array.isArray(c.phones) ? (c.phones as string[]) : []))],
-		};
-		const anyHas = (key: string) => items.some((c) => Array.isArray(c[key]));
-		return {
-			emails: anyHas('emails') ? merged.emails : contacts.emails,
-			phones: anyHas('phones') ? merged.phones : contacts.phones,
-		};
-	} catch (err) {
-		if (err instanceof NodeOperationError) throw err;
-		return contacts;
-	}
-}
 
 const JSON_LD_LOCATION_TYPES = new Set([
 	'AutoDealer', 'AutomotiveBusiness', 'ChildCare', 'Corporation',
@@ -683,66 +588,6 @@ async function runLocationsExtraction(
 	return deduplicateLocations([...locationMap.values()]);
 }
 
-function extractWithRegex(
-	results: CrawlResult[],
-	patterns: Record<string, RegExp[]>,
-): IDataObject {
-	const extracted: Record<string, string[]> = {};
-
-	for (const [category, regexList] of Object.entries(patterns)) {
-		const matches = new Set<string>();
-
-		for (const result of results) {
-			let text = '';
-			if (typeof result.markdown === 'object' && result.markdown !== null) {
-				text = result.markdown.raw_markdown || '';
-			} else if (typeof result.markdown === 'string') {
-				text = result.markdown;
-			}
-			for (const regex of regexList) {
-				regex.lastIndex = 0;
-				const found = text.match(regex);
-				if (found) {
-					for (const match of found) {
-						matches.add(match.trim());
-					}
-				}
-			}
-		}
-
-		extracted[category] = [...matches];
-	}
-
-	if (extracted.creditCards) {
-		extracted.creditCards = extracted.creditCards.map((card) => {
-			const digits = card.replace(/[\s-]/g, '');
-			if (digits.length >= 13) {
-				return '*'.repeat(digits.length - 4) + digits.slice(-4);
-			}
-			return card;
-		});
-	}
-
-	return extracted as unknown as IDataObject;
-}
-
-function mergeExtractedData(items: IDataObject[]): IDataObject {
-	const merged: IDataObject = {};
-
-	for (const item of items) {
-		for (const [key, value] of Object.entries(item)) {
-			if (Array.isArray(value)) {
-				const existing = (merged[key] as string[] | undefined) || [];
-				const combined = [...existing, ...(value as string[])];
-				merged[key] = [...new Set(combined)];
-			} else if (merged[key] === undefined || merged[key] === null || merged[key] === '') {
-				merged[key] = value;
-			}
-		}
-	}
-
-	return merged;
-}
 
 export const description: INodeProperties[] = [
 	{
