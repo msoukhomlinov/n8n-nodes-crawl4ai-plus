@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.4.0] - 2026-05-02
+
+### Added
+
+- **extractData / locations primary/additional split** — locations output restructured from a flat array to `{ primary: [], additional: [] }`. LLM classifies each location with `isPrimary` (HQ/head office = primary; branches, campuses, showrooms = additional). A single location found is always treated as primary regardless of LLM output.
+- **extractData / location additionalNotes enriched** — when multiple locations exist, LLM now adds a brief distinguishing note per location (e.g. "City campus; main suburban campus is in Chadstone").
+- **extractData / parallel LLM calls** — org name, about org, email annotation, locations, and custom extractions now fire in parallel via `Promise.all`, reducing wall time for multi-extraction runs to the duration of the slowest single call.
+- **extractData / per-page text budget** — replaced hardcoded 20 k/15 k char truncation with a 60 k-char budget distributed evenly across all crawled pages. Multi-page crawls now include every page in combined-text calls instead of silently dropping pages beyond the first ~3.
+
+### Fixed
+
+- **Smart URL selection — www-redirect** — `extractLinksFromSeedResult` now accepts links from `result.redirected_url` hostname plus the www↔non-www variant of the seed hostname. Sites that redirect `example.com` → `www.example.com` no longer fail with "no same-domain links found".
+- **Smart URL selection — verbose error** — "no same-domain links found" error now includes input vs actual hostname, internal/external link counts, markdown length, and a context-specific hint (redirect detected / JS rendering needed / bot detection suspected).
+- **Smart URL selection — seed redirect captured in output** — `_smartUrlSelection` block now includes `seedRedirectedUrl` when the seed URL redirected. Top-level `url` field uses the seed URL (user's input); `redirectedUrl` reflects the final destination.
+- **extractData output — canonical URL with Smart URL selection** — `url` in output now always reflects the user's input URL (seed), not the first result URL from the LLM-selected page set.
+
 ## [5.3.0] - 2026-05-02
 
 ### Changed

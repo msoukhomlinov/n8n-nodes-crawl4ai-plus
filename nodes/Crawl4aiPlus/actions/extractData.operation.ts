@@ -60,6 +60,21 @@ const ORG_NAME_INSTRUCTION =
 	`If multiple names appear, return the most formal or legal-sounding one. ` +
 	`If no organisation name can be determined, return null for officialName.`;
 
+const COMBINED_TEXT_BUDGET = 60000; // chars — distributed evenly across pages
+
+// Combine page text with per-page budget so every page gets representation.
+// Fixed-size slicing (e.g. slice(0, 20000)) silently drops later pages on multi-page crawls.
+function combinePagesWithBudget(results: CrawlResult[], budget = COMBINED_TEXT_BUDGET): string {
+	const texts = results.map((r) => {
+		if (typeof r.markdown === 'object' && r.markdown !== null) return (r.markdown as { raw_markdown?: string }).raw_markdown || '';
+		if (typeof r.markdown === 'string') return r.markdown;
+		return '';
+	}).filter(Boolean);
+	if (texts.length === 0) return '';
+	const perPageCap = Math.floor(budget / texts.length);
+	return texts.map((t) => t.slice(0, perPageCap)).join('\n\n---\n\n');
+}
+
 async function runOrgNameExtraction(
 	this: IExecuteFunctions,
 	results: CrawlResult[],
@@ -69,17 +84,11 @@ async function runOrgNameExtraction(
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_itemIndex: number,
 ): Promise<{ officialName: string | null; confidence: 'high' | 'medium' | 'low' }> {
-	const combinedText = results.map((r) => {
-		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
-		if (typeof r.markdown === 'string') return r.markdown;
-		return '';
-	}).filter(Boolean).join('\n\n---\n\n');
-
+	const combinedText = combinePagesWithBudget(results);
 	if (!combinedText) return { officialName: null, confidence: 'low' };
 
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
-	const truncated = combinedText.slice(0, 20000);
-	const escaped = truncated.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const escaped = combinedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const rawUrl = `raw:<pre>${escaped}</pre>`;
 
 	const config: FullCrawlConfig = {
@@ -146,16 +155,10 @@ async function runEmailNameSuggestion(
 ): Promise<Array<{ email: string; suggestedName?: string }>> {
 	if (emails.length === 0) return [];
 
-	const combinedText = results.map((r) => {
-		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
-		if (typeof r.markdown === 'string') return r.markdown;
-		return '';
-	}).filter(Boolean).join('\n\n---\n\n');
-
+	const pageContent = combinePagesWithBudget(results);
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
 	const emailListJson = JSON.stringify({ emails }, null, 2);
-	const truncatedContent = combinedText.slice(0, 15000);
-	const combined = `EMAILS TO ANNOTATE:\n${emailListJson}\n\nPAGE CONTENT:\n${truncatedContent}`;
+	const combined = `EMAILS TO ANNOTATE:\n${emailListJson}\n\nPAGE CONTENT:\n${pageContent}`;
 	const escaped = combined.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const rawUrl = `raw:<pre>${escaped}</pre>`;
 
@@ -210,17 +213,11 @@ async function runAboutOrgExtraction(
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_itemIndex: number,
 ): Promise<string | null> {
-	const combinedText = results.map((r) => {
-		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
-		if (typeof r.markdown === 'string') return r.markdown;
-		return '';
-	}).filter(Boolean).join('\n\n---\n\n');
-
+	const combinedText = combinePagesWithBudget(results);
 	if (!combinedText) return null;
 
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
-	const truncated = combinedText.slice(0, 20000);
-	const escaped = truncated.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const escaped = combinedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const rawUrl = `raw:<pre>${escaped}</pre>`;
 
 	const config: FullCrawlConfig = {
@@ -265,17 +262,11 @@ async function runCustomExtraction(
 	instruction: string,
 	itemIndex: number,
 ): Promise<string | null> {
-	const combinedText = results.map((r) => {
-		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
-		if (typeof r.markdown === 'string') return r.markdown;
-		return '';
-	}).filter(Boolean).join('\n\n---\n\n');
-
+	const combinedText = combinePagesWithBudget(results);
 	if (!combinedText) return null;
 
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
-	const truncated = combinedText.slice(0, 20000);
-	const escaped = truncated.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const escaped = combinedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const rawUrl = `raw:<pre>${escaped}</pre>`;
 
 	const config: FullCrawlConfig = {
@@ -542,6 +533,10 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 			type: 'string',
 			description: 'Unique location identifier, e.g. "Melbourne Office", "Sydney Branch". Every name must be unique across all locations.',
 		},
+		isPrimary: {
+			type: 'boolean',
+			description: 'true if this is the main or head office / primary registered address / HQ; false for branches, campuses, showrooms, satellite offices, or any secondary location. If only one location is found, set true.',
+		},
 		address1: {
 			type: 'string',
 			description: 'Street number and street name only — no unit, level, or floor (e.g. "343 Little Collins Street")',
@@ -556,7 +551,7 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 		country: { type: 'string', description: 'Country name or ISO 3166-1 alpha-2 code' },
 		additionalNotes: {
 			type: 'string',
-			description: 'Any additional notable details about this location (e.g. opening hours, landmark, parking). Omit if none.',
+			description: 'Notable details about this location: opening hours, landmark, parking, or — when multiple locations exist — a brief note on how this one differs from others (e.g. "City campus; main suburban campus is in Chadstone"). Omit if none.',
 		},
 		confidence: {
 			type: 'string',
@@ -588,7 +583,7 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 				items: {
 					type: 'object',
 					properties: itemProperties,
-					required: ['name', 'address1', 'city', 'country', 'confidence', 'sourceSnippet'],
+					required: ['name', 'isPrimary', 'address1', 'city', 'country', 'confidence', 'sourceSnippet'],
 				},
 			},
 		},
@@ -597,22 +592,23 @@ function buildLocationsSchema(includePhones: boolean): IDataObject {
 }
 
 function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): string {
+	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
 	const phoneStep = includePhones
 		? '\n5. Extract the phone number specific to this location (not a general/central number unless it is the only one).'
 		: '';
-	const emailStepNum = includePhones ? '6' : '5';
-	const emailStep = `\n${emailStepNum}. If email addresses are found in the same content block as this address (e.g. a contact card, sidebar section, or footer block specific to this location), include them in the emails array. Do not include site-wide emails from page headers, navigation, or unrelated sections. Omit the field if none found.`;
-	const urlContext = pageUrl ? `\n\nSource page: ${pageUrl}` : '';
+	const emailStep = includePhones
+		? '\n6. If email addresses are found in the same content block as this address, include them in the emails array. Do not include site-wide emails from page headers or navigation. Omit the field if none found.'
+		: '\n5. If email addresses are found in the same content block as this address, include them in the emails array. Do not include site-wide emails from page headers or navigation. Omit the field if none found.';
+	const isPrimaryStep = includePhones ? '\n7.' : '\n6.';
+	const additionalNotesStep = includePhones ? '\n8.' : '\n7.';
 	const phoneFewShot = includePhones ? ', "phone": "+61 3 9000 0000"' : '';
-	// Second example omits phone — teaches LLM to skip field when unknown
-	const phoneFewShot2 = '';
 	return `You are a location data extractor. Find ALL physical locations (offices, branches, stores, showrooms, warehouses, headquarters, distributors, stockists, dealers) mentioned on this page.${urlContext}
 
 For each location:
 1. Extract address1 (street number + street name only, e.g. "200 Collins Street"), address2 (unit/level/floor/suite if present, e.g. "Level 12"), city, state, postcode, and country separately.
 2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb with a generic suffix — use Office, Location, or Branch (never Facility, Site, Plant, or similar industry-specific terms). Every name MUST be unique.
 3. Assign confidence: "high" if address1 + postcode + city present; "medium" if missing postcode or state; "low" if city/country only.
-4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}${emailStep}
+4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}${emailStep}${isPrimaryStep} Set isPrimary to true if this is the main or head office / primary registered address / HQ — the one a visitor or regulator would treat as the primary contact point. Set false for all branches, campuses, showrooms, or secondary locations. If only one location is found, set it to true.${additionalNotesStep} In additionalNotes, include: opening hours, landmark info, parking, or — when multiple locations exist — a brief distinguishing note (e.g. "City campus; main suburban campus is in Chadstone", "Head office; warehouse is in Dandenong"). Omit if nothing notable.
 
 Include: offices, branches, stores, showrooms, warehouses, distribution centres, factories, partner/dealer/stockist locations (if an address is given).
 Exclude: P.O. boxes, virtual offices, registered agent addresses, locations with no street address.
@@ -620,11 +616,11 @@ If no physical locations are found, return: {"locations": []}
 
 Examples:
 
-Input: "Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."
-Output: {"locations":[{"name":"Melbourne Office","address1":"200 Collins Street","address2":"Level 12","city":"Melbourne","state":"VIC","postcode":"3000","country":"Australia","confidence":"high","sourceSnippet":"Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."${phoneFewShot}}]}
+Input: "Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000. Head office."
+Output: {"locations":[{"name":"Melbourne Office","isPrimary":true,"address1":"200 Collins Street","address2":"Level 12","city":"Melbourne","state":"VIC","postcode":"3000","country":"Australia","confidence":"high","sourceSnippet":"Our Melbourne office is at Level 12, 200 Collins Street, Melbourne VIC 3000."${phoneFewShot}}]}
 
 Input: "Visit our Sydney showroom at 42 George Street, Sydney. Open weekdays 9–5."
-Output: {"locations":[{"name":"Sydney Showroom","address1":"42 George Street","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney."${phoneFewShot2}}]}`;
+Output: {"locations":[{"name":"Sydney Showroom","isPrimary":false,"address1":"42 George Street","city":"Sydney","country":"Australia","confidence":"medium","sourceSnippet":"Visit our Sydney showroom at 42 George Street, Sydney.","additionalNotes":"Open weekdays 9–5."}]}`;
 }
 
 function mergeLocationsIntoMap(
@@ -703,6 +699,8 @@ function selectBestLocation(group: IDataObject[]): IDataObject {
 			}
 		}
 	}
+	// isPrimary: true wins over false/undefined across the group
+	if (group.some((loc) => loc.isPrimary === true)) best.isPrimary = true;
 	return best;
 }
 
@@ -850,14 +848,14 @@ async function runLocationsExtraction(
 	modelOverride: string | undefined,
 	includePhones: boolean,
 	itemIndex: number,
-): Promise<IDataObject[]> {
+): Promise<{ primary: IDataObject[]; additional: IDataObject[] }> {
 	const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride);
 	const locationMap = new Map<string, IDataObject>();
 	const errors: string[] = [];
 
-	const pagesToProcess = results;
-
-	for (const result of pagesToProcess) {
+	// Process pages sequentially — Crawl4AI LLM processing is not truly concurrent;
+	// parallel page requests queue on the server and add scheduling overhead.
+	for (const result of results) {
 		const { jsonLdLocations, llmLocations, error } = await extractLocationsFromPage(
 			result, includePhones, provider, apiKey, baseUrl, crawler,
 		);
@@ -874,7 +872,21 @@ async function runLocationsExtraction(
 		);
 	}
 
-	return deduplicateLocations([...locationMap.values()]);
+	const deduped = deduplicateLocations([...locationMap.values()]);
+
+	// Single location is always primary regardless of LLM classification
+	if (deduped.length === 1) deduped[0].isPrimary = true;
+
+	// Strip internal classifier field; split into primary/additional
+	const primary: IDataObject[] = [];
+	const additional: IDataObject[] = [];
+	for (const loc of deduped) {
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const { isPrimary, ...rest } = loc as Record<string, unknown>;
+		(isPrimary === true ? primary : additional).push(rest as IDataObject);
+	}
+
+	return { primary, additional };
 }
 
 
@@ -1338,81 +1350,78 @@ export async function execute(
 
 			const data: IDataObject = {};
 
-			// Org name
-			if (extractOrgName) {
-				const orgResult = await runOrgNameExtraction.call(
-					this, results, credentials, client, modelOverride || undefined, i,
-				);
-				data.orgName = orgResult.officialName;
-				if (orgResult.officialName) data.orgNameConfidence = orgResult.confidence;
-			}
-
-			// Global contacts — needed by extractPhones, extractEmails, and extractLocations
+			// Regex-based contact extraction — sync, no I/O, must run before email annotation
 			const needsGlobalContacts = extractPhones || extractEmails || extractLocations;
 			let globalEmails: string[] = [];
 			let globalPhones: string[] = [];
-
 			if (needsGlobalContacts) {
 				const contacts = extractContactInfo(results, defaultCountry);
 				globalEmails = contacts.emails;
 				globalPhones = contacts.phones;
 			}
+			if (extractPhones || extractLocations) data.phones = globalPhones;
 
-			if (extractPhones || extractLocations) {
-				data.phones = globalPhones;
-			}
-
+			// LLM availability check for email annotation (fast, no I/O)
+			let hasLlmForEmail = false;
 			if (extractEmails || extractLocations) {
-				// Attempt LLM name annotation; fall back gracefully if LLM not configured
-				let hasLlm = false;
 				try {
 					validateLlmCredentials(credentials, 'Email name suggestion');
-					hasLlm = true;
-				} catch { /* no LLM — skip annotation */ }
-
-				if (hasLlm && globalEmails.length > 0) {
-					data.emails = await runEmailNameSuggestion.call(
-						this, globalEmails, results, credentials, client, modelOverride || undefined, i,
-					);
-				} else {
-					data.emails = globalEmails.map((email) => ({ email }));
-				}
+					hasLlmForEmail = true;
+				} catch { /* no LLM — use plain email list */ }
+				// Set plain fallback immediately; overwritten below if LLM annotation succeeds
+				data.emails = globalEmails.map((email) => ({ email }));
 			}
 
-			// Locations — always includes phones per location
+			// All LLM calls run in parallel — they are independent of each other
+			const isZeroUrlFallback = smartUrlMeta?.warnings.some(
+				(w) => w.startsWith('LLM returned no candidate URLs'),
+			) ?? false;
+
+			const llmTasks: Promise<void>[] = [];
+
+			if (extractOrgName) {
+				llmTasks.push(
+					runOrgNameExtraction.call(this, results, credentials, client, modelOverride || undefined, i)
+						.then((r) => {
+							data.orgName = r.officialName;
+							if (r.officialName) data.orgNameConfidence = r.confidence;
+						}),
+				);
+			}
+
+			if ((extractEmails || extractLocations) && hasLlmForEmail && globalEmails.length > 0) {
+				llmTasks.push(
+					runEmailNameSuggestion.call(this, globalEmails, results, credentials, client, modelOverride || undefined, i)
+						.then((r) => { data.emails = r; }),
+				);
+			}
+
 			if (extractLocations) {
-				const isZeroUrlFallback = smartUrlMeta?.warnings.some(
-					(w) => w.startsWith('LLM returned no candidate URLs'),
-				) ?? false;
-				if (isZeroUrlFallback) {
-					try {
-						data.locations = await runLocationsExtraction.call(
-							this, results, credentials, client, modelOverride || undefined, true, i,
-						);
-					} catch (err) {
-						if (smartUrlMeta) smartUrlMeta.warnings.push(`Locations extraction error: ${(err as Error).message}`);
-						data.locations = [];
-					}
-				} else {
-					data.locations = await runLocationsExtraction.call(
-						this, results, credentials, client, modelOverride || undefined, true, i,
-					);
-				}
+				const locationsTask = isZeroUrlFallback
+					? runLocationsExtraction.call(this, results, credentials, client, modelOverride || undefined, true, i)
+						.catch((err: Error) => {
+							if (smartUrlMeta) smartUrlMeta.warnings.push(`Locations extraction error: ${err.message}`);
+							return { primary: [], additional: [] } as { primary: IDataObject[]; additional: IDataObject[] };
+						})
+					: runLocationsExtraction.call(this, results, credentials, client, modelOverride || undefined, true, i);
+				llmTasks.push(locationsTask.then((r) => { data.locations = r; }));
 			}
 
-			// About org
 			if (extractAboutOrg) {
-				data.aboutOrg = await runAboutOrgExtraction.call(
-					this, results, credentials, client, modelOverride || undefined, aboutOrgPrompt, i,
+				llmTasks.push(
+					runAboutOrgExtraction.call(this, results, credentials, client, modelOverride || undefined, aboutOrgPrompt, i)
+						.then((r) => { data.aboutOrg = r; }),
 				);
 			}
 
-			// Custom LLM extraction
 			if (extractCustom) {
-				data[customFieldName] = await runCustomExtraction.call(
-					this, results, credentials, client, modelOverride || undefined, customPrompt, i,
+				llmTasks.push(
+					runCustomExtraction.call(this, results, credentials, client, modelOverride || undefined, customPrompt, i)
+						.then((r) => { data[customFieldName] = r; }),
 				);
 			}
+
+			await Promise.all(llmTasks);
 
 			// Build extractionType label from enabled booleans for output metadata
 			const typeLabels: string[] = [];
