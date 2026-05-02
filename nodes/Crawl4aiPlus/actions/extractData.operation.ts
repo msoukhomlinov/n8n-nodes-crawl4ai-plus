@@ -232,6 +232,8 @@ async function runAboutOrgExtraction(
 	try {
 		const result = await crawler.crawlUrl(rawUrl, config);
 		if (!result.success || !result.extracted_content) return null;
+		const llmErr = checkLlmExtractionError(result);
+		if (llmErr) return null;
 		const parsed = JSON.parse(result.extracted_content) as unknown;
 		const items = Array.isArray(parsed)
 			? (parsed as IDataObject[]).filter((c) => !c.error)
@@ -288,6 +290,14 @@ async function runCustomExtraction(
 			throw new NodeOperationError(
 				this.getNode(),
 				`Custom extraction failed: ${result.error_message || 'crawl request returned no content'}`,
+				{ itemIndex },
+			);
+		}
+		const llmErr = checkLlmExtractionError(result);
+		if (llmErr) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`Custom extraction failed: ${llmErr}`,
 				{ itemIndex },
 			);
 		}
