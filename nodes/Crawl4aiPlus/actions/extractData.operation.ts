@@ -859,139 +859,92 @@ export const description: INodeProperties[] = [
 		default: '',
 		placeholder: 'https://example.com',
 		description: 'The URL to extract data from',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-			},
-		},
+		displayOptions: { show: { operation: ['extractData'] } },
 	},
 	{
-		displayName: 'Extraction Type',
-		name: 'extractionType',
-		type: 'options',
-		options: [
-			{
-				name: 'Contact Info',
-				value: 'contactInfo',
-				description: 'Extract emails and phone numbers (no LLM required)',
-			},
-			{
-				name: 'Financial Data',
-				value: 'financialData',
-				description: 'Extract currencies, credit cards, IBANs, percentages (no LLM required)',
-			},
-			{
-				name: 'Locations & Addresses',
-				value: 'locationsAddresses',
-				description: 'Find all physical locations (offices, branches, stores) with unique names and addresses. Requires LLM.',
-			},
-			{
-				name: 'Custom (LLM)',
-				value: 'customLlm',
-				description: 'Define custom extraction with natural language instructions (requires LLM)',
-			},
-		],
-		default: 'contactInfo',
-		description: 'What type of data to extract',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-			},
-		},
+		displayName: 'About Organisation',
+		name: 'extractAboutOrg',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to generate a concise description of what the organisation does and who it serves. Requires LLM credentials.',
+		displayOptions: { show: { operation: ['extractData'] } },
 	},
 	{
-		displayName: 'Extraction Instructions',
-		name: 'instruction',
+		displayName: 'About Organisation Prompt',
+		name: 'aboutOrgPrompt',
+		type: 'string',
+		typeOptions: { rows: 4 },
+		default: ABOUT_ORG_DEFAULT_PROMPT,
+		description: 'Instructions for the LLM to generate the organisation description. Edit to adjust focus, length, or style.',
+		displayOptions: { show: { operation: ['extractData'], extractAboutOrg: [true] } },
+	},
+	{
+		displayName: 'Custom (LLM)',
+		name: 'extractCustom',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to run a custom LLM extraction. Provide a field name for the output and instructions for what to extract. Requires LLM credentials.',
+		displayOptions: { show: { operation: ['extractData'] } },
+	},
+	{
+		displayName: 'Custom Field Name',
+		name: 'customFieldName',
+		type: 'string',
+		required: true,
+		default: 'customData',
+		placeholder: 'productList',
+		description: 'Key name used in the output JSON for the custom extracted value',
+		displayOptions: { show: { operation: ['extractData'], extractCustom: [true] } },
+	},
+	{
+		displayName: 'Custom Extraction Prompt',
+		name: 'customPrompt',
 		type: 'string',
 		typeOptions: { rows: 3 },
 		required: true,
 		default: '',
-		placeholder: 'Extract product names and prices',
-		description: 'Natural language description of what to extract',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['customLlm'],
-			},
-		},
+		placeholder: 'Extract all product names and their prices',
+		description: 'Instructions for the LLM describing what to extract from the page',
+		displayOptions: { show: { operation: ['extractData'], extractCustom: [true] } },
 	},
 	{
-		displayName: 'Schema Fields',
-		name: 'schemaFields',
-		type: 'fixedCollection',
-		typeOptions: { multipleValues: true },
-		default: {},
-		description: 'Define the fields to extract',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['customLlm'],
-			},
-		},
-		options: [
-			{
-				name: 'fields',
-				displayName: 'Field',
-				values: [
-					{
-						displayName: 'Name',
-						name: 'name',
-						type: 'string',
-						required: true,
-						default: '',
-						placeholder: 'productName',
-						description: 'Field name in the output',
-					},
-					{
-						displayName: 'Type',
-						name: 'fieldType',
-						type: 'options',
-						options: [
-							{ name: 'String', value: 'string' },
-							{ name: 'Number', value: 'number' },
-							{ name: 'Boolean', value: 'boolean' },
-							{ name: 'Array', value: 'array' },
-						],
-						default: 'string',
-						description: 'Data type of the field',
-					},
-					{
-						displayName: 'Description',
-						name: 'description',
-						type: 'string',
-						default: '',
-						placeholder: 'The name of the product',
-						description: 'Description of what this field should contain',
-					},
-				],
-			},
-		],
+		displayName: 'Email Addresses',
+		name: 'extractEmails',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to extract email addresses. When LLM credentials are configured, each email is annotated with the associated person name or office label found in context.',
+		displayOptions: { show: { operation: ['extractData'] } },
 	},
 	{
-		displayName:
-			'Custom extraction requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
+		displayName: 'Locations',
+		name: 'extractLocations',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to extract all physical locations (offices, branches, stores) with addresses, phone numbers, and emails per location. Also returns global phone numbers and emails. Requires LLM credentials.',
+		displayOptions: { show: { operation: ['extractData'] } },
+	},
+	{
+		displayName: 'Official Org Name',
+		name: 'extractOrgName',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to identify the official registered or trading name of the organisation. Requires LLM credentials.',
+		displayOptions: { show: { operation: ['extractData'] } },
+	},
+	{
+		displayName: 'Phone Numbers',
+		name: 'extractPhones',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to extract all phone numbers found on the page',
+		displayOptions: { show: { operation: ['extractData'] } },
+	},
+	{
+		displayName: 'LLM credentials must be configured in Crawl4AI Plus credentials for: Official Org Name, Locations, About Organisation, and Custom (LLM) extractions. Email name annotation also uses LLM when available.',
 		name: 'llmNotice',
 		type: 'notice',
 		default: '',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['customLlm'],
-			},
-		},
-	},
-	{
-		displayName:
-			'Locations extraction requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
-		name: 'locationsLlmNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['locationsAddresses'],
-			},
-		},
+		displayOptions: { show: { operation: ['extractData'] } },
 	},
 	{
 		displayName: 'Crawl Scope',
@@ -1016,11 +969,7 @@ export const description: INodeProperties[] = [
 		],
 		default: 'singlePage',
 		description: 'How many pages to extract data from',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-			},
-		},
+		displayOptions: { show: { operation: ['extractData'] } },
 	},
 	{
 		displayName: 'Max Pages',
@@ -1028,65 +977,7 @@ export const description: INodeProperties[] = [
 		type: 'number',
 		default: 10,
 		description: 'Maximum number of pages to crawl',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				crawlScope: ['followLinks', 'fullSite'],
-			},
-		},
-	},
-	{
-		displayName: 'Include Location Details',
-		name: 'includeLocationDetails',
-		type: 'boolean',
-		default: false,
-		description: 'Whether to group contact info by location — adds a locations array where each entry has address, phone, and any location-specific emails. Requires LLM credentials.',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['contactInfo'],
-			},
-		},
-	},
-	{
-		displayName:
-			'Include Location Details requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
-		name: 'includeLocationDetailsLlmNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['contactInfo'],
-				includeLocationDetails: [true],
-			},
-		},
-	},
-	{
-		displayName: 'Include Phones',
-		name: 'includePhones',
-		type: 'boolean',
-		default: false,
-		description: 'Whether to extract phone numbers for each location in addition to address details',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['locationsAddresses'],
-			},
-		},
-	},
-	{
-		displayName: 'LLM Validation',
-		name: 'llmValidation',
-		type: 'boolean',
-		default: false,
-		description: 'Whether to send extracted contacts to the configured LLM for a final validation and cleanup pass. Removes false positives and normalises formats. Requires LLM credentials.',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				extractionType: ['contactInfo'],
-			},
-		},
+		displayOptions: { show: { operation: ['extractData'], crawlScope: ['followLinks', 'fullSite'] } },
 	},
 	{
 		displayName: 'Smart URL Selection',
@@ -1094,25 +985,7 @@ export const description: INodeProperties[] = [
 		type: 'boolean',
 		default: false,
 		description: 'Whether to use LLM to select the most relevant pages before crawling. Crawls the seed page first, extracts all links, then asks the LLM to pick the most relevant URLs. Requires LLM credentials.',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				crawlScope: ['followLinks', 'fullSite'],
-			},
-		},
-	},
-	{
-		displayName: 'Smart URL selection requires LLM credentials to be configured in the Crawl4AI Plus credentials.',
-		name: 'smartUrlLlmNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-				smartUrlSelection: [true],
-				extractionType: ['contactInfo', 'financialData'],
-			},
-		},
+		displayOptions: { show: { operation: ['extractData'], crawlScope: ['followLinks', 'fullSite'] } },
 	},
 	{
 		displayName: 'Options',
@@ -1120,11 +993,7 @@ export const description: INodeProperties[] = [
 		type: 'collection',
 		placeholder: 'Add Option',
 		default: {},
-		displayOptions: {
-			show: {
-				operation: ['extractData'],
-			},
-		},
+		displayOptions: { show: { operation: ['extractData'] } },
 		options: [
 			{
 				displayName: 'Avoid Ads',
@@ -1202,11 +1071,7 @@ export const description: INodeProperties[] = [
 				default: '',
 				placeholder: 'User-Agent: Mozilla/5.0 ...\nAccept-Language: en-AU,en;q=0.9',
 				description: 'HTTP headers in Key: Value format, one per line',
-				displayOptions: {
-					show: {
-						browserProfile: ['custom'],
-					},
-				},
+				displayOptions: { show: { browserProfile: ['custom'] } },
 			},
 			{
 				displayName: 'Default Country Code',
@@ -1215,11 +1080,6 @@ export const description: INodeProperties[] = [
 				default: 'AU',
 				placeholder: 'AU',
 				description: 'ISO 3166-1 alpha-2 country code (two uppercase letters) used to interpret local phone numbers that have no country prefix. Examples: AU, US, GB, NZ, DE.',
-				displayOptions: {
-					show: {
-						'/extractionType': ['contactInfo'],
-					},
-				},
 			},
 			{
 				displayName: 'Delay Before Return (Ms)',
@@ -1235,11 +1095,7 @@ export const description: INodeProperties[] = [
 				default: '',
 				placeholder: '*/admin/*,*/login/*',
 				description: 'Comma-separated URL patterns to exclude from crawling',
-				displayOptions: {
-					show: {
-						'/crawlScope': ['followLinks', 'fullSite'],
-					},
-				},
+				displayOptions: { show: { '/crawlScope': ['followLinks', 'fullSite'] } },
 			},
 			{
 				displayName: 'Explore Depth',
@@ -1259,16 +1115,9 @@ export const description: INodeProperties[] = [
 				displayName: 'Model Name or ID',
 				name: 'llmModel',
 				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getLlmModels',
-				},
+				typeOptions: { loadOptionsMethod: 'getLlmModels' },
 				default: '',
 				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-				displayOptions: {
-					show: {
-						'/extractionType': ['contactInfo', 'customLlm', 'financialData', 'locationsAddresses'],
-					},
-				},
 			},
 			{
 				displayName: 'Wait For',
@@ -1276,8 +1125,7 @@ export const description: INodeProperties[] = [
 				type: 'string',
 				default: '',
 				placeholder: '.content-loaded or js:() => document.readyState === "complete"',
-				description:
-					'CSS selector or JS expression (prefixed with js:) to wait for before extracting content',
+				description: 'CSS selector or JS expression (prefixed with js:) to wait for before extracting content',
 			},
 			{
 				displayName: 'Wait Until',
