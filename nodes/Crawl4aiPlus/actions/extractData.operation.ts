@@ -7,7 +7,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 import { findNumbers, isSupportedCountry, type CountryCode } from 'libphonenumber-js';
 
-import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, ExtractionStrategy, FullCrawlConfig } from '../../shared/interfaces';
+import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, CrawlResult, FullCrawlConfig } from '../../shared/interfaces';
 import { checkLlmExtractionError } from '../../shared/formatters';
 import { Crawl4aiClient } from '../../shared/apiClient';
 import {
@@ -62,7 +62,8 @@ async function runOrgNameExtraction(
 	credentials: Crawl4aiApiCredentials,
 	crawler: Crawl4aiClient,
 	modelOverride: string | undefined,
-	itemIndex: number,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_itemIndex: number,
 ): Promise<{ officialName: string | null; confidence: 'high' | 'medium' | 'low' }> {
 	const combinedText = results.map((r) => {
 		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
@@ -136,7 +137,8 @@ async function runEmailNameSuggestion(
 	credentials: Crawl4aiApiCredentials,
 	crawler: Crawl4aiClient,
 	modelOverride: string | undefined,
-	itemIndex: number,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_itemIndex: number,
 ): Promise<Array<{ email: string; suggestedName?: string }>> {
 	if (emails.length === 0) return [];
 
@@ -201,7 +203,8 @@ async function runAboutOrgExtraction(
 	crawler: Crawl4aiClient,
 	modelOverride: string | undefined,
 	instruction: string,
-	itemIndex: number,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_itemIndex: number,
 ): Promise<string | null> {
 	const combinedText = results.map((r) => {
 		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
@@ -254,7 +257,8 @@ async function runCustomExtraction(
 	crawler: Crawl4aiClient,
 	modelOverride: string | undefined,
 	instruction: string,
-	itemIndex: number,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_itemIndex: number,
 ): Promise<string | null> {
 	const combinedText = results.map((r) => {
 		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
@@ -1157,28 +1161,70 @@ export async function execute(
 	for (let i = 0; i < items.length; i++) {
 		try {
 			const url = this.getNodeParameter('url', i, '') as string;
-			const extractionType = this.getNodeParameter('extractionType', i, 'contactInfo') as string;
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 			const smartUrlSelection = this.getNodeParameter('smartUrlSelection', i, false) as boolean;
 			const maxPages = this.getNodeParameter('maxPages', i, 10) as number;
-			const includePhones = this.getNodeParameter('includePhones', i, false) as boolean;
-			const llmValidation = this.getNodeParameter('llmValidation', i, false) as boolean;
-			const includeLocationDetails = this.getNodeParameter('includeLocationDetails', i, false) as boolean;
-			const instruction = extractionType === 'customLlm'
-				? this.getNodeParameter('instruction', i, '') as string
+
+			const extractOrgName = this.getNodeParameter('extractOrgName', i, false) as boolean;
+			const extractPhones = this.getNodeParameter('extractPhones', i, false) as boolean;
+			const extractEmails = this.getNodeParameter('extractEmails', i, false) as boolean;
+			const extractLocations = this.getNodeParameter('extractLocations', i, false) as boolean;
+			const extractAboutOrg = this.getNodeParameter('extractAboutOrg', i, false) as boolean;
+			const extractCustom = this.getNodeParameter('extractCustom', i, false) as boolean;
+
+			const aboutOrgPrompt = extractAboutOrg
+				? ((this.getNodeParameter('aboutOrgPrompt', i, ABOUT_ORG_DEFAULT_PROMPT) as string) || ABOUT_ORG_DEFAULT_PROMPT)
+				: '';
+			const customFieldName = extractCustom
+				? ((this.getNodeParameter('customFieldName', i, 'customData') as string) || 'customData')
+				: '';
+			const customPrompt = extractCustom
+				? (this.getNodeParameter('customPrompt', i, '') as string)
 				: '';
 
+			if (!extractOrgName && !extractPhones && !extractEmails && !extractLocations && !extractAboutOrg && !extractCustom) {
+				throw new NodeOperationError(
+					this.getNode(),
+					'Select at least one data type to extract.',
+					{ itemIndex: i },
+				);
+			}
+
+			if (extractCustom && !customPrompt) {
+				throw new NodeOperationError(
+					this.getNode(),
+					'Custom Extraction Prompt cannot be empty.',
+					{ itemIndex: i },
+				);
+			}
+
 			assertValidHttpUrl(url, this.getNode(), i);
+
+			// Validate LLM credentials upfront for features that require them
+			const needsLlm = extractOrgName || extractLocations || extractAboutOrg || extractCustom;
+			if (needsLlm) {
+				try {
+					validateLlmCredentials(credentials, 'This extraction type');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				}
+			}
+
+			if (smartUrlSelection === true && crawlScope !== 'singlePage') {
+				try {
+					validateLlmCredentials(credentials, 'Smart URL selection');
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				}
+			}
 
 			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
 				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
 			};
 
-			if (options.browserType) {
-				config.browserType = String(options.browserType);
-			}
+			if (options.browserType) config.browserType = String(options.browserType);
 
 			if (options.stealthMode === true) {
 				config.enable_stealth = true;
@@ -1193,128 +1239,36 @@ export async function execute(
 			);
 			if (resolvedHeaders) config.headers = resolvedHeaders;
 
-			if (options.waitFor) {
-				config.waitFor = String(options.waitFor);
-			}
-
-			if (options.waitUntil) {
-				config.waitUntil = String(options.waitUntil);
-			}
+			if (options.waitFor) config.waitFor = String(options.waitFor);
+			if (options.waitUntil) config.waitUntil = String(options.waitUntil);
 			if (options.delayBeforeReturnHtml != null) {
 				config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml) / 1000;
 			}
+			if (options.avoidAds === true) config.avoidAds = true;
+			if (options.avoidCss === true) config.avoidCss = true;
 
-			if (options.avoidAds === true) {
-				config.avoidAds = true;
-			}
-			if (options.avoidCss === true) {
-				config.avoidCss = true;
-			}
-
-			// Validate LLM credentials before crawl — surfaces credential errors without consuming a crawl request.
-			if (extractionType === 'locationsAddresses') {
-				try {
-					validateLlmCredentials(credentials, 'Locations extraction');
-				} catch (err) {
-					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-				}
-			}
-
-			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
-				(extractionType === 'contactInfo' || extractionType === 'financialData')) {
-				try {
-					validateLlmCredentials(credentials, 'Smart URL selection');
-				} catch (err) {
-					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-				}
-			}
-
-			if (extractionType === 'customLlm') {
-				try {
-					validateLlmCredentials(credentials, 'Custom extraction');
-				} catch (err) {
-					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-				}
-
-				if (!instruction) {
-					throw new NodeOperationError(
-						this.getNode(),
-						'Extraction instruction cannot be empty.',
-						{ itemIndex: i },
-					);
-				}
-
-				const schemaFieldsRaw = this.getNodeParameter(
-					'schemaFields.fields',
-					i,
-					[],
-				) as IDataObject[];
-				const properties: Record<string, IDataObject> = {};
-				const required: string[] = [];
-
-				for (const field of schemaFieldsRaw) {
-					const name = field.name as string;
-					const fieldType = field.fieldType as string;
-					if (!name) continue;
-
-					const prop: IDataObject = {};
-					if (fieldType === 'array') {
-						prop.type = 'array';
-						prop.items = { type: 'string' };
-					} else {
-						prop.type = fieldType;
-					}
-					if (field.description) {
-						prop.description = field.description;
-					}
-					properties[name] = prop;
-					required.push(name);
-				}
-
-				// No fields configured — generic schema prevents API rejection of an empty properties object.
-				if (Object.keys(properties).length === 0) {
-					properties.data = { type: 'array', items: { type: 'string' } };
-					required.push('data');
-				}
-
-				const schema = { type: 'object', properties, required };
-				const modelOverride = options.llmModel as string | undefined;
-				const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
-
-				config.extractionStrategy = createLlmExtractionStrategy(
-					schema,
-					instruction,
-					provider,
-					apiKey,
-					baseUrl,
-				);
-			}
-
-			// Strategy detached so the seed crawl fetches plain markdown; reattached via executeSmartUrlCrawl for the final crawl only.
-			let finalExtractionStrategy: ExtractionStrategy | undefined;
-			if (smartUrlSelection === true && crawlScope !== 'singlePage' &&
-				extractionType === 'customLlm' && config.extractionStrategy) {
-				finalExtractionStrategy = config.extractionStrategy;
-				delete config.extractionStrategy;
-			}
-
+			const modelOverride = options.llmModel as string | undefined;
+			const defaultCountry = (options.defaultCountry as string) || 'AU';
 			const useSmartUrlSelection = smartUrlSelection === true && crawlScope !== 'singlePage';
+
+			// Build combined smart URL context from all enabled extraction types
+			const contextParts: string[] = [];
+			if (extractPhones || extractEmails || extractLocations) contextParts.push('email addresses and phone numbers');
+			if (extractLocations) contextParts.push('physical addresses, offices, branches, and store locations');
+			if (extractOrgName) contextParts.push('official organisation name');
+			if (extractAboutOrg) contextParts.push('organisation description and services offered');
+			if (extractCustom) contextParts.push(customPrompt);
+			const extractionContext = contextParts.join('; ') || 'relevant content';
+
+			// Use location keywords when locations extraction is enabled
+			const keywords = extractLocations ? LOCATION_QUERY_KEYWORDS : undefined;
 
 			let results: CrawlResult[];
 			let smartUrlMeta: SmartUrlSelectionMeta | undefined;
 
 			if (useSmartUrlSelection) {
 				const exploreDepth = Math.max(1, Math.min(3, Number(options.exploreDepth ?? 1)));
-				const modelOverride = options.llmModel as string | undefined;
 				const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
-
-				const extractionContextMap: Record<string, string> = {
-					contactInfo: 'email addresses and phone numbers',
-					financialData: 'prices, financial figures, or transaction data',
-					locationsAddresses: 'physical addresses, offices, branches, or store locations',
-					customLlm: `Find pages most likely to be helpful in answering or completing: ${instruction}`,
-				};
-
 				const smartResult = await executeSmartUrlCrawl(
 					client,
 					url,
@@ -1324,13 +1278,12 @@ export async function execute(
 						excludePatterns: options.excludePatterns as string | undefined,
 					},
 					{
-						extractionContext: extractionContextMap[extractionType] ?? 'relevant content',
+						extractionContext,
 						exploreDepth,
 						provider,
 						apiKey,
 						baseUrl,
-						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
-						finalExtractionStrategy,
+						keywords,
 					},
 					this.getNode(),
 					i,
@@ -1346,117 +1299,98 @@ export async function execute(
 					{
 						maxPages: maxPages ?? undefined,
 						excludePatterns: options.excludePatterns as string | undefined,
-						keywords: extractionType === 'locationsAddresses' ? LOCATION_QUERY_KEYWORDS : undefined,
+						keywords,
 					},
 				);
 			}
 
-			let data: IDataObject | IDataObject[];
+			const data: IDataObject = {};
 
-			if (extractionType === 'contactInfo') {
-				const defaultCountry = (options.defaultCountry as string) || 'AU';
-				let contacts = extractContactInfo(results, defaultCountry);
+			// Org name
+			if (extractOrgName) {
+				const orgResult = await runOrgNameExtraction.call(
+					this, results, credentials, client, modelOverride || undefined, i,
+				);
+				data.orgName = orgResult.officialName;
+				if (orgResult.officialName) data.orgNameConfidence = orgResult.confidence;
+			}
 
-				if (llmValidation === true) {
-					try {
-						validateLlmCredentials(credentials, 'LLM validation');
-					} catch (err) {
-						throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-					}
-					const modelOverride = options.llmModel as string | undefined;
-					contacts = await runLlmContactValidation.call(
-						this,
-						contacts,
-						credentials,
-						client,
-						modelOverride,
-						i,
+			// Global contacts — needed by extractPhones, extractEmails, and extractLocations
+			const needsGlobalContacts = extractPhones || extractEmails || extractLocations;
+			let globalEmails: string[] = [];
+			let globalPhones: string[] = [];
+
+			if (needsGlobalContacts) {
+				const contacts = extractContactInfo(results, defaultCountry);
+				globalEmails = contacts.emails;
+				globalPhones = contacts.phones;
+			}
+
+			if (extractPhones || extractLocations) {
+				data.phones = globalPhones;
+			}
+
+			if (extractEmails || extractLocations) {
+				// Attempt LLM name annotation; fall back gracefully if LLM not configured
+				let hasLlm = false;
+				try {
+					validateLlmCredentials(credentials, 'Email name suggestion');
+					hasLlm = true;
+				} catch { /* no LLM — skip annotation */ }
+
+				if (hasLlm && globalEmails.length > 0) {
+					data.emails = await runEmailNameSuggestion.call(
+						this, globalEmails, results, credentials, client, modelOverride || undefined, i,
 					);
-				}
-
-				if (includeLocationDetails === true) {
-					try {
-						validateLlmCredentials(credentials, 'location details extraction');
-					} catch (err) {
-						throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-					}
-					const modelOverride = options.llmModel as string | undefined;
-					const locations = await runLocationsExtraction.call(
-						this, results, credentials, client, modelOverride || undefined, true, i,
-					);
-					data = { emails: contacts.emails, phones: contacts.phones, locations };
 				} else {
-					data = contacts;
+					data.emails = globalEmails.map((email) => ({ email }));
 				}
-			} else if (extractionType === 'financialData') {
-				data = extractWithRegex(results, FINANCIAL_PATTERNS);
-			} else if (extractionType === 'locationsAddresses') {
-				const modelOverride = options.llmModel as string | undefined;
+			}
+
+			// Locations — always includes phones per location
+			if (extractLocations) {
 				const isZeroUrlFallback = smartUrlMeta?.warnings.some(
 					(w) => w.startsWith('LLM returned no candidate URLs'),
 				) ?? false;
 				if (isZeroUrlFallback) {
 					try {
-						data = await runLocationsExtraction.call(
-							this, results, credentials, client, modelOverride || undefined, includePhones, i,
+						data.locations = await runLocationsExtraction.call(
+							this, results, credentials, client, modelOverride || undefined, true, i,
 						);
 					} catch (err) {
 						if (smartUrlMeta) smartUrlMeta.warnings.push(`Locations extraction error: ${(err as Error).message}`);
-						data = [];
+						data.locations = [];
 					}
 				} else {
-					data = await runLocationsExtraction.call(
-						this, results, credentials, client, modelOverride || undefined, includePhones, i,
+					data.locations = await runLocationsExtraction.call(
+						this, results, credentials, client, modelOverride || undefined, true, i,
 					);
 				}
-			} else {
-				const extractedItems: IDataObject[] = [];
-				let parseFailures = 0;
-				const llmPageErrors: string[] = [];
-				let pagesWithContent = 0;
-				for (const result of results) {
-					if (result.extracted_content) {
-						pagesWithContent++;
-						const llmError = checkLlmExtractionError(result);
-						if (llmError) {
-							llmPageErrors.push(llmError);
-						} else {
-							try {
-								const parsed = JSON.parse(result.extracted_content) as IDataObject | IDataObject[];
-								// LLM extraction returns an array of chunk results; flatten and skip error envelopes
-								const items = Array.isArray(parsed) ? parsed : [parsed];
-								for (const item of items) {
-									// Skip Crawl4AI error envelopes (error:true + string content + tags array)
-									if (item && !(item.error === true && typeof item.content === 'string' && Array.isArray(item.tags))) {
-										extractedItems.push(item);
-									}
-								}
-							} catch {
-								parseFailures++;
-							}
-						}
-					}
-				}
-				// Only throw when every page with content returned LLM errors (no usable data at all)
-				if (llmPageErrors.length > 0 && llmPageErrors.length === pagesWithContent) {
-					throw new NodeOperationError(this.getNode(), `LLM extraction failed: ${llmPageErrors[0]}`, { itemIndex: i });
-				}
-
-				if (extractedItems.length > 1) {
-					data = mergeExtractedData(extractedItems);
-				} else if (extractedItems.length === 1) {
-					data = extractedItems[0];
-				} else {
-					data = {
-						extractionSuccess: false,
-						warning: 'Failed to parse extracted content as JSON',
-					};
-				}
-
-				if (parseFailures > 0 && typeof data === 'object' && !Array.isArray(data)) {
-					(data as IDataObject)._parseWarning = `${parseFailures} page(s) returned content that could not be parsed as JSON`;
-				}
 			}
+
+			// About org
+			if (extractAboutOrg) {
+				data.aboutOrg = await runAboutOrgExtraction.call(
+					this, results, credentials, client, modelOverride || undefined, aboutOrgPrompt, i,
+				);
+			}
+
+			// Custom LLM extraction
+			if (extractCustom) {
+				data[customFieldName] = await runCustomExtraction.call(
+					this, results, credentials, client, modelOverride || undefined, customPrompt, i,
+				);
+			}
+
+			// Build extractionType label from enabled booleans for output metadata
+			const typeLabels: string[] = [];
+			if (extractOrgName) typeLabels.push('orgName');
+			if (extractPhones) typeLabels.push('phones');
+			if (extractEmails) typeLabels.push('emails');
+			if (extractLocations) typeLabels.push('locations');
+			if (extractAboutOrg) typeLabels.push('aboutOrg');
+			if (extractCustom) typeLabels.push(customFieldName || 'custom');
+			const extractionType = typeLabels.join('+');
 
 			const formatted = formatExtractedDataResult(results, data, extractionType, smartUrlMeta);
 
