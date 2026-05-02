@@ -261,8 +261,7 @@ async function runCustomExtraction(
 	crawler: Crawl4aiClient,
 	modelOverride: string | undefined,
 	instruction: string,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	_itemIndex: number,
+	itemIndex: number,
 ): Promise<string | null> {
 	const combinedText = results.map((r) => {
 		if (typeof r.markdown === 'object' && r.markdown !== null) return r.markdown.raw_markdown || '';
@@ -285,15 +284,26 @@ async function runCustomExtraction(
 
 	try {
 		const result = await crawler.crawlUrl(rawUrl, config);
-		if (!result.success || !result.extracted_content) return null;
+		if (!result.success || !result.extracted_content) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`Custom extraction failed: ${result.error_message || 'crawl request returned no content'}`,
+				{ itemIndex },
+			);
+		}
 		const parsed = JSON.parse(result.extracted_content) as unknown;
 		const items = Array.isArray(parsed)
 			? (parsed as IDataObject[]).filter((c) => !c.error)
 			: parsed ? [parsed as IDataObject] : [];
 		if (items.length === 0) return null;
 		return (items[0].value as string) || null;
-	} catch {
-		return null;
+	} catch (err) {
+		if (err instanceof NodeOperationError) throw err;
+		throw new NodeOperationError(
+			this.getNode(),
+			`Custom extraction failed: ${(err as Error).message || 'unknown error'}`,
+			{ itemIndex },
+		);
 	}
 }
 
