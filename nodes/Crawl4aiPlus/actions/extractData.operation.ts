@@ -596,7 +596,11 @@ async function extractLocationsFromPage(
 	}
 
 	const chunks = Array.isArray(parsed) ? (parsed as IDataObject[]) : [(parsed as IDataObject)];
-	const textLower = text.toLowerCase().replace(/\s+/g, ' ');
+	// Normalize both text and snippet identically so comma/punctuation differences don't reject valid locations.
+	const normForMatch = (s: string) =>
+		s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+			.toLowerCase().replace(/[,.:;]/g, ' ').replace(/\s+/g, ' ').trim();
+	const textNorm = normForMatch(text);
 	const llmLocations: IDataObject[] = [];
 
 	for (const chunk of chunks) {
@@ -605,10 +609,10 @@ async function extractLocationsFromPage(
 		for (const loc of rawLocs) {
 			const snippet = String(loc.sourceSnippet || '').trim();
 			if (!snippet) continue;
-			const normSnippet = snippet.toLowerCase().replace(/\s+/g, ' ');
-			let found = textLower.includes(normSnippet);
+			const normSnippet = normForMatch(snippet);
+			let found = textNorm.includes(normSnippet);
 			if (!found && normSnippet.length > 30) {
-				found = textLower.includes(normSnippet.slice(0, 30));
+				found = textNorm.includes(normSnippet.slice(0, 30));
 			}
 			if (!found) continue;
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
