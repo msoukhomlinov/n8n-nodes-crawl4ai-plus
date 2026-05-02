@@ -596,11 +596,7 @@ async function extractLocationsFromPage(
 	}
 
 	const chunks = Array.isArray(parsed) ? (parsed as IDataObject[]) : [(parsed as IDataObject)];
-	// Normalize both text and snippet identically so comma/punctuation differences don't reject valid locations.
-	const normForMatch = (s: string) =>
-		s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-			.toLowerCase().replace(/[,.:;]/g, ' ').replace(/\s+/g, ' ').trim();
-	const textNorm = normForMatch(text);
+	const textNorm = normalizeForGrounding(text);
 	const llmLocations: IDataObject[] = [];
 
 	for (const chunk of chunks) {
@@ -609,12 +605,7 @@ async function extractLocationsFromPage(
 		for (const loc of rawLocs) {
 			const snippet = String(loc.sourceSnippet || '').trim();
 			if (!snippet) continue;
-			const normSnippet = normForMatch(snippet);
-			let found = textNorm.includes(normSnippet);
-			if (!found && normSnippet.length > 30) {
-				found = textNorm.includes(normSnippet.slice(0, 30));
-			}
-			if (!found) continue;
+			if (!snippetIsGrounded(snippet, textNorm)) continue;
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { sourceSnippet: _ss, ...cleanLoc } = loc as Record<string, unknown>;
 			llmLocations.push({ ...(cleanLoc as IDataObject), source: 'llm' });
@@ -622,6 +613,39 @@ async function extractLocationsFromPage(
 	}
 
 	return { jsonLdLocations, llmLocations };
+}
+
+function normalizeForGrounding(s: string): string {
+	return s
+		.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+		.toLowerCase()
+		.replace(/[*_`#>[\]()]/g, ' ')
+		.replace(/[,.:;\-–—]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+// Sliding token-window fallback so framing prefixes/suffixes ("Our address is … Australia") don't
+// cause valid snippets to fail — any ≥60% consecutive token run of ≥20 chars must appear in source.
+function snippetIsGrounded(snippet: string, textNorm: string): boolean {
+	const normSnippet = normalizeForGrounding(snippet);
+	if (!normSnippet) return false;
+	if (textNorm.includes(normSnippet)) return true;
+
+	const tokens = normSnippet.split(' ').filter((t) => t.length > 0);
+	if (tokens.length < 3) return false;
+
+	// Require any window covering at least 60% of snippet tokens AND ≥20 chars to land verbatim in source.
+	// Anchors a "real" copied phrase even when the LLM wraps the address with framing words.
+	const minWindowTokens = Math.max(3, Math.floor(tokens.length * 0.6));
+	for (let windowSize = tokens.length; windowSize >= minWindowTokens; windowSize--) {
+		for (let start = 0; start + windowSize <= tokens.length; start++) {
+			const window = tokens.slice(start, start + windowSize).join(' ');
+			if (window.length < 20) continue;
+			if (textNorm.includes(window)) return true;
+		}
+	}
+	return false;
 }
 
 async function runLocationsExtraction(
@@ -1406,7 +1430,7 @@ export async function execute(
 					const locations = await runLocationsExtraction.call(
 						this, results, credentials, client, modelOverride || undefined, true, i,
 					);
-					data = { emails: contacts.emails, locations };
+					data = { emails: contacts.emails, phones: contacts.phones, locations };
 				} else {
 					data = contacts;
 				}
