@@ -16,6 +16,8 @@ export { createLlmExtractionStrategy };
 export interface SmartUrlSelectionMeta {
 	enabled: true;
 	seedUrl: string;
+	seedRedirectedUrl?: string;
+	seedStatusCode?: number;
 	candidatesFound: number;
 	directUrls: string[];
 	exploreSections: Array<{ url: string; reason: string }>;
@@ -205,13 +207,29 @@ export function extractLinksFromSeedResult(
 		return [];
 	}
 
+	// Accept links from the final URL's hostname — handles www-redirects
+	// e.g. input "holmesglen.edu.au" redirects to "www.holmesglen.edu.au";
+	// result.url = requested URL, result.redirected_url = final URL after redirect
+	const allowedHostnames = new Set<string>([seedHostname]);
+	if (result.redirected_url) {
+		try {
+			allowedHostnames.add(new URL(result.redirected_url).hostname);
+		} catch { /* ignore malformed redirected_url */ }
+	}
+	// www-normalisation: add www.X when X given, or X when www.X given
+	if (seedHostname.startsWith('www.')) {
+		allowedHostnames.add(seedHostname.slice(4));
+	} else {
+		allowedHostnames.add(`www.${seedHostname}`);
+	}
+
 	const seen = new Set<string>();
 	const candidates: Array<{ url: string; anchorText: string }> = [];
 
 	function addCandidate(href: string, text: string): void {
 		try {
 			const parsed = new URL(href);
-			if (parsed.hostname !== seedHostname) return;
+			if (!allowedHostnames.has(parsed.hostname)) return;
 			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
 			if (SKIP_LINK_EXTENSIONS.test(parsed.pathname)) return;
 			if (SKIP_LINK_PATHS.some((p) => parsed.pathname.includes(p))) return;
@@ -357,9 +375,32 @@ export async function executeSmartUrlCrawl(
 	// 2. Link extraction
 	const candidates = extractLinksFromSeedResult(seedResult, url);
 	if (candidates.length === 0) {
+		const inputHostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+		const actualUrl = seedResult.redirected_url || seedResult.url || url;
+		const actualHostname = (() => { try { return new URL(actualUrl).hostname; } catch { return actualUrl; } })();
+		const internalApiCount = seedResult.links?.internal?.length ?? 0;
+		const externalApiCount = seedResult.links?.external?.length ?? 0;
+		const markdownLen = (
+			typeof seedResult.markdown === 'object' && seedResult.markdown !== null
+				? (seedResult.markdown as { raw_markdown?: string }).raw_markdown
+				: typeof seedResult.markdown === 'string' ? seedResult.markdown : ''
+		)?.length ?? 0;
+		const redirected = inputHostname !== actualHostname;
+		const hint = redirected
+			? `Page redirected from ${inputHostname} to ${actualHostname} — www-redirects are handled automatically. If this error persists, try using the final URL (${actualUrl}) directly in the node.`
+			: internalApiCount === 0 && markdownLen < 500
+				? 'Seed page returned very little content — the site may require JavaScript rendering. Try enabling "Bypass Bot Detection" or set "Wait Until" to "Network Idle".'
+				: internalApiCount === 0
+					? 'The Crawl4AI API returned no internal links for this page. The site may block crawlers — try enabling "Bypass Bot Detection" or the Firefox browser type.'
+					: `${internalApiCount} internal link(s) were present but none matched the allowed hostnames. This is unexpected — please report this URL.`;
 		throw new NodeOperationError(
 			node,
-			'Smart URL selection enabled but no same-domain links found on seed page.',
+			`Smart URL selection: no same-domain links found on seed page.\n` +
+			`Input URL: ${url} (hostname: ${inputHostname})\n` +
+			`Actual crawled URL: ${actualUrl} (hostname: ${actualHostname})\n` +
+			`Links from API — internal: ${internalApiCount}, external: ${externalApiCount}\n` +
+			`Markdown length: ${markdownLen} chars\n` +
+			`Hint: ${hint}`,
 			{ itemIndex },
 		);
 	}
@@ -485,6 +526,8 @@ export async function executeSmartUrlCrawl(
 	const meta: SmartUrlSelectionMeta = {
 		enabled: true,
 		seedUrl: url,
+		...(seedResult.redirected_url && seedResult.redirected_url !== url ? { seedRedirectedUrl: seedResult.redirected_url } : {}),
+		...(seedResult.status_code != null ? { seedStatusCode: seedResult.status_code } : {}),
 		candidatesFound: candidates.length,
 		directUrls,
 		exploreSections,
