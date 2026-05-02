@@ -416,7 +416,7 @@ function buildLocationsInstruction(includePhones: boolean, pageUrl?: string): st
 
 For each location:
 1. Extract address1 (street number + street name only, e.g. "200 Collins Street"), address2 (unit/level/floor/suite if present, e.g. "Level 12"), city, state, postcode, and country separately.
-2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb. Every name MUST be unique.
+2. Assign a unique name: use the explicit label if present (e.g. "Melbourne Office", "Head Office"); if no label, derive one from city/suburb with a generic suffix — use Office, Location, or Branch (never Facility, Site, Plant, or similar industry-specific terms). Every name MUST be unique.
 3. Assign confidence: "high" if address1 + postcode + city present; "medium" if missing postcode or state; "low" if city/country only.
 4. Copy the exact verbatim text snippet (1–2 sentences) from the page that contains or supports the address into sourceSnippet.${phoneStep}${emailStep}
 
