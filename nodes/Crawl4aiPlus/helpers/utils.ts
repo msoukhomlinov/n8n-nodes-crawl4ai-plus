@@ -17,6 +17,7 @@ export interface SmartUrlSelectionMeta {
 	enabled: true;
 	seedUrl: string;
 	seedRedirectedUrl?: string;
+	seedStatusCode?: number;
 	candidatesFound: number;
 	directUrls: string[];
 	exploreSections: Array<{ url: string; reason: string }>;
@@ -526,6 +527,7 @@ export async function executeSmartUrlCrawl(
 		enabled: true,
 		seedUrl: url,
 		...(seedResult.redirected_url && seedResult.redirected_url !== url ? { seedRedirectedUrl: seedResult.redirected_url } : {}),
+		...(seedResult.status_code != null ? { seedStatusCode: seedResult.status_code } : {}),
 		candidatesFound: candidates.length,
 		directUrls,
 		exploreSections,

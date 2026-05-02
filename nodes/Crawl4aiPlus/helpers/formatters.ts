@@ -231,16 +231,19 @@ export function formatExtractedDataResult(
 	const fetchedAt = new Date().toISOString();
 
 	const primaryExtractResult = results[0] || ({} as CrawlResult);
-	// For smart URL selection, redirect comes from the seed crawl (stored in meta).
-	// For regular crawls, redirect comes from the first result's redirected_url.
+	// For smart URL selection, redirect and status come from the seed crawl (stored in meta)
+	// so they stay paired with the reported url (seed URL). For regular crawls, use first result.
 	const redirectedExtractUrl = smartUrlMeta?.seedRedirectedUrl ?? primaryExtractResult.redirected_url;
+	const statusCode = smartUrlMeta != null
+		? (smartUrlMeta.seedStatusCode ?? null)
+		: (primaryExtractResult.status_code ?? null);
 	const extractSuccess = results.some((r) => r.success);
 
 	const extractOutput: IDataObject = {
 		domain,
 		url: primaryUrl,
 		...(redirectedExtractUrl && redirectedExtractUrl !== primaryUrl ? { redirectedUrl: redirectedExtractUrl } : {}),
-		statusCode: primaryExtractResult.status_code ?? null,
+		statusCode,
 		...(results.length > 1 ? { urls: results.map((r) => r.url) } : {}),
 		extractionType,
 		data,
