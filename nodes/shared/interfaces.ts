@@ -18,6 +18,9 @@ export interface Crawl4aiApiCredentials {
 	customProvider?: string;
 	customBaseUrl?: string;
 	customApiKey?: string;
+	// Auto Crawl Mode cache settings
+	autoCacheFilePath?: string;
+	autoCacheTtlDays?: number;
 }
 
 // Node options interface

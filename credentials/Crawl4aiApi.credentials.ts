@@ -230,5 +230,21 @@ export class Crawl4aiApi implements ICredentialType {
 				},
 			},
 		},
+		// Auto Crawl Mode cache
+		{
+			displayName: 'Auto Crawl: Cache File Path',
+			name: 'autoCacheFilePath',
+			type: 'string',
+			default: '',
+			placeholder: '~/.n8n/crawl4ai-mode-cache.json',
+			description: 'Path to the JSON file used to cache per-domain crawl mode decisions for Auto mode. Leave blank to use the default (~/.n8n/crawl4ai-mode-cache.json). Tilde (~) is expanded to the home directory.',
+		},
+		{
+			displayName: 'Auto Crawl: Cache TTL (Days)',
+			name: 'autoCacheTtlDays',
+			type: 'number',
+			default: 30,
+			description: 'How many days to remember that a domain needs Anti-Bot mode before retrying with Standard. Default: 30.',
+		},
 	];
 }
