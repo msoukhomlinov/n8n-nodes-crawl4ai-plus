@@ -25,7 +25,8 @@ const DEFAULT_CACHE_PATH = path.join(os.homedir(), '.n8n', 'crawl4ai-mode-cache.
 
 function resolvePath(configuredPath: string): string {
 	if (!configuredPath || !configuredPath.trim()) return DEFAULT_CACHE_PATH;
-	return configuredPath.trim().replace(/^~(?=\/|$)/, os.homedir());
+	// Accept both forward-slash (Unix/placeholder) and backslash (Windows) after ~
+	return configuredPath.trim().replace(/^~(?=[/\\]|$)/, os.homedir());
 }
 
 // Singleton KeyvFile instances keyed by resolved file path.
@@ -44,19 +45,6 @@ function buildKeyv(configuredPath: string): Keyv<DomainCacheSchema> {
 // Strip leading www. so example.com and www.example.com share one cache entry.
 export function normalizeHostname(hostname: string): string {
 	return hostname.replace(/^www\./, '');
-}
-
-async function purgeExpiredEntries(keyv: Keyv<DomainCacheSchema>): Promise<void> {
-	if (!keyv.iterator) return;
-	const toDelete: string[] = [];
-	// keyv v5 iterator takes an optional namespace argument. We construct
-	// Keyv without a namespace, so keyv.namespace is undefined — pass it
-	// through directly to match the canonical v5 idiom.
-	for await (const [key] of keyv.iterator(keyv.namespace)) {
-		const val = await keyv.get(key as string);
-		if (val === undefined || val === null) toDelete.push(key as string);
-	}
-	await Promise.all(toDelete.map((k) => keyv.delete(k)));
 }
 
 export async function getCachedMode(
@@ -79,8 +67,9 @@ export async function getCachedMode(
 /**
  * Store the crawl mode for one or more domains (pass both requested + redirected
  * FQDNs after a redirect so either hostname hits the cache next time).
- * All hostnames are www-normalised before storage. Expired entries are purged
- * from the file on every write.
+ * All hostnames are www-normalised before storage.
+ * keyv-file calls clearExpire() on every set(), so explicit post-write purge
+ * is not needed — TTL cleanup is handled natively.
  */
 export async function setCachedMode(
 	configuredPath: string,
@@ -100,8 +89,6 @@ export async function setCachedMode(
 			...new Set((Array.isArray(domains) ? domains : [domains]).map(normalizeHostname)),
 		];
 		await Promise.all(normalizedDomains.map((d) => keyv.set(d, value, ttlMs)));
-		// Purge expired entries on every write to keep the file tidy.
-		await purgeExpiredEntries(keyv);
 	} catch {
 		// Best-effort — a cache write failure must never break a crawl
 	}
