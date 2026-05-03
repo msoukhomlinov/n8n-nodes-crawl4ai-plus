@@ -164,10 +164,11 @@ export const description: INodeProperties[] = [
 				options: [
 					{ name: 'Chromium (Default)', value: 'chromium' },
 					{ name: 'Firefox', value: 'firefox' },
+					{ name: 'Undetected (Anti-Bot)', value: 'undetected' },
 					{ name: 'WebKit', value: 'webkit' },
 				],
 				default: 'chromium',
-				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+				description: 'Browser engine to use. Undetected uses deep browser patches to bypass Cloudflare and similar bot-protection. Firefox has a different TLS fingerprint to Chromium.',
 			},
 			{
 				displayName: 'Bypass Bot Detection',
@@ -212,6 +213,13 @@ export const description: INodeProperties[] = [
 				description: 'Milliseconds to wait after page load before returning HTML. Use for pages where content loads after the initial render (e.g. AJAX-heavy sites).',
 			},
 			{
+				displayName: 'Enable Stealth Mode',
+				name: 'enableStealth',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth mode (playwright-stealth) to avoid browser fingerprint detection',
+			},
+			{
 				displayName: 'Exclude URL Patterns',
 				name: 'excludePatterns',
 				type: 'string',
@@ -223,6 +231,20 @@ export const description: INodeProperties[] = [
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
+			},
+			{
+				displayName: 'Headless Mode',
+				name: 'headless',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to run the browser in headless mode. Set to false to run visibly — harder for Cloudflare to detect, but slower.',
+			},
+			{
+				displayName: 'Magic Mode',
+				name: 'magic',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable magic mode for automatic anti-bot handling (randomises interactions and timings)',
 			},
 			{
 				displayName: 'Max Pages',
@@ -245,6 +267,27 @@ export const description: INodeProperties[] = [
 				},
 				default: '',
 				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+			},
+			{
+				displayName: 'Override Navigator',
+				name: 'overrideNavigator',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to override navigator properties to hide browser automation signals',
+			},
+			{
+				displayName: 'Page Timeout (Ms)',
+				name: 'pageTimeout',
+				type: 'number',
+				default: 30000,
+				description: 'Maximum time in milliseconds to wait for the page to load before failing',
+			},
+			{
+				displayName: 'Simulate User',
+				name: 'simulateUser',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to simulate realistic user behaviour (mouse movements, scrolling) to bypass bot detection',
 			},
 			{
 				displayName: 'Wait For',
@@ -328,10 +371,22 @@ export async function execute(
 
 			if (options.stealthMode === true) {
 				config.enable_stealth = true;
+				config.chrome_channel = 'patchright';
 				config.magic = true;
 				config.simulateUser = true;
 				config.overrideNavigator = true;
 			}
+
+			if (options.headless === false) {
+				config.headless = false;
+			}
+
+			if (options.enableStealth === true) config.enable_stealth = true;
+			if (options.magic === true) config.magic = true;
+			if (options.simulateUser === true) config.simulateUser = true;
+			if (options.overrideNavigator === true) config.overrideNavigator = true;
+			if (options.pageTimeout != null) config.pageTimeout = Number(options.pageTimeout);
+			if (options.stealthMode === true && (config.pageTimeout ?? 0) < 110000) config.pageTimeout = 110000;
 
 			const resolvedHeaders = resolveRequestHeaders(
 				options.browserProfile as string | undefined,

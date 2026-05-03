@@ -48,10 +48,23 @@ export function getBrowserSessionFields(operations: string[]): INodeProperties[]
 					options: [
 						{ name: 'Chromium', value: 'chromium' },
 						{ name: 'Firefox', value: 'firefox' },
+						{ name: 'Undetected (Anti-Bot)', value: 'undetected' },
 						{ name: 'WebKit', value: 'webkit' },
 					],
 					default: 'chromium',
-					description: 'Which browser engine to use',
+					description: 'Which browser engine to use. Undetected uses deep browser patches to bypass Cloudflare, DataDome, and PerimeterX.',
+				},
+				// --- Chrome Channel ---
+				{
+					displayName: 'Chrome Channel',
+					name: 'chromeChannel',
+					type: 'options',
+					options: [
+						{ name: 'Default', value: '' },
+						{ name: 'Patchright (Anti-Bot / Cloudflare)', value: 'patchright' },
+					],
+					default: '',
+					description: 'Chrome channel variant to use. Patchright applies deep browser patches to bypass Cloudflare Bot Management and similar systems.',
 				},
 				// --- Cookies ---
 				{

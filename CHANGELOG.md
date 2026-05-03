@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.5.0] - 2026-05-03
+
+### Added
+- **Undetected browser type** — all Simple node operations and Advanced node now expose `Undetected (Anti-Bot)` as a Browser Type option. Uses Crawl4AI's `UndetectedAdapter` with deep browser patches to bypass Cloudflare Bot Management, DataDome, and PerimeterX.
+- **Headless Mode toggle** — all Simple node operations now expose a `Headless Mode` boolean option (default: true). Setting it to false runs the browser visibly, which is significantly harder for bot-detection fingerprinting to identify as automation.
+- **Granular anti-bot options** (Simple node — Get Page Content, Ask Question, CSS Extractor): Added Enable Stealth Mode, Magic Mode, Simulate User, Override Navigator, and Page Timeout options alongside the existing Bypass Bot Detection shortcut.
+- **extractData Anti-Bot mode** — new `Crawl Mode` option replaces the full Options collection on Extract Data. `Standard` mode uses 60 s timeout + simulate user. `Anti-Bot (Cloudflare)` mode activates patchright channel, stealth, magic mode, headless off, 110 s timeout, `wait_until: load`, and consent popup removal in a single toggle.
+- **Chrome Channel field** (Advanced node — Browser & Session collection): New `Chrome Channel` dropdown exposes `patchright` as a selectable option for all 15 Advanced node operations.
+
+### Fixed
+- **Bypass Bot Detection now activates patchright** — all Simple node operations with `stealthMode` now also set `chrome_channel: patchright` and raise `page_timeout` to 110 s. Previously stealth/magic mode was enabled but the browser fingerprint remained detectable by Cloudflare without patchright.
+- **Anti-Bot timeout set below axios wall** — `page_timeout` capped at 110 s (under axios's 120 s connection timeout) so Crawl4AI server returns a clean error instead of the request being cut by the HTTP client.
+
 ## [5.4.1] - 2026-05-03
 
 ### Fixed

@@ -51,6 +51,7 @@ export interface BrowserConfig {
 	light_mode?: boolean;
 	extra_args?: Array<string>;
 	enable_stealth?: boolean;
+	chrome_channel?: string;
 	init_scripts?: string[];
 }
 
@@ -163,6 +164,9 @@ export interface CrawlerRunConfig {
 	// 0.8.5: Resource filtering
 	avoidAds?: boolean;
 	avoidCss?: boolean;
+
+	// 0.8.5: Consent popup removal
+	removeConsentPopups?: boolean;
 }
 
 /**
