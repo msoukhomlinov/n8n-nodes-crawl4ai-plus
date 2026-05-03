@@ -887,6 +887,23 @@ async function runLocationsExtraction(
 	return { primary, additional };
 }
 
+function applyModeToConfig(config: FullCrawlConfig, mode: 'standard' | 'antiBotCloudflare'): void {
+	if (mode === 'antiBotCloudflare') {
+		config.headless = false;
+		config.text_mode = false;
+		config.enable_stealth = true;
+		config.chrome_channel = 'patchright';
+		config.pageTimeout = 110000;
+		config.waitUntil = 'load';
+		config.simulateUser = true;
+		config.magic = true;
+		config.removeConsentPopups = true;
+	} else {
+		config.pageTimeout = 60000;
+		config.simulateUser = true;
+		config.removeConsentPopups = true;
+	}
+}
 
 export const description: INodeProperties[] = [
 	{
@@ -1039,14 +1056,19 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				options: [
 					{
+						name: 'Anti-Bot (Cloudflare)',
+						value: 'antiBotCloudflare',
+						description: 'For Cloudflare-protected sites — patchright browser, stealth + magic mode, 110 s timeout',
+					},
+					{
+						name: 'Auto',
+						value: 'auto',
+						description: 'Try Standard first; retry with Anti-Bot on failure and cache the result per domain (configurable in credentials)',
+					},
+					{
 						name: 'Standard',
 						value: 'standard',
 						description: 'For most websites — 60 s timeout, simulate user, remove consent popups',
-					},
-					{
-						name: 'Anti-Bot (Cloudflare)',
-						value: 'antiBotCloudflare',
-						description: 'For Cloudflare-protected sites — patchright browser, stealth + magic mode, 120 s timeout',
 					},
 				],
 				default: 'standard',
