@@ -15,6 +15,7 @@ import {
 	validateLlmCredentials,
 	cleanExtractedData,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatExtractionResult, parseExtractedJson } from '../../shared/formatters';
 import {
@@ -244,7 +245,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const patternType = this.getNodeParameter('patternType', i, 'builtin') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 			const bs = this.getNodeParameter('browserSession', i, {}) as IDataObject;
@@ -277,7 +278,7 @@ export async function execute(
 			} else if (patternType === 'llm') {
 				const llmLabel = this.getNodeParameter('llmLabel', i, '') as string;
 				const llmQuery = this.getNodeParameter('llmQuery', i, '') as string;
-				const llmSampleUrl = this.getNodeParameter('llmSampleUrl', i, '') as string;
+				const llmSampleUrl = normalizeUrlProtocol(this.getNodeParameter('llmSampleUrl', i, '') as string);
 
 				if (!llmLabel) {
 					throw new NodeOperationError(this.getNode(), 'Pattern label is required for LLM pattern generation.', { itemIndex: i });

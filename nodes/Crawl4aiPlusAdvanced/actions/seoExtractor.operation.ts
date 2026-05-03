@@ -12,6 +12,7 @@ import {
 	createBrowserConfig,
 	createCrawlerRunConfig,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatExtractionResult } from '../../shared/formatters';
 import {
@@ -97,7 +98,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const metadataTypes = this.getNodeParameter('metadataTypes', i, ['basic', 'openGraph', 'jsonLd']) as string[];
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 			const bs = this.getNodeParameter('browserSession', i, {}) as IDataObject;

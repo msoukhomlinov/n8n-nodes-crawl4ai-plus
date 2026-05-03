@@ -13,6 +13,7 @@ import {
 	createCrawlerRunConfig,
 	cleanExtractedData,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatExtractionResult, parseExtractedJson } from '../../shared/formatters';
 import {
@@ -205,7 +206,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const semanticFilter = this.getNodeParameter('semanticFilter', i, '') as string;
 			const co = this.getNodeParameter('clusteringOptions', i, {}) as IDataObject;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;

@@ -13,6 +13,7 @@ import {
 	createCrawlerRunConfig,
 	applyOutputFilteringConfig,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
 import {
@@ -49,7 +50,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const bs = this.getNodeParameter('browserSession', i, {}) as IDataObject;
 			const cs = this.getNodeParameter('crawlSettings', i, {}) as IDataObject;
 			const of = this.getNodeParameter('outputFiltering', i, {}) as IDataObject;

@@ -16,6 +16,7 @@ import {
 	createLlmExtractionStrategy,
 	cleanExtractedData,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { checkLlmExtractionError, formatExtractionResult, parseExtractedJson } from '../../shared/formatters';
 import {
@@ -422,7 +423,7 @@ export async function execute(
 			} catch (err) {
 				throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
 			}
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const instruction = this.getNodeParameter('instruction', i, '') as string;
 			const schemaMode = this.getNodeParameter('schemaMode', i, 'simple') as string;
 			const schemaFieldsValues = this.getNodeParameter('schemaFields.fieldsValues', i, []) as IDataObject[];
