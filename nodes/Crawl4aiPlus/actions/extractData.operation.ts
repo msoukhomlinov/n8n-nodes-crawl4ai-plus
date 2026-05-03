@@ -887,6 +887,8 @@ async function runLocationsExtraction(
 	return { primary, additional };
 }
 
+// Only accepts concrete modes — 'auto' is resolved to 'standard' or 'antiBotCloudflare'
+// by the caller before this function is invoked.
 function applyModeToConfig(config: FullCrawlConfig, mode: 'standard' | 'antiBotCloudflare'): void {
 	if (mode === 'antiBotCloudflare') {
 		config.headless = false;
