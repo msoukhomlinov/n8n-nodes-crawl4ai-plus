@@ -880,7 +880,6 @@ async function runLocationsExtraction(
 	const primary: IDataObject[] = [];
 	const additional: IDataObject[] = [];
 	for (const loc of deduped) {
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		const { isPrimary, ...rest } = loc as Record<string, unknown>;
 		(isPrimary === true ? primary : additional).push(rest as IDataObject);
 	}
@@ -1080,7 +1079,7 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				typeOptions: { loadOptionsMethod: 'getLlmModels' },
 				default: '',
-				description: 'Override the LLM model used for extraction. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				description: 'Override the LLM model used for extraction. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 		],
 	},
