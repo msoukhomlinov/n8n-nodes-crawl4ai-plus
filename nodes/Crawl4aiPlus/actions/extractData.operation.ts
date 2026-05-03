@@ -1298,8 +1298,7 @@ export async function execute(
 					try {
 						crawlOutput = await doCrawl(config);
 						standardFailed = isCrawlFailed(crawlOutput.results);
-					} catch (err) {
-						if (err instanceof NodeOperationError) throw err;
+					} catch {
 						standardFailed = true;
 						crawlOutput = { results: [] };
 					}
