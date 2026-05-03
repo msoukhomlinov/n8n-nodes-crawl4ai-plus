@@ -681,6 +681,22 @@ export function cleanText(text: string): string {
 }
 
 /**
+ * Prepend https:// when the user omits a protocol.
+ * Handles: bare domain, localhost:port, //example.com.
+ * Leaves any existing scheme (http://, https://, ftp://, raw:, etc.) unchanged.
+ */
+export function normalizeUrlProtocol(url: string): string {
+	const trimmed = url.trim();
+	if (!trimmed) return trimmed;
+	// Pass through any existing scheme (colon not followed by digit distinguishes
+	// mailto:user, raw:html, http:example from localhost:3000, example.com:8080)
+	if (/^[a-z][a-z0-9+.-]*:[^0-9]/i.test(trimmed)) return trimmed;
+	if (trimmed.startsWith('//')) return `https:${trimmed}`;
+	if (trimmed.startsWith('/')) return trimmed;
+	return `https://${trimmed}`;
+}
+
+/**
  * Validate URL
  */
 export function isValidUrl(url: string): boolean {

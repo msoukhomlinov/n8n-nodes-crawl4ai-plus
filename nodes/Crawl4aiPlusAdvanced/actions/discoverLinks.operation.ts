@@ -12,6 +12,7 @@ import {
 	createBrowserConfig,
 	createCrawlerRunConfig,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import {
 	urlField,
@@ -214,7 +215,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const linkTypes = this.getNodeParameter('linkTypes', i, ['internal', 'external']) as string[];
 			const filterOptions = this.getNodeParameter('filterOptions', i, {}) as IDataObject;
 			const outputOptions = this.getNodeParameter('outputOptions', i, {}) as IDataObject;

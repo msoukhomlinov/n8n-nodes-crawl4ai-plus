@@ -13,6 +13,7 @@ import {
 	buildLlmConfig,
 	validateLlmCredentials,
 	buildWebhookConfig,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { urlField, getWebhookFields } from '../../shared/descriptions';
 import { formatJobSubmission } from '../helpers/formatters';
@@ -91,7 +92,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const query = this.getNodeParameter('extractionQuery', i, '') as string;
 			const llmOptions = this.getNodeParameter('llmOptions', i, {}) as IDataObject;
 			const webhookConfigOptions = this.getNodeParameter('webhookConfig', i, {}) as IDataObject;

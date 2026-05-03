@@ -281,12 +281,12 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const rawUrl = this.getNodeParameter('url', i, '') as string;
 			const baseSelector = this.getNodeParameter('baseSelector', i, '') as string;
 			const fieldsValues = this.getNodeParameter('fields.fieldsValues', i, []) as IDataObject[];
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
-			assertValidHttpUrl(url, this.getNode(), i);
+			const url = assertValidHttpUrl(rawUrl, this.getNode(), i);
 			if (!baseSelector) {
 				throw new NodeOperationError(this.getNode(), 'Base selector cannot be empty.', {
 					itemIndex: i,

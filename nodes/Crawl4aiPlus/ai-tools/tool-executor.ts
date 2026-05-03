@@ -7,6 +7,7 @@ import {
 	createLlmExtractionStrategy,
 	createCssSelectorExtractionStrategy,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import type { Crawl4aiApiCredentials, ExtractionStrategy, FullCrawlConfig } from '../../shared/interfaces';
 import { formatCrawlResult, parseExtractedJson } from '../../shared/formatters';
@@ -40,7 +41,7 @@ export async function executeAiTool(
 	try {
 		switch (operation) {
 			case 'crawl': {
-				const url = params.url as string;
+				const url = normalizeUrlProtocol(String(params.url ?? '').trim());
 				if (!url) {
 					return JSON.stringify(wrapError(RESOURCE, operation, ERROR_TYPES.MISSING_REQUIRED_FIELD,
 						'URL is required.', 'Provide a url parameter with the full URL including https://.'));
@@ -79,7 +80,7 @@ export async function executeAiTool(
 			}
 
 			case 'askQuestion': {
-				const url = params.url as string;
+				const url = normalizeUrlProtocol(String(params.url ?? '').trim());
 				const question = params.question as string;
 				if (!url) {
 					return JSON.stringify(wrapError(RESOURCE, operation, ERROR_TYPES.MISSING_REQUIRED_FIELD,
@@ -163,7 +164,7 @@ Question: ${question}`;
 			}
 
 			case 'extractWithLlm': {
-				const url = params.url as string;
+				const url = normalizeUrlProtocol(String(params.url ?? '').trim());
 				const instruction = params.instruction as string;
 				if (!url) {
 					return JSON.stringify(wrapError(RESOURCE, operation, ERROR_TYPES.MISSING_REQUIRED_FIELD,
@@ -239,7 +240,7 @@ Question: ${question}`;
 			}
 
 			case 'extractWithCss': {
-				const url = params.url as string;
+				const url = normalizeUrlProtocol(String(params.url ?? '').trim());
 				const baseSelector = params.baseSelector as string;
 				const fieldsJson = params.fields as string;
 				if (!url) {
@@ -323,7 +324,7 @@ Question: ${question}`;
 			}
 
 			case 'extractSeo': {
-				const url = params.url as string;
+				const url = normalizeUrlProtocol(String(params.url ?? '').trim());
 				if (!url) {
 					return JSON.stringify(wrapError(RESOURCE, operation, ERROR_TYPES.MISSING_REQUIRED_FIELD,
 						'URL is required.', 'Provide a url parameter.'));
@@ -412,7 +413,7 @@ Question: ${question}`;
 			}
 
 			case 'discoverLinks': {
-				const url = params.url as string;
+				const url = normalizeUrlProtocol(String(params.url ?? '').trim());
 				if (!url) {
 					return JSON.stringify(wrapError(RESOURCE, operation, ERROR_TYPES.MISSING_REQUIRED_FIELD,
 						'URL is required.', 'Provide a url parameter.'));

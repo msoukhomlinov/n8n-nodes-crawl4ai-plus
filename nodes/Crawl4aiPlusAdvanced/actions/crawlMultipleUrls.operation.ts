@@ -13,6 +13,7 @@ import {
 	createCrawlerRunConfig,
 	applyOutputFilteringConfig,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
 import { parseDenylist, filterUrlsAgainstDenylist } from '../../shared/urlSafety';
@@ -295,7 +296,7 @@ export async function execute(
 
 				urls = urlsString
 					.split(/[\n,]/)
-					.map((u) => u.trim())
+					.map((u) => normalizeUrlProtocol(u.trim()))
 					.filter((u) => u.length > 0);
 
 				if (urls.length === 0) {
@@ -328,7 +329,7 @@ export async function execute(
 				}
 			} else {
 				// discover mode
-				const seedUrl = String(this.getNodeParameter('seedUrl', i, '')).trim();
+				const seedUrl = normalizeUrlProtocol(String(this.getNodeParameter('seedUrl', i, '')).trim());
 				const query = String(this.getNodeParameter('query', i, '')).trim();
 
 				if (!seedUrl) {

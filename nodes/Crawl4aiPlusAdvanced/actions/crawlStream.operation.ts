@@ -13,6 +13,7 @@ import {
 	createCrawlerRunConfig,
 	applyOutputFilteringConfig,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
 import {
@@ -64,7 +65,7 @@ export async function execute(
 
 			const urls = rawUrls
 				.split(/[\n,]/)
-				.map((u) => u.trim())
+				.map((u) => normalizeUrlProtocol(u.trim()))
 				.filter((u) => u.length > 0);
 
 			if (urls.length === 0) {

@@ -13,6 +13,7 @@ import {
 	createCrawlerRunConfig,
 	isValidUrl,
 	buildWebhookConfig,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import {
 	urlsField,
@@ -55,7 +56,7 @@ export async function execute(
 			const webhookConfigOptions = this.getNodeParameter('webhookConfig', i, {}) as IDataObject;
 
 			// Parse and validate URLs
-			const urls = rawUrls.split(/[\n,]/).map((u) => u.trim()).filter((u) => u.length > 0);
+			const urls = rawUrls.split(/[\n,]/).map((u) => normalizeUrlProtocol(u.trim())).filter((u) => u.length > 0);
 			if (urls.length === 0) {
 				throw new NodeOperationError(this.getNode(), 'At least one URL is required.', { itemIndex: i });
 			}

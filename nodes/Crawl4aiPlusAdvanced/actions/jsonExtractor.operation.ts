@@ -12,6 +12,7 @@ import {
 	createBrowserConfig,
 	createCrawlerRunConfig,
 	isValidUrl,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatExtractionResult } from '../../shared/formatters';
 import {
@@ -217,7 +218,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const url = normalizeUrlProtocol(this.getNodeParameter('url', i, '') as string);
 			const jsonPath = this.getNodeParameter('jsonPath', i, '') as string;
 			const sourceType = this.getNodeParameter('sourceType', i, 'direct') as string;
 			const extractionType = this.getNodeParameter('extractionType', i, 'css') as string;
