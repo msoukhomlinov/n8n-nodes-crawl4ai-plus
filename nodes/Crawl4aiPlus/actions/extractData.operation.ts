@@ -1158,9 +1158,11 @@ export async function execute(
 
 			if (crawlMode === 'antiBotCloudflare') {
 				config.headless = false;
+				config.text_mode = false;
 				config.enable_stealth = true;
 				config.chrome_channel = 'patchright';
-				config.pageTimeout = 120000;
+				config.pageTimeout = 110000;
+				config.waitUntil = 'load';
 				config.simulateUser = true;
 				config.magic = true;
 				config.removeConsentPopups = true;

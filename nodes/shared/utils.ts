@@ -242,6 +242,10 @@ export function createBrowserConfig(options: IDataObject): FullCrawlConfig {
     config.enable_stealth = true;
   }
 
+  if (options.chromeChannel && typeof options.chromeChannel === 'string' && options.chromeChannel !== '') {
+    config.chrome_channel = options.chromeChannel;
+  }
+
   // init_scripts: pre-page-load JS injection (0.8.0)
   if (options.initScripts) {
     const initScripts = options.initScripts as IDataObject;

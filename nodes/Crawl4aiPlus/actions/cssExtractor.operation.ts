@@ -369,9 +369,11 @@ export async function execute(
 
 			if (options.stealthMode === true) {
 				config.enable_stealth = true;
+				config.chrome_channel = 'patchright';
 				config.magic = true;
 				config.simulateUser = true;
 				config.overrideNavigator = true;
+				config.pageTimeout = 110000;
 			}
 
 			if (options.headless === false) {
