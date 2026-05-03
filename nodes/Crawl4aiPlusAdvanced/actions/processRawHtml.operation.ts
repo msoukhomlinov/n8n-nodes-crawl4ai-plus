@@ -11,6 +11,7 @@ import {
 	getCrawl4aiClient,
 	createCrawlerRunConfig,
 	applyOutputFilteringConfig,
+	normalizeUrlProtocol,
 } from '../../shared/utils';
 import { formatCrawlResult } from '../helpers/formatters';
 import {
@@ -78,7 +79,7 @@ export async function execute(
 	for (let i = 0; i < items.length; i++) {
 		try {
 			const html = this.getNodeParameter('html', i, '') as string;
-			const baseUrl = this.getNodeParameter('baseUrl', i, 'https://example.com') as string;
+			const baseUrl = normalizeUrlProtocol(this.getNodeParameter('baseUrl', i, 'https://example.com') as string);
 			const cs = this.getNodeParameter('crawlSettings', i, {}) as IDataObject;
 			const of = this.getNodeParameter('outputFiltering', i, {}) as IDataObject;
 
