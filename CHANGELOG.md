@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.6.1] - 2026-05-03
+
+### Fixed
+- `extractData` Auto mode: domain now cached as `antiBotCloudflare` immediately on blocking detection (standard crawl fail), not only after a successful Anti-Bot crawl — ensures subsequent runs skip the wasted standard attempt even if the first Anti-Bot attempt also fails
+- `extractData` Auto mode: added random 20–30 s delay between blocking detection and Anti-Bot retry to reduce fingerprinting pressure
+- `extractData` Anti-Bot mode: changed `waitUntil` from `'load'` to `'commit'` — Cloudflare redirect chains (e.g. `/` → 301 → `/Home`) trigger a Playwright CDP race where `load`/`domcontentloaded` events are missed entirely, causing indefinite 110 s hangs; `commit` fires on first response bytes and is unaffected
+- `extractData` Auto mode: when Anti-Bot also fails, detection-time cache entry is now deleted so the domain is not permanently locked into Anti-Bot mode on subsequent runs
+
 ## [5.6.0] - 2026-05-03
 
 ### Added

@@ -22,7 +22,7 @@ import {
 } from '../helpers/utils';
 import type { SmartUrlSelectionMeta } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
-import { getCachedMode, setCachedMode } from '../helpers/domainModeCache';
+import { getCachedMode, setCachedMode, deleteCachedMode } from '../helpers/domainModeCache';
 import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -897,7 +897,7 @@ function applyModeToConfig(config: FullCrawlConfig, mode: 'standard' | 'antiBotC
 		config.enable_stealth = true;
 		config.chrome_channel = 'patchright';
 		config.pageTimeout = 110000;
-		config.waitUntil = 'load';
+		config.waitUntil = 'commit';
 		config.simulateUser = true;
 		config.magic = true;
 		config.removeConsentPopups = true;
@@ -1304,6 +1304,15 @@ export async function execute(
 					}
 
 					if (standardFailed) {
+						// Cache domain on detection so subsequent runs skip the standard attempt.
+						if (domain) {
+							await setCachedMode(cachePath, domain, 'antiBotCloudflare', cacheTtlDays);
+						}
+
+						// Random 20–30 s delay before switching to Anti-Bot mode.
+						const antiBotDelayMs = Math.floor(Math.random() * 11000) + 20000;
+						await new Promise<void>((resolve) => setTimeout(resolve, antiBotDelayMs));
+
 						// getSimpleDefaults() sets browser base; applyModeToConfig overwrites
 						// pageTimeout and browser flags for the Anti-Bot mode.
 						const antiBotConfig: FullCrawlConfig = {
@@ -1312,23 +1321,25 @@ export async function execute(
 						};
 						applyModeToConfig(antiBotConfig, 'antiBotCloudflare');
 						crawlOutput = await doCrawl(antiBotConfig);
-						// Only cache when Anti-Bot itself succeeded — caching a failure
-						// would lock the domain into a permanently-failing mode.
-						if (domain && !isCrawlFailed(crawlOutput.results)) {
-							// Store under both the requested FQDN and the redirected FQDN
-							// (if the server redirected, e.g. example.com → www.example.com)
-							// so either form hits the cache on subsequent runs.
-							const domainsToCache: string[] = [domain];
-							const redirectedUrl = crawlOutput.results[0]?.redirected_url;
-							if (redirectedUrl) {
-								try {
-									const redirectedHostname = new URL(redirectedUrl).hostname;
-									if (redirectedHostname && redirectedHostname !== domain) {
-										domainsToCache.push(redirectedHostname);
-									}
-								} catch { /* ignore malformed redirected_url */ }
+
+						if (domain) {
+							if (!isCrawlFailed(crawlOutput.results)) {
+								// Also cache the redirected FQDN if the server redirected to a different
+								// hostname (e.g. example.com → www.example.com).
+								const redirectedUrl = crawlOutput.results[0]?.redirected_url;
+								if (redirectedUrl) {
+									try {
+										const redirectedHostname = new URL(redirectedUrl).hostname;
+										if (redirectedHostname && redirectedHostname !== domain) {
+											await setCachedMode(cachePath, redirectedHostname, 'antiBotCloudflare', cacheTtlDays);
+										}
+									} catch { /* ignore malformed redirected_url */ }
+								}
+							} else {
+								// Anti-Bot also failed — remove the detection-time cache entry so the
+								// domain is not permanently locked into Anti-Bot mode on future runs.
+								await deleteCachedMode(cachePath, domain);
 							}
-							await setCachedMode(cachePath, domainsToCache, 'antiBotCloudflare', cacheTtlDays);
 						}
 					}
 				}

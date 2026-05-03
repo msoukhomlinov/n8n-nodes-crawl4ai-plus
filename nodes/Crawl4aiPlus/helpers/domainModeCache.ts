@@ -77,6 +77,26 @@ export async function getCachedMode(
 }
 
 /**
+ * Remove cached mode for one or more domains.
+ * Called when Anti-Bot mode itself fails so the domain does not get permanently
+ * locked into Anti-Bot on every subsequent run.
+ */
+export async function deleteCachedMode(
+	configuredPath: string,
+	domains: string | string[],
+): Promise<void> {
+	try {
+		const keyv = buildKeyv(configuredPath);
+		const normalizedDomains = [
+			...new Set((Array.isArray(domains) ? domains : [domains]).map(normalizeHostname)),
+		];
+		await Promise.all(normalizedDomains.map((d) => keyv.delete(d)));
+	} catch {
+		// Best-effort — a cache delete failure must never break a crawl
+	}
+}
+
+/**
  * Store the crawl mode for one or more domains (pass both requested + redirected
  * FQDNs after a redirect so either hostname hits the cache next time).
  * All hostnames are www-normalised before storage.
