@@ -405,6 +405,9 @@ export class Crawl4aiClient {
     if (config.enable_stealth === true) {
       params.enable_stealth = true;
     }
+    if (config.chrome_channel) {
+      params.chrome_channel = config.chrome_channel;
+    }
     if (config.extra_args && Array.isArray(config.extra_args) && config.extra_args.length > 0) {
       params.extra_args = config.extra_args;
     }
@@ -505,6 +508,7 @@ export class Crawl4aiClient {
     if (config.overrideNavigator === true) params.override_navigator = true;
     if (config.avoidAds === true) params.avoid_ads = true;
     if (config.avoidCss === true) params.avoid_css = true;
+    if (config.removeConsentPopups === true) params.remove_consent_popups = true;
     if (config.delayBeforeReturnHtml !== undefined) params.delay_before_return_html = config.delayBeforeReturnHtml;
     if (config.verbose === true) params.verbose = true;
     if (config.markdownGenerator) params.markdown_generator = config.markdownGenerator;

@@ -19,7 +19,6 @@ import {
 	validateLlmCredentials,
 	buildLlmConfig,
 	createLlmExtractionStrategy,
-	resolveRequestHeaders,
 } from '../helpers/utils';
 import type { SmartUrlSelectionMeta } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
@@ -1036,105 +1035,23 @@ export const description: INodeProperties[] = [
 		displayOptions: { show: { operation: ['extractData'] } },
 		options: [
 			{
-				displayName: 'Avoid Ads',
-				name: 'avoidAds',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to block ad-related network requests during crawl (reduces noise, speeds up page load)',
-			},
-			{
-				displayName: 'Avoid CSS',
-				name: 'avoidCss',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to block CSS resource requests during crawl (faster for text-only extraction)',
-			},
-			{
-				displayName: 'Browser Profile',
-				name: 'browserProfile',
+				displayName: 'Crawl Mode',
+				name: 'crawlMode',
 				type: 'options',
 				options: [
-					{ name: 'Chrome (Android)', value: 'chrome_android' },
-					{ name: 'Chrome (Linux)', value: 'chrome_linux' },
-					{ name: 'Chrome (macOS)', value: 'chrome_macos' },
-					{ name: 'Chrome (Windows)', value: 'chrome_windows' },
-					{ name: 'Custom', value: 'custom' },
-					{ name: 'Edge (Windows)', value: 'edge_windows' },
-					{ name: 'Firefox (macOS)', value: 'firefox_macos' },
-					{ name: 'Firefox (Windows)', value: 'firefox_windows' },
-					{ name: 'Googlebot', value: 'googlebot' },
-					{ name: 'None', value: 'none' },
-					{ name: 'Safari (iOS)', value: 'safari_ios' },
-					{ name: 'Safari (macOS)', value: 'safari_macos' },
+					{
+						name: 'Standard',
+						value: 'standard',
+						description: 'For most websites — 60 s timeout, simulate user, remove consent popups',
+					},
+					{
+						name: 'Anti-Bot (Cloudflare)',
+						value: 'antiBotCloudflare',
+						description: 'For Cloudflare-protected sites — patchright browser, stealth + magic mode, 120 s timeout',
+					},
 				],
-				default: 'none',
-				description: 'Preset browser headers to send with the request. Helps bypass server-side bot detection. Select Custom to enter your own headers.',
-			},
-			{
-				displayName: 'Browser Type',
-				name: 'browserType',
-				type: 'options',
-				options: [
-					{ name: 'Chromium (Default)', value: 'chromium' },
-					{ name: 'Firefox', value: 'firefox' },
-					{ name: 'Undetected (Anti-Bot)', value: 'undetected' },
-					{ name: 'WebKit', value: 'webkit' },
-				],
-				default: 'chromium',
-				description: 'Browser engine to use. Undetected uses deep browser patches to bypass Cloudflare and similar bot-protection. Firefox has a different TLS fingerprint to Chromium.',
-			},
-			{
-				displayName: 'Bypass Bot Detection',
-				name: 'stealthMode',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to enable stealth and magic mode to help bypass bot detection (use if the site blocks automated crawlers)',
-			},
-			{
-				displayName: 'Cache Mode',
-				name: 'cacheMode',
-				type: 'options',
-				options: [
-					{ name: 'Bypass (Skip Cache)', value: 'BYPASS' },
-					{ name: 'Disabled (No Cache)', value: 'DISABLED' },
-					{ name: 'Enabled (Read/Write)', value: 'ENABLED' },
-					{ name: 'Read Only', value: 'READ_ONLY' },
-					{ name: 'Write Only', value: 'WRITE_ONLY' },
-				],
-				default: 'ENABLED',
-				description: 'How to use the cache when crawling',
-			},
-			{
-				displayName: 'Custom Headers',
-				name: 'customHeaders',
-				type: 'string',
-				typeOptions: { rows: 3 },
-				default: '',
-				placeholder: 'User-Agent: Mozilla/5.0 ...\nAccept-Language: en-AU,en;q=0.9',
-				description: 'HTTP headers in Key: Value format, one per line',
-				displayOptions: { show: { browserProfile: ['custom'] } },
-			},
-			{
-				displayName: 'Default Country Code',
-				name: 'defaultCountry',
-				type: 'string',
-				default: 'AU',
-				placeholder: 'AU',
-				description: 'ISO 3166-1 alpha-2 country code (two uppercase letters) used to interpret local phone numbers that have no country prefix. Examples: AU, US, GB, NZ, DE.',
-			},
-			{
-				displayName: 'Delay Before Return (Ms)',
-				name: 'delayBeforeReturnHtml',
-				type: 'number',
-				default: 0,
-				description: 'Milliseconds to wait after page load before returning HTML. Use for pages where content loads after the initial render (e.g. AJAX-heavy sites).',
-			},
-			{
-				displayName: 'Enable Stealth Mode',
-				name: 'enableStealth',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to enable stealth mode (playwright-stealth) to avoid browser fingerprint detection',
+				default: 'standard',
+				description: 'Choose Standard for most sites; Anti-Bot for Cloudflare or bot-protected sites',
 			},
 			{
 				displayName: 'Exclude URL Patterns',
@@ -1142,90 +1059,17 @@ export const description: INodeProperties[] = [
 				type: 'string',
 				default: '',
 				placeholder: '*/admin/*,*/login/*',
-				description: 'Comma-separated URL patterns to exclude from crawling',
-				displayOptions: { show: { '/crawlScope': ['followLinks', 'fullSite'] } },
-			},
-			{
-				displayName: 'Explore Depth',
-				name: 'exploreDepth',
-				type: 'number',
-				default: 1,
-				typeOptions: { minValue: 1, maxValue: 3 },
-				description: 'How many levels deep to crawl explore-hint sections suggested by the LLM. Default 1 crawls one level into a section (e.g. /about/ to /about/contact/).',
+				description: 'Comma-separated URL patterns to exclude from crawling (only for multi-page)',
 				displayOptions: {
 					show: {
-						'/smartUrlSelection': [true],
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
 			},
-			{
-				displayName: 'Headless Mode',
-				name: 'headless',
-				type: 'boolean',
-				default: true,
-				description: 'Whether to run the browser in headless mode. Set to false to run visibly — harder for Cloudflare to detect, but slower.',
-			},
-			{
-				displayName: 'Magic Mode',
-				name: 'magic',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to enable magic mode for automatic anti-bot handling (randomises interactions and timings)',
-			},
-			{
-				displayName: 'Model Name or ID',
-				name: 'llmModel',
-				type: 'options',
-				typeOptions: { loadOptionsMethod: 'getLlmModels' },
-				default: '',
-				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-			},
-			{
-				displayName: 'Override Navigator',
-				name: 'overrideNavigator',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to override navigator properties to hide browser automation signals',
-			},
-			{
-				displayName: 'Page Timeout (Ms)',
-				name: 'pageTimeout',
-				type: 'number',
-				default: 30000,
-				description: 'Maximum time in milliseconds to wait for the page to load before failing',
-			},
-			{
-				displayName: 'Simulate User',
-				name: 'simulateUser',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to simulate realistic user behaviour (mouse movements, scrolling) to bypass bot detection',
-			},
-			{
-				displayName: 'Wait For',
-				name: 'waitFor',
-				type: 'string',
-				default: '',
-				placeholder: '.content-loaded or js:() => document.readyState === "complete"',
-				description: 'CSS selector or JS expression (prefixed with js:) to wait for before extracting content',
-			},
-			{
-				displayName: 'Wait Until',
-				name: 'waitUntil',
-				type: 'options',
-				options: [
-					{ name: 'Commit (First Byte)', value: 'commit', description: 'Return as soon as the first byte of the response is received' },
-					{ name: 'DOM Content Loaded', value: 'domcontentloaded', description: 'Wait for the DOMContentLoaded event' },
-					{ name: 'Load', value: 'load', description: 'Wait for the load event (default browser behaviour)' },
-					{ name: 'Network Idle', value: 'networkidle', description: 'Wait until no network requests for 500ms — best for AJAX/SPA sites' },
-				],
-				default: 'load',
-				description: 'Navigation event to wait for before extracting content. Use Network Idle for JS-heavy or AJAX-rendered pages.',
-			},
 		],
 	},
 ];
+
 
 export async function execute(
 	this: IExecuteFunctions,
@@ -1306,46 +1150,28 @@ export async function execute(
 				}
 			}
 
+			const crawlMode = (options.crawlMode as string) || 'standard';
 			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
-				cacheMode: (options.cacheMode as FullCrawlConfig['cacheMode']) || 'ENABLED',
+				cacheMode: 'ENABLED',
 			};
 
-			if (options.browserType) config.browserType = String(options.browserType);
-
-			if (options.stealthMode === true) {
-				config.enable_stealth = true;
-				config.magic = true;
-				config.simulateUser = true;
-				config.overrideNavigator = true;
-			}
-
-			if (options.headless === false) {
+			if (crawlMode === 'antiBotCloudflare') {
 				config.headless = false;
+				config.enable_stealth = true;
+				config.chrome_channel = 'patchright';
+				config.pageTimeout = 120000;
+				config.simulateUser = true;
+				config.magic = true;
+				config.removeConsentPopups = true;
+			} else {
+				config.pageTimeout = 60000;
+				config.simulateUser = true;
+				config.removeConsentPopups = true;
 			}
 
-			if (options.enableStealth === true) config.enable_stealth = true;
-			if (options.magic === true) config.magic = true;
-			if (options.simulateUser === true) config.simulateUser = true;
-			if (options.overrideNavigator === true) config.overrideNavigator = true;
-			if (options.pageTimeout != null) config.pageTimeout = Number(options.pageTimeout);
-
-			const resolvedHeaders = resolveRequestHeaders(
-				options.browserProfile as string | undefined,
-				options.browserProfile === 'custom' ? options.customHeaders as string | undefined : undefined,
-			);
-			if (resolvedHeaders) config.headers = resolvedHeaders;
-
-			if (options.waitFor) config.waitFor = String(options.waitFor);
-			if (options.waitUntil) config.waitUntil = String(options.waitUntil);
-			if (options.delayBeforeReturnHtml != null) {
-				config.delayBeforeReturnHtml = Number(options.delayBeforeReturnHtml) / 1000;
-			}
-			if (options.avoidAds === true) config.avoidAds = true;
-			if (options.avoidCss === true) config.avoidCss = true;
-
-			const modelOverride = options.llmModel as string | undefined;
-			const defaultCountry = (options.defaultCountry as string) || 'AU';
+			const modelOverride = undefined;
+			const defaultCountry = 'AU';
 			const useSmartUrlSelection = smartUrlSelection === true && crawlScope !== 'singlePage';
 
 			// Build combined smart URL context from all enabled extraction types
