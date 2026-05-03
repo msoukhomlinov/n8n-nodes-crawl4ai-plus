@@ -1298,12 +1298,15 @@ export async function execute(
 					try {
 						crawlOutput = await doCrawl(config);
 						standardFailed = isCrawlFailed(crawlOutput.results);
-					} catch {
+					} catch (err) {
+						if (err instanceof NodeOperationError) throw err;
 						standardFailed = true;
 						crawlOutput = { results: [] };
 					}
 
 					if (standardFailed) {
+						// getSimpleDefaults() sets browser base; applyModeToConfig overwrites
+						// pageTimeout and browser flags for the Anti-Bot mode.
 						const antiBotConfig: FullCrawlConfig = {
 							...getSimpleDefaults(),
 							cacheMode: 'ENABLED',
