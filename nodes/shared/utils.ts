@@ -691,6 +691,7 @@ export function normalizeUrlProtocol(url: string): string {
 	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
 	if (/^raw:/i.test(trimmed)) return trimmed;
 	if (trimmed.startsWith('//')) return `https:${trimmed}`;
+	if (trimmed.startsWith('/')) return trimmed;
 	return `https://${trimmed}`;
 }
 
