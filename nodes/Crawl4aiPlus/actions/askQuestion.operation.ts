@@ -290,12 +290,12 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const rawUrl = this.getNodeParameter('url', i, '') as string;
 			const question = this.getNodeParameter('question', i, '') as string;
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
-			assertValidHttpUrl(url, this.getNode(), i);
+			const url = assertValidHttpUrl(rawUrl, this.getNode(), i);
 			if (!question) {
 				throw new NodeOperationError(this.getNode(), 'Question cannot be empty.', {
 					itemIndex: i,

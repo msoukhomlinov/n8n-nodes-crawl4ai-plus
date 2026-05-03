@@ -1196,7 +1196,7 @@ export async function execute(
 
 	for (let i = 0; i < items.length; i++) {
 		try {
-			const url = this.getNodeParameter('url', i, '') as string;
+			const rawUrl = this.getNodeParameter('url', i, '') as string;
 			const crawlScope = this.getNodeParameter('crawlScope', i, 'singlePage') as string;
 			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 			const smartUrlSelection = this.getNodeParameter('smartUrlSelection', i, false) as boolean;
@@ -1243,7 +1243,7 @@ export async function execute(
 				);
 			}
 
-			assertValidHttpUrl(url, this.getNode(), i);
+			const url = assertValidHttpUrl(rawUrl, this.getNode(), i);
 
 			// Validate LLM credentials upfront for features that require them
 			const needsLlm = extractOrgName || extractLocations || extractAboutOrg || extractCustom;
