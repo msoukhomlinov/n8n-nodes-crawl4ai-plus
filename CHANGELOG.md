@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.5.0] - 2026-05-03
+
+### Added
+- **Undetected browser type** — all Simple node operations and Advanced node now expose `Undetected (Anti-Bot)` as a Browser Type option. Uses Crawl4AI's `UndetectedAdapter` with deep browser patches to bypass Cloudflare Bot Management, DataDome, and PerimeterX.
+- **Headless Mode toggle** — all Simple node operations now expose a `Headless Mode` boolean option (default: true). Setting it to false runs the browser visibly, which is significantly harder for bot-detection fingerprinting to identify as automation.
+
 ## [5.4.1] - 2026-05-03
 
 ### Fixed

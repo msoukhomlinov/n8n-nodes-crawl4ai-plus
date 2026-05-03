@@ -164,10 +164,11 @@ export const description: INodeProperties[] = [
 				options: [
 					{ name: 'Chromium (Default)', value: 'chromium' },
 					{ name: 'Firefox', value: 'firefox' },
+					{ name: 'Undetected (Anti-Bot)', value: 'undetected' },
 					{ name: 'WebKit', value: 'webkit' },
 				],
 				default: 'chromium',
-				description: 'Browser engine to use. Firefox has a different TLS fingerprint to Chromium and can bypass bot-detection systems that block headless Chrome.',
+				description: 'Browser engine to use. Undetected uses deep browser patches to bypass Cloudflare and similar bot-protection. Firefox has a different TLS fingerprint to Chromium.',
 			},
 			{
 				displayName: 'Bypass Bot Detection',
@@ -223,6 +224,13 @@ export const description: INodeProperties[] = [
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
+			},
+			{
+				displayName: 'Headless Mode',
+				name: 'headless',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to run the browser in headless mode. Set to false to run visibly — harder for Cloudflare to detect, but slower.',
 			},
 			{
 				displayName: 'Max Pages',
@@ -331,6 +339,10 @@ export async function execute(
 				config.magic = true;
 				config.simulateUser = true;
 				config.overrideNavigator = true;
+			}
+
+			if (options.headless === false) {
+				config.headless = false;
 			}
 
 			const resolvedHeaders = resolveRequestHeaders(
