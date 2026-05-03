@@ -688,8 +688,9 @@ export function cleanText(text: string): string {
 export function normalizeUrlProtocol(url: string): string {
 	const trimmed = url.trim();
 	if (!trimmed) return trimmed;
-	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
-	if (/^raw:/i.test(trimmed)) return trimmed;
+	// Pass through any existing scheme (colon not followed by digit distinguishes
+	// mailto:user, raw:html, http:example from localhost:3000, example.com:8080)
+	if (/^[a-z][a-z0-9+.-]*:[^0-9]/i.test(trimmed)) return trimmed;
 	if (trimmed.startsWith('//')) return `https:${trimmed}`;
 	if (trimmed.startsWith('/')) return trimmed;
 	return `https://${trimmed}`;
