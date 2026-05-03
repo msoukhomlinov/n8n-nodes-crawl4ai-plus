@@ -683,11 +683,12 @@ export function cleanText(text: string): string {
 /**
  * Prepend https:// when the user omits a protocol.
  * Handles: bare domain, //example.com, protocol-relative URLs.
+ * Leaves any existing scheme (http, https, ftp, data, raw, etc.) unchanged.
  */
 export function normalizeUrlProtocol(url: string): string {
 	const trimmed = url.trim();
 	if (!trimmed) return trimmed;
-	if (/^https?:\/\//i.test(trimmed)) return trimmed;
+	if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed;
 	if (trimmed.startsWith('//')) return `https:${trimmed}`;
 	return `https://${trimmed}`;
 }
