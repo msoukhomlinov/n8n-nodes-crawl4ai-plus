@@ -22,6 +22,7 @@ import {
 } from '../helpers/utils';
 import type { SmartUrlSelectionMeta } from '../helpers/utils';
 import { formatExtractedDataResult } from '../helpers/formatters';
+import { getCachedMode, setCachedMode } from '../helpers/domainModeCache';
 import { extractJsonLd } from '../../shared/seo-helpers';
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -880,7 +881,6 @@ async function runLocationsExtraction(
 	const primary: IDataObject[] = [];
 	const additional: IDataObject[] = [];
 	for (const loc of deduped) {
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		const { isPrimary, ...rest } = loc as Record<string, unknown>;
 		(isPrimary === true ? primary : additional).push(rest as IDataObject);
 	}
@@ -888,6 +888,29 @@ async function runLocationsExtraction(
 	return { primary, additional };
 }
 
+// Only accepts concrete modes — 'auto' is resolved to 'standard' or 'antiBotCloudflare'
+// by the caller before this function is invoked.
+function applyModeToConfig(config: FullCrawlConfig, mode: 'standard' | 'antiBotCloudflare'): void {
+	if (mode === 'antiBotCloudflare') {
+		config.headless = false;
+		config.text_mode = false;
+		config.enable_stealth = true;
+		config.chrome_channel = 'patchright';
+		config.pageTimeout = 110000;
+		config.waitUntil = 'load';
+		config.simulateUser = true;
+		config.magic = true;
+		config.removeConsentPopups = true;
+	} else {
+		config.pageTimeout = 60000;
+		config.simulateUser = true;
+		config.removeConsentPopups = true;
+	}
+}
+
+function isCrawlFailed(results: CrawlResult[]): boolean {
+	return results.length === 0 || results.every((r) => !r.success);
+}
 
 export const description: INodeProperties[] = [
 	{
@@ -1040,14 +1063,19 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				options: [
 					{
+						name: 'Anti-Bot (Cloudflare)',
+						value: 'antiBotCloudflare',
+						description: 'For Cloudflare-protected sites — patchright browser, stealth + magic mode, 110 s timeout',
+					},
+					{
+						name: 'Auto',
+						value: 'auto',
+						description: 'Try Standard first; retry with Anti-Bot on failure and cache the result per domain (configurable in credentials)',
+					},
+					{
 						name: 'Standard',
 						value: 'standard',
 						description: 'For most websites — 60 s timeout, simulate user, remove consent popups',
-					},
-					{
-						name: 'Anti-Bot (Cloudflare)',
-						value: 'antiBotCloudflare',
-						description: 'For Cloudflare-protected sites — patchright browser, stealth + magic mode, 120 s timeout',
 					},
 				],
 				default: 'standard',
@@ -1080,7 +1108,7 @@ export const description: INodeProperties[] = [
 				type: 'options',
 				typeOptions: { loadOptionsMethod: 'getLlmModels' },
 				default: '',
-				description: 'Override the LLM model used for extraction. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				description: 'Override the LLM model used for extraction. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 		],
 	},
@@ -1167,25 +1195,37 @@ export async function execute(
 			}
 
 			const crawlMode = (options.crawlMode as string) || 'standard';
+			const effectiveCrawlMode: 'auto' | 'standard' | 'antiBotCloudflare' =
+				(crawlMode === 'auto' || crawlMode === 'standard' || crawlMode === 'antiBotCloudflare')
+					? crawlMode
+					: 'standard';
+
+			const cachePath = (credentials.autoCacheFilePath as string) || '';
+			const cacheTtlDays = typeof credentials.autoCacheTtlDays === 'number'
+				? credentials.autoCacheTtlDays
+				: 30;
+
 			const config: FullCrawlConfig = {
 				...getSimpleDefaults(),
 				cacheMode: 'ENABLED',
 			};
 
-			if (crawlMode === 'antiBotCloudflare') {
-				config.headless = false;
-				config.text_mode = false;
-				config.enable_stealth = true;
-				config.chrome_channel = 'patchright';
-				config.pageTimeout = 110000;
-				config.waitUntil = 'load';
-				config.simulateUser = true;
-				config.magic = true;
-				config.removeConsentPopups = true;
+			// For Auto mode: resolve domain + perform single cache lookup here.
+			// The result is reused for both initial config setup and the routing
+			// decision below — avoids a second file read and eliminates any
+			// inconsistency if the cache changed between two reads.
+			let domain: string | undefined;
+			let cachedMode: 'antiBotCloudflare' | null = null;
+			if (effectiveCrawlMode === 'auto') {
+				try {
+					domain = new URL(url).hostname;
+				} catch {
+					domain = undefined;
+				}
+				cachedMode = domain ? await getCachedMode(cachePath, domain) : null;
+				applyModeToConfig(config, cachedMode || 'standard');
 			} else {
-				config.pageTimeout = 60000;
-				config.simulateUser = true;
-				config.removeConsentPopups = true;
+				applyModeToConfig(config, effectiveCrawlMode);
 			}
 
 			const modelOverride = (options.llmModel as string | undefined) || undefined;
@@ -1204,46 +1244,100 @@ export async function execute(
 			// Use location keywords when locations extraction is enabled
 			const keywords = extractLocations ? LOCATION_QUERY_KEYWORDS : undefined;
 
-			let results: CrawlResult[];
-			let smartUrlMeta: SmartUrlSelectionMeta | undefined;
-
-			if (useSmartUrlSelection) {
-				const exploreDepth = Math.max(1, Math.min(3, Number(options.exploreDepth ?? 1)));
-				const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
-				const smartResult = await executeSmartUrlCrawl(
-					client,
-					url,
-					config,
-					{
-						maxPages: maxPages ?? 10,
-						excludePatterns: options.excludePatterns as string | undefined,
-					},
-					{
-						extractionContext,
-						exploreDepth,
-						provider,
-						apiKey,
-						baseUrl,
-						keywords,
-					},
-					this.getNode(),
-					i,
-				);
-				results = smartResult.results;
-				smartUrlMeta = smartResult.meta;
-			} else {
-				results = await executeCrawl(
+			const doCrawl = async (
+				cfg: FullCrawlConfig,
+			): Promise<{ results: CrawlResult[]; meta?: SmartUrlSelectionMeta }> => {
+				if (useSmartUrlSelection) {
+					const exploreDepth = Math.max(1, Math.min(3, Number(options.exploreDepth ?? 1)));
+					const { provider, apiKey, baseUrl } = buildLlmConfig(credentials, modelOverride || undefined);
+					const smartResult = await executeSmartUrlCrawl(
+						client,
+						url,
+						cfg,
+						{
+							maxPages: maxPages ?? 10,
+							excludePatterns: options.excludePatterns as string | undefined,
+						},
+						{
+							extractionContext,
+							exploreDepth,
+							provider,
+							apiKey,
+							baseUrl,
+							keywords,
+						},
+						this.getNode(),
+						i,
+					);
+					return { results: smartResult.results, meta: smartResult.meta };
+				}
+				const res = await executeCrawl(
 					client,
 					url,
 					crawlScope as 'singlePage' | 'followLinks' | 'fullSite',
-					config,
+					cfg,
 					{
 						maxPages: maxPages ?? undefined,
 						excludePatterns: options.excludePatterns as string | undefined,
 						keywords,
 					},
 				);
+				return { results: res };
+			};
+
+			let crawlOutput: { results: CrawlResult[]; meta?: SmartUrlSelectionMeta };
+
+			if (effectiveCrawlMode === 'auto') {
+				// cachedMode was resolved once above — no second file read here.
+				if (cachedMode === 'antiBotCloudflare') {
+					// Config already set to Anti-Bot above; single attempt.
+					crawlOutput = await doCrawl(config);
+				} else {
+					// Cache miss: try Standard first, retry with Anti-Bot on failure.
+					let standardFailed = false;
+					try {
+						crawlOutput = await doCrawl(config);
+						standardFailed = isCrawlFailed(crawlOutput.results);
+					} catch {
+						standardFailed = true;
+						crawlOutput = { results: [] };
+					}
+
+					if (standardFailed) {
+						// getSimpleDefaults() sets browser base; applyModeToConfig overwrites
+						// pageTimeout and browser flags for the Anti-Bot mode.
+						const antiBotConfig: FullCrawlConfig = {
+							...getSimpleDefaults(),
+							cacheMode: 'ENABLED',
+						};
+						applyModeToConfig(antiBotConfig, 'antiBotCloudflare');
+						crawlOutput = await doCrawl(antiBotConfig);
+						// Only cache when Anti-Bot itself succeeded — caching a failure
+						// would lock the domain into a permanently-failing mode.
+						if (domain && !isCrawlFailed(crawlOutput.results)) {
+							// Store under both the requested FQDN and the redirected FQDN
+							// (if the server redirected, e.g. example.com → www.example.com)
+							// so either form hits the cache on subsequent runs.
+							const domainsToCache: string[] = [domain];
+							const redirectedUrl = crawlOutput.results[0]?.redirected_url;
+							if (redirectedUrl) {
+								try {
+									const redirectedHostname = new URL(redirectedUrl).hostname;
+									if (redirectedHostname && redirectedHostname !== domain) {
+										domainsToCache.push(redirectedHostname);
+									}
+								} catch { /* ignore malformed redirected_url */ }
+							}
+							await setCachedMode(cachePath, domainsToCache, 'antiBotCloudflare', cacheTtlDays);
+						}
+					}
+				}
+			} else {
+				crawlOutput = await doCrawl(config);
 			}
+
+			const results: CrawlResult[] = crawlOutput.results;
+			const smartUrlMeta: SmartUrlSelectionMeta | undefined = crawlOutput.meta;
 
 			const data: IDataObject = {};
 
