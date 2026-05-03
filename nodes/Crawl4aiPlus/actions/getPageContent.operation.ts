@@ -207,6 +207,13 @@ export const description: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Enable Stealth Mode',
+				name: 'enableStealth',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable stealth mode (playwright-stealth) to avoid browser fingerprint detection',
+			},
+			{
 				displayName: 'Exclude URL Patterns',
 				name: 'excludePatterns',
 				type: 'string',
@@ -241,6 +248,13 @@ export const description: INodeProperties[] = [
 				description: 'Whether to include structured links in output',
 			},
 			{
+				displayName: 'Magic Mode',
+				name: 'magic',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to enable magic mode for automatic anti-bot handling (randomises interactions and timings)',
+			},
+			{
 				displayName: 'Max Pages',
 				name: 'maxPages',
 				type: 'number',
@@ -251,6 +265,27 @@ export const description: INodeProperties[] = [
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
+			},
+			{
+				displayName: 'Override Navigator',
+				name: 'overrideNavigator',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to override navigator properties to hide browser automation signals',
+			},
+			{
+				displayName: 'Page Timeout (Ms)',
+				name: 'pageTimeout',
+				type: 'number',
+				default: 30000,
+				description: 'Maximum time in milliseconds to wait for the page to load before failing',
+			},
+			{
+				displayName: 'Simulate User',
+				name: 'simulateUser',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to simulate realistic user behaviour (mouse movements, scrolling) to bypass bot detection',
 			},
 			{
 				displayName: 'Wait For',
@@ -316,6 +351,12 @@ export async function execute(
 			if (options.headless === false) {
 				config.headless = false;
 			}
+
+			if (options.enableStealth === true) config.enable_stealth = true;
+			if (options.magic === true) config.magic = true;
+			if (options.simulateUser === true) config.simulateUser = true;
+			if (options.overrideNavigator === true) config.overrideNavigator = true;
+			if (options.pageTimeout != null) config.pageTimeout = Number(options.pageTimeout);
 
 			const resolvedHeaders = resolveRequestHeaders(
 				options.browserProfile as string | undefined,
