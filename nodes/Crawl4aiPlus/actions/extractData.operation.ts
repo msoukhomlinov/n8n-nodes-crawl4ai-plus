@@ -1054,6 +1054,14 @@ export const description: INodeProperties[] = [
 				description: 'Choose Standard for most sites; Anti-Bot for Cloudflare or bot-protected sites',
 			},
 			{
+				displayName: 'Default Country Code',
+				name: 'defaultCountry',
+				type: 'string',
+				default: 'AU',
+				placeholder: 'AU',
+				description: 'ISO 3166-1 alpha-2 country code used to interpret local phone numbers that have no country prefix (e.g. AU, US, GB, NZ)',
+			},
+			{
 				displayName: 'Exclude URL Patterns',
 				name: 'excludePatterns',
 				type: 'string',
@@ -1065,6 +1073,14 @@ export const description: INodeProperties[] = [
 						'/crawlScope': ['followLinks', 'fullSite'],
 					},
 				},
+			},
+			{
+				displayName: 'Model Name or ID',
+				name: 'llmModel',
+				type: 'options',
+				typeOptions: { loadOptionsMethod: 'getLlmModels' },
+				default: '',
+				description: 'Override the LLM model used for extraction. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
 		],
 	},
@@ -1172,8 +1188,8 @@ export async function execute(
 				config.removeConsentPopups = true;
 			}
 
-			const modelOverride = undefined;
-			const defaultCountry = 'AU';
+			const modelOverride = (options.llmModel as string | undefined) || undefined;
+			const defaultCountry = (options.defaultCountry as string) || 'AU';
 			const useSmartUrlSelection = smartUrlSelection === true && crawlScope !== 'singlePage';
 
 			// Build combined smart URL context from all enabled extraction types
