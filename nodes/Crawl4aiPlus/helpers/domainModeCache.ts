@@ -30,8 +30,11 @@ function resolvePath(configuredPath: string): string {
 }
 
 // Singleton KeyvFile instances keyed by resolved file path.
-// Prevents leaking one setInterval handle per buildKeyv() call in the
-// long-running n8n process — each KeyvFile starts an expiry-scan interval.
+// KeyvFile reads the cache file synchronously in its constructor and keeps
+// its own in-memory Map; multiple instances against the same file would each
+// load the file at construction time and could see stale views of each other's
+// writes. One instance per path avoids both the redundant disk read and
+// inconsistent in-memory state.
 const storeInstances = new Map<string, KeyvFile>();
 
 function buildKeyv(configuredPath: string): Keyv<DomainCacheSchema> {
