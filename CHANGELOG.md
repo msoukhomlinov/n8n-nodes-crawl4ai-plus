@@ -1,5 +1,10 @@
 # Changelog
 
+## [5.4.1] - 2026-05-03
+
+### Fixed
+- All nodes: URLs without a protocol (e.g. `www.example.com`) are now automatically normalized to `https://` instead of throwing a validation error.
+
 ## [5.4.0] - 2026-05-02
 
 ### Added
