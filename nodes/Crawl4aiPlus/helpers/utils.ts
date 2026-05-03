@@ -1,7 +1,7 @@
 import { IDataObject, INode, NodeOperationError } from 'n8n-workflow';
 import { Crawl4aiClient } from '../../shared/apiClient';
 import { DeepCrawlStrategy, ExtractionStrategy, FullCrawlConfig, CrawlResult } from '../../shared/interfaces';
-import { createLlmExtractionStrategy } from '../../shared/utils';
+import { createLlmExtractionStrategy, normalizeUrlProtocol } from '../../shared/utils';
 
 // Re-export shared utilities needed by operations
 export {
@@ -29,13 +29,14 @@ export interface SmartUrlSelectionMeta {
  * Validate that a URL is non-empty and uses http/https protocol.
  * Throws NodeOperationError with a human-readable message on failure.
  */
-export function assertValidHttpUrl(url: string, node: INode, itemIndex: number): void {
-	if (!url) {
+export function assertValidHttpUrl(url: string, node: INode, itemIndex: number): string {
+	if (!url || !url.trim()) {
 		throw new NodeOperationError(node, 'URL cannot be empty.', { itemIndex });
 	}
+	const normalized = normalizeUrlProtocol(url);
 	let parsed: URL;
 	try {
-		parsed = new URL(url);
+		parsed = new URL(normalized);
 	} catch {
 		throw new NodeOperationError(node, `Invalid URL: "${url}" — check for typos (e.g. missing or extra characters in "https://").`, { itemIndex });
 	}
@@ -46,6 +47,7 @@ export function assertValidHttpUrl(url: string, node: INode, itemIndex: number):
 			{ itemIndex },
 		);
 	}
+	return normalized;
 }
 
 /**
