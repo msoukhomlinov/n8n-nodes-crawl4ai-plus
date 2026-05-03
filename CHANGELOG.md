@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.6.0] - 2026-05-03
+
+### Added
+- `extractData`: new **Auto** option for Crawl Mode — tries Standard first and automatically retries with Anti-Bot on failure
+- Per-domain mode cache (file-backed via `keyv` + `keyv-file`) stores successful Anti-Bot decisions; future runs for the same domain skip straight to Anti-Bot
+- Hostname normalisation — `example.com` and `www.example.com` share a single cache entry, so toggling between bare and www-prefixed URLs reuses the same cached decision
+- Redirect-aware caching — when the server redirects (e.g. `example.com` → `www.example.com`), both the requested and final hostnames are stored under the normalised key so either form hits the cache on subsequent runs
+- Cache values use a versioned schema (`schemaVersion`, `nodePackageVersion`, `mode`) so future shape changes can invalidate stale entries safely without losing cache state on every package upgrade
+- Credentials: `Auto Crawl: Cache File Path` (default `~/.n8n/crawl4ai-mode-cache.json`) and `Auto Crawl: Cache TTL (Days)` (default 30) fields
+
+### Dependencies
+- Added `keyv` and `keyv-file` as runtime dependencies
+
+### Fixed
+- Anti-Bot mode description in `extractData` Crawl Mode dropdown corrected from "120 s timeout" to "110 s timeout" (matches actual `pageTimeout` value)
+
 ## [5.5.0] - 2026-05-03
 
 ### Added
