@@ -243,6 +243,7 @@ export class Crawl4aiApi implements ICredentialType {
 			displayName: 'Auto Crawl: Cache TTL (Days)',
 			name: 'autoCacheTtlDays',
 			type: 'number',
+			typeOptions: { minValue: 1 },
 			default: 30,
 			description: 'How many days to remember that a domain needs Anti-Bot mode before retrying with Standard. Default: 30.',
 		},
