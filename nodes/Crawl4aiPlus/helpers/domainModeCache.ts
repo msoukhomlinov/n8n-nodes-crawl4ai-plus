@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import Keyv from 'keyv';
@@ -12,8 +13,16 @@ const SCHEMA_VERSION = 1 as const;
 // entries for diagnostic purposes ONLY — it does NOT invalidate entries.
 // Allows operators to spot stale entries written by older node versions
 // when inspecting the cache file.
-import * as pkg from '../../../package.json';
-const NODE_PACKAGE_VERSION: string = (pkg as { version: string }).version;
+// Runtime path: dist/nodes/Crawl4aiPlus/helpers/ → ../../../../ = package root.
+// fs.readFileSync used instead of a static import to avoid the dist-path mismatch
+// that a relative require('../../../package.json') would cause at runtime.
+let NODE_PACKAGE_VERSION = 'unknown';
+try {
+	const raw = fs.readFileSync(path.join(__dirname, '../../../../package.json'), 'utf8');
+	NODE_PACKAGE_VERSION = (JSON.parse(raw) as { version: string }).version;
+} catch {
+	// informational only — ignore if not resolvable
+}
 
 export interface DomainCacheSchema {
 	schemaVersion: typeof SCHEMA_VERSION;
