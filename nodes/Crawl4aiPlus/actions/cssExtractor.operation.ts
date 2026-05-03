@@ -373,7 +373,6 @@ export async function execute(
 				config.magic = true;
 				config.simulateUser = true;
 				config.overrideNavigator = true;
-				config.pageTimeout = 110000;
 			}
 
 			if (options.headless === false) {
@@ -385,6 +384,7 @@ export async function execute(
 			if (options.simulateUser === true) config.simulateUser = true;
 			if (options.overrideNavigator === true) config.overrideNavigator = true;
 			if (options.pageTimeout != null) config.pageTimeout = Number(options.pageTimeout);
+			if (options.stealthMode === true && (config.pageTimeout ?? 0) < 110000) config.pageTimeout = 110000;
 
 			const resolvedHeaders = resolveRequestHeaders(
 				options.browserProfile as string | undefined,
