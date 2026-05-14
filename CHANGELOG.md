@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.6.3] - 2026-05-14
+
+### Fixed
+- `extractData` Smart URL Selection regression introduced in 5.6.2: `jsCode` + `delayBeforeReturnHtml` hardening was scoped to the seed crawl only, so the subsequent LLM URL-selection, explore mini-crawls, and final extraction crawls reverted to the unhardened config. On LiteSpeed/WP-Rocket sites every sub-page returned 1-char markdown, and every downstream extraction (`extractOrgName`, `extractAboutOrg`, `extractCustom`, `extractLocations`, `extractEmails` LLM annotation) received empty input and returned `null` or empty arrays even though the seed crawl looked successful.
+- Hardening (`jsCode` + minimum 3 s `delayBeforeReturnHtml`) now applies to all crawls inside `executeSmartUrlCrawl` — every sub-page of a LiteSpeed/Yoast site exhibits the same pattern and needs the same fix.
+- `waitUntil` `'commit'` → `'load'` rewrite remains seed-only via `hardenedSeedConfig` — Anti-Bot mode's `waitUntil: 'commit'` Cloudflare-redirect safeguard still reaches the actual target pages.
+
 ## [5.6.2] - 2026-05-14
 
 ### Fixed
