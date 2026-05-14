@@ -4,7 +4,8 @@
 
 ### Fixed
 - `extractData` Smart URL Selection: seed crawl now extracts content and links from sites that use deferred-JS plugins (LiteSpeed Cache "Delay JS Until Interaction", WP-Rocket Delay JavaScript Execution, Perfmatters Script Delay, Flying Scripts) and from sites that emit malformed nested `<noscript>` blocks (Yoast SEO + GTM combination). Previously these returned 1-char markdown and zero links, then surfaced as "Smart URL selection: no same-domain links found on seed page" regardless of Standard or Anti-Bot mode.
-- Seed crawl `waitUntil` now upgraded from `'commit'` (set by Anti-Bot mode for Cloudflare redirect handling) to `'load'` so the DOM is fully parsed before link extraction runs.
+- Hardening is scoped to the seed crawl only — downstream URL-selection, explore, and final-target crawls keep the original config so Anti-Bot mode's `waitUntil: 'commit'` Cloudflare-redirect safeguard, and any user-provided `js_code`/`delay_before_return_html` settings, reach the actual target pages unchanged.
+- Seed crawl `waitUntil` upgraded from `'commit'` to `'load'` so the DOM is fully parsed before link extraction runs.
 - Seed crawl `delay_before_return_html` raised to at least 3 s so deferred-JS plugins have time to load and execute their scripts after our trigger.
 - Seed crawl `js_code` now (1) calls `litespeed_load_delayed_js_force()` if present, (2) dispatches `mouseover`/`click`/`keydown`/`wheel`/`touchstart`/`scroll` on `window` to trigger any other delay-JS plugin's loader, (3) waits 1.5 s for scripts to mutate the DOM, (4) removes all `<noscript>` elements from the DOM before Crawl4AI captures the HTML — Yoast/GTM nested noscript otherwise tricks the server-side lxml parser into swallowing the entire `<body>`.
 

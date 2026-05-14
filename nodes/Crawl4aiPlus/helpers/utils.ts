@@ -362,9 +362,14 @@ export async function executeSmartUrlCrawl(
 	};
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { extractionStrategy: _es, deepCrawlStrategy: _dcs, ...seedConfigRest } = extendedConfig;
+	const seedConfig = seedConfigRest as FullCrawlConfig;
 
-	// Harden seed crawl so it can extract links from sites with deferred JS execution
-	// and malformed nested <noscript> blocks. These problem patterns are common:
+	// Hardening below applies ONLY to the seed crawl (line below). Downstream calls
+	// (selectionConfig, explore crawls, finalConfig) keep the unmodified seedConfig
+	// so that Anti-Bot mode's waitUntil='commit' Cloudflare-redirect safeguard, and
+	// any user-provided jsCode/delay settings, reach the actual target pages unchanged.
+	//
+	// Why the seed needs hardening:
 	//   - LiteSpeed Cache "Delay JS Until Interaction": all <script> tags use
 	//     type="litespeed/javascript" and only execute after a UI event fires on window.
 	//     WP-Rocket, Perfmatters, and Flying Scripts follow the same pattern.
@@ -376,7 +381,7 @@ export async function executeSmartUrlCrawl(
 	//   2. Dispatch the UI events other delay-JS plugins listen for
 	//   3. Wait for the now-loaded scripts to mutate the DOM
 	//   4. Remove <noscript> elements so lxml never sees the malformed nesting
-	const existingJsCode = seedConfigRest.jsCode;
+	const existingJsCode = seedConfig.jsCode;
 	const existingJsCodeArray = Array.isArray(existingJsCode)
 		? existingJsCode
 		: existingJsCode
@@ -389,17 +394,18 @@ export async function executeSmartUrlCrawl(
 		"document.querySelectorAll('noscript').forEach(function(n){ n.remove(); });",
 	];
 
-	const seedConfig: FullCrawlConfig = {
-		...seedConfigRest,
-		// 'commit' (set by Anti-Bot mode) returns before the DOM is ready for link extraction
-		waitUntil: seedConfigRest.waitUntil === 'commit' ? 'load' : (seedConfigRest.waitUntil ?? 'load'),
+	const hardenedSeedConfig: FullCrawlConfig = {
+		...seedConfig,
+		// 'commit' (set by Anti-Bot mode for Cloudflare redirect handling) returns before
+		// the DOM is ready for link extraction. Override for the seed only.
+		waitUntil: seedConfig.waitUntil === 'commit' ? 'load' : (seedConfig.waitUntil ?? 'load'),
 		// At least 3 s — enough for deferred scripts to load and execute
-		delayBeforeReturnHtml: Math.max(seedConfigRest.delayBeforeReturnHtml ?? 0, 3),
+		delayBeforeReturnHtml: Math.max(seedConfig.delayBeforeReturnHtml ?? 0, 3),
 		jsCode: [...seedHardeningJsCode, ...existingJsCodeArray],
 	};
 
 	// 1. Seed crawl
-	const seedResult = await client.crawlUrl(url, seedConfig);
+	const seedResult = await client.crawlUrl(url, hardenedSeedConfig);
 	if (!seedResult.success) {
 		throw new NodeOperationError(
 			node,
