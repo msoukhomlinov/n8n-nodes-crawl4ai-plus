@@ -362,46 +362,55 @@ export async function executeSmartUrlCrawl(
 	};
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { extractionStrategy: _es, deepCrawlStrategy: _dcs, ...seedConfigRest } = extendedConfig;
-	const seedConfig = seedConfigRest as FullCrawlConfig;
 
-	// Hardening below applies ONLY to the seed crawl (line below). Downstream calls
-	// (selectionConfig, explore crawls, finalConfig) keep the unmodified seedConfig
-	// so that Anti-Bot mode's waitUntil='commit' Cloudflare-redirect safeguard, and
-	// any user-provided jsCode/delay settings, reach the actual target pages unchanged.
-	//
-	// Why the seed needs hardening:
+	// Hardening rationale:
 	//   - LiteSpeed Cache "Delay JS Until Interaction": all <script> tags use
 	//     type="litespeed/javascript" and only execute after a UI event fires on window.
 	//     WP-Rocket, Perfmatters, and Flying Scripts follow the same pattern.
 	//   - Yoast SEO + Google Tag Manager emit nested <noscript><iframe><noscript>... which
 	//     lxml parses as children of the outer noscript, swallowing the entire <body>.
 	//     Crawl4AI then strips noscript before link extraction and the body disappears.
-	// We solve both in jsCode (runs after page load, before page.content() is captured):
+	// jsCode (runs after page load, before page.content() is captured):
 	//   1. Force LiteSpeed's delayed-JS loader to run now
 	//   2. Dispatch the UI events other delay-JS plugins listen for
 	//   3. Wait for the now-loaded scripts to mutate the DOM
 	//   4. Remove <noscript> elements so lxml never sees the malformed nesting
-	const existingJsCode = seedConfig.jsCode;
-	const existingJsCodeArray = Array.isArray(existingJsCode)
-		? existingJsCode
-		: existingJsCode
-			? [existingJsCode]
+	//
+	// jsCode + delayBeforeReturnHtml apply to ALL crawls in this function (seed,
+	// LLM URL selection, explore mini-crawls, final extraction crawl) because every
+	// sub-page of a LiteSpeed/Yoast site exhibits the same pattern — if hardening
+	// only ran on the seed, the final crawls would return 1-char markdown and every
+	// downstream extraction (orgName, aboutOrg, custom, locations, emails) would
+	// receive empty input.
+	//
+	// waitUntil rewrite ('commit' -> 'load') is SEED-ONLY via hardenedSeedConfig.
+	// Anti-Bot mode sets waitUntil='commit' to dodge Playwright CDP races on
+	// Cloudflare redirect chains; that safeguard must reach the actual target pages.
+	const userJsCode = seedConfigRest.jsCode;
+	const userJsCodeArray = Array.isArray(userJsCode)
+		? userJsCode
+		: userJsCode
+			? [userJsCode]
 			: [];
-	const seedHardeningJsCode: string[] = [
+	const hardeningJsCode: string[] = [
 		"if (typeof litespeed_load_delayed_js_force === 'function') { litespeed_load_delayed_js_force(); }",
 		"['mouseover','click','keydown','wheel','touchstart','scroll'].forEach(function(ev){ window.dispatchEvent(new Event(ev, {bubbles:true})); });",
 		"await new Promise(function(r){ setTimeout(r, 1500); });",
 		"document.querySelectorAll('noscript').forEach(function(n){ n.remove(); });",
 	];
 
+	const seedConfig: FullCrawlConfig = {
+		...seedConfigRest,
+		// At least 3 s — enough for deferred scripts to load and execute
+		delayBeforeReturnHtml: Math.max(seedConfigRest.delayBeforeReturnHtml ?? 0, 3),
+		jsCode: [...hardeningJsCode, ...userJsCodeArray],
+	};
+
 	const hardenedSeedConfig: FullCrawlConfig = {
 		...seedConfig,
 		// 'commit' (set by Anti-Bot mode for Cloudflare redirect handling) returns before
 		// the DOM is ready for link extraction. Override for the seed only.
 		waitUntil: seedConfig.waitUntil === 'commit' ? 'load' : (seedConfig.waitUntil ?? 'load'),
-		// At least 3 s — enough for deferred scripts to load and execute
-		delayBeforeReturnHtml: Math.max(seedConfig.delayBeforeReturnHtml ?? 0, 3),
-		jsCode: [...seedHardeningJsCode, ...existingJsCodeArray],
 	};
 
 	// 1. Seed crawl
