@@ -362,7 +362,41 @@ export async function executeSmartUrlCrawl(
 	};
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { extractionStrategy: _es, deepCrawlStrategy: _dcs, ...seedConfigRest } = extendedConfig;
-	const seedConfig = seedConfigRest as FullCrawlConfig;
+
+	// Harden seed crawl so it can extract links from sites with deferred JS execution
+	// and malformed nested <noscript> blocks. These problem patterns are common:
+	//   - LiteSpeed Cache "Delay JS Until Interaction": all <script> tags use
+	//     type="litespeed/javascript" and only execute after a UI event fires on window.
+	//     WP-Rocket, Perfmatters, and Flying Scripts follow the same pattern.
+	//   - Yoast SEO + Google Tag Manager emit nested <noscript><iframe><noscript>... which
+	//     lxml parses as children of the outer noscript, swallowing the entire <body>.
+	//     Crawl4AI then strips noscript before link extraction and the body disappears.
+	// We solve both in jsCode (runs after page load, before page.content() is captured):
+	//   1. Force LiteSpeed's delayed-JS loader to run now
+	//   2. Dispatch the UI events other delay-JS plugins listen for
+	//   3. Wait for the now-loaded scripts to mutate the DOM
+	//   4. Remove <noscript> elements so lxml never sees the malformed nesting
+	const existingJsCode = seedConfigRest.jsCode;
+	const existingJsCodeArray = Array.isArray(existingJsCode)
+		? existingJsCode
+		: existingJsCode
+			? [existingJsCode]
+			: [];
+	const seedHardeningJsCode: string[] = [
+		"if (typeof litespeed_load_delayed_js_force === 'function') { litespeed_load_delayed_js_force(); }",
+		"['mouseover','click','keydown','wheel','touchstart','scroll'].forEach(function(ev){ window.dispatchEvent(new Event(ev, {bubbles:true})); });",
+		"await new Promise(function(r){ setTimeout(r, 1500); });",
+		"document.querySelectorAll('noscript').forEach(function(n){ n.remove(); });",
+	];
+
+	const seedConfig: FullCrawlConfig = {
+		...seedConfigRest,
+		// 'commit' (set by Anti-Bot mode) returns before the DOM is ready for link extraction
+		waitUntil: seedConfigRest.waitUntil === 'commit' ? 'load' : (seedConfigRest.waitUntil ?? 'load'),
+		// At least 3 s — enough for deferred scripts to load and execute
+		delayBeforeReturnHtml: Math.max(seedConfigRest.delayBeforeReturnHtml ?? 0, 3),
+		jsCode: [...seedHardeningJsCode, ...existingJsCodeArray],
+	};
 
 	// 1. Seed crawl
 	const seedResult = await client.crawlUrl(url, seedConfig);
