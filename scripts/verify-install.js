@@ -21,7 +21,7 @@
  * `node scripts/verify-install.js`.
  */
 
-var REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js'];
+var REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js', 'keyv', 'keyv-file'];
 
 var failed = [];
 

@@ -32,7 +32,7 @@ declare const require: {
  * scripts are disabled. It simply makes the failure diagnosable directly from
  * n8n's logs, immediately, instead of leaving a raw stack trace.
  */
-const REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js'] as const;
+const REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js', 'keyv', 'keyv-file'] as const;
 
 const missing: string[] = [];
 
