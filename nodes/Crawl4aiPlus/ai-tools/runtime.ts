@@ -48,14 +48,32 @@ const OWN_PACKAGE_NAME = 'n8n-nodes-crawl4ai-plus';
 
 const ANCHOR_CANDIDATES = ['@langchain/core/tools', '@langchain/classic/agents', 'langchain/agents'] as const;
 
-/** n8n-owned packages to anchor DynamicStructuredTool resolution against, in order. */
-const LANGCHAIN_TREE_PATTERNS = ['@n8n/n8n-nodes-langchain', '@langchain/classic'] as const;
+/**
+ * n8n-owned package to anchor DynamicStructuredTool resolution against.
+ * @langchain/classic is deliberately NOT included: it is a public LangChain
+ * package, not n8n-owned, so another community node bundling its own copy
+ * could be the one found in require.cache — reintroducing the exact
+ * cross-tree contamination this anchor exists to avoid. Only a package n8n
+ * itself owns (which community nodes never bundle) is a safe cache anchor.
+ */
+const LANGCHAIN_TREE_PATTERNS = ['@n8n/n8n-nodes-langchain'] as const;
 
 /**
- * n8n-owned packages to anchor zod resolution against, in order — all resolve
- * the same top-level zod n8n's `instanceof ZodType` check uses.
+ * Authoritative zod anchor: @n8n/n8n-nodes-langchain is the package whose
+ * `normalizeToolSchema` performs the `instanceof ZodType` check, so its own
+ * zod resolution IS the identity that matters. A hit here is safe to memoize
+ * permanently.
  */
-const ZOD_TREE_PATTERNS = ['@n8n/n8n-nodes-langchain', 'n8n-workflow', 'n8n-core'] as const;
+const ZOD_AUTHORITATIVE_PATTERN = ['@n8n/n8n-nodes-langchain'] as const;
+
+/**
+ * Fallback zod anchors, tried only if the authoritative one isn't cached yet.
+ * n8n's pnpm workspace does not guarantee every package resolves the same
+ * zod version (e.g. n8n-workflow can pin an older zod than the langchain
+ * package does) — a hit here is NOT identity-safe and must never be
+ * memoized, so a later call can still upgrade to the authoritative copy.
+ */
+const ZOD_FALLBACK_PATTERNS = ['n8n-workflow', 'n8n-core'] as const;
 
 const { createRequire } = require('module') as {
 	createRequire: (filename: string) => NodeRequire;
@@ -183,15 +201,30 @@ function resolveDynamicStructuredTool(): DynamicStructuredToolCtor | undefined {
 function resolveRuntimeZod(): RuntimeZod | undefined {
 	if (_runtimeZod) return _runtimeZod;
 
-	// Positive n8n-owned-tree anchor only — ties the resolved zod to n8n's own
-	// dependency graph so `instanceof ZodType` matches what normalizeToolSchema
-	// checks against, regardless of install layout (hoisted or pnpm-isolated).
+	// 1. Authoritative anchor — @n8n/n8n-nodes-langchain is the package whose
+	//    instanceof ZodType check this zod must match. Safe to memoize.
 	try {
-		const mod = requireFromCachedTree(ZOD_TREE_PATTERNS, 'zod');
+		const mod = requireFromCachedTree(ZOD_AUTHORITATIVE_PATTERN, 'zod');
 		if (isZodNamespace(mod)) {
 			_runtimeZod = mod;
 			zodLoadError = null;
-			zodResolutionDiagnostic = 'resolved via n8n-owned-tree anchor';
+			zodResolutionDiagnostic = 'resolved via @n8n/n8n-nodes-langchain anchor (authoritative)';
+			return mod;
+		}
+	} catch (e) {
+		zodLoadError = e instanceof Error ? e.message : String(e);
+	}
+
+	// 2. Fallback anchors — may carry a different zod version than the
+	//    authoritative package resolves, so NEVER memoize: every call retries
+	//    tier 1 first, so a later call can still upgrade once
+	//    @n8n/n8n-nodes-langchain is resident in require.cache.
+	try {
+		const mod = requireFromCachedTree(ZOD_FALLBACK_PATTERNS, 'zod');
+		if (isZodNamespace(mod)) {
+			zodLoadError = null;
+			zodResolutionDiagnostic =
+				'resolved via fallback anchor (n8n-workflow/n8n-core) — unverified identity, not memoized';
 			return mod;
 		}
 	} catch (e) {
