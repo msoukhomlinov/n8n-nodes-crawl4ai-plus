@@ -43,3 +43,6 @@ package-lock.json
 
 # Git worktrees
 .worktrees/
+
+# Remember skill history
+/.remember
