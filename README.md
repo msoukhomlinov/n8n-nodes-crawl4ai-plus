@@ -121,23 +121,25 @@ Then restart your n8n instance. The nodes are declared in `package.json → "n8n
 
 ```text
 Failed to load package "n8n-nodes-crawl4ai-plus"
-Error: Cannot find module '/home/node/.n8n/nodes/node_modules/n8n-nodes-crawl4ai-plus/node_modules/axios/dist/node/axios.cjs'
+Error: Cannot find module '/home/node/.n8n/nodes/node_modules/n8n-nodes-crawl4ai-plus/node_modules/libphonenumber-js/index.cjs.js'
 ```
 
 followed by `Unrecognized node type: n8n-nodes-crawl4ai-plus.crawl4aiPlus`.
 
-**Cause:** In n8n **queue mode** with multiple workers sharing a single `.n8n/nodes` volume, the npm install into that shared directory can be interrupted by a race between the main process and worker processes touching the same `node_modules` tree concurrently on container start. This can leave one of this package's nested dependencies (`axios`, `zod`, `libphonenumber-js`, `keyv`, or `keyv-file`) truncated — the package directory exists but is missing its actual entry-point file. Because n8n only runs npm install once per package and doesn't re-check already-"present" node_modules on restart, this corruption persists across restarts until manually repaired.
+**Cause:** In n8n **queue mode** with multiple workers sharing a single `.n8n/nodes` volume, the npm install into that shared directory can be interrupted by a race between the main process and worker processes touching the same `node_modules` tree concurrently on container start. This can leave one of this package's nested dependencies (`zod`, `libphonenumber-js`, `keyv`, or `keyv-file`) truncated — the package directory exists but is missing its actual entry-point file. Because n8n only runs npm install once per package and doesn't re-check already-"present" node_modules on restart, this corruption persists across restarts until manually repaired.
 
 **Fix:** Reinstall the affected dependency scoped to this package's directory, inside the container/volume where n8n resolves community nodes from:
 
 ```bash
 cd <path-to-.n8n>/nodes/node_modules/n8n-nodes-crawl4ai-plus
-npm install --no-save --legacy-peer-deps axios zod libphonenumber-js keyv keyv-file
+npm install --no-save --legacy-peer-deps zod libphonenumber-js keyv keyv-file
 ```
 
-Pin exact versions if you want to match what was originally installed — check this package's own `node_modules/.package-lock.json` for the resolved versions, or pass `axios@<version>` etc. explicitly. Then restart n8n.
+Pin exact versions if you want to match what was originally installed — check this package's own `node_modules/.package-lock.json` for the resolved versions, or pass `zod@<version>` etc. explicitly. Then restart n8n.
 
 As of v5.6.6, two integrity checks surface this corruption with a clear message (including the repair command above) rather than the opaque error above. A `postinstall` check runs `require.resolve()` on each of these dependencies and fails the install immediately if any is missing — this covers manual `npm`/`pnpm` installs, CI, and Docker image bakes. In addition, a load-time guard imported first by every node and credential in this package surfaces the same clear error immediately in n8n's own startup logs even when n8n's installer runs with `--ignore-scripts` (as the in-app "Install a community node" UI does, so `postinstall` never runs). The corruption is then diagnosable directly from n8n's logs without needing to run anything manually first.
+
+As of v5.8.0, this package goes further and removes `axios` as a dependency entirely — HTTP now runs through n8n's own `this.helpers.httpRequest`, which ships with every n8n install and needs no nested copy under this package. This is the durable fix: `axios` dragged in the deepest, highest-risk transitive chain (`form-data`, `follow-redirects`), which was the original trigger of #27, so eliminating it removes that corruption vector at the source rather than only detecting corruption in it after the fact. The integrity checks above remain in place for the four remaining dependencies.
 
 See [#27](https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus/issues/27) for the original report and environment details.
 

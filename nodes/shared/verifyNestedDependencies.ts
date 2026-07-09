@@ -18,7 +18,7 @@ declare const require: {
  * install path — the exact path issue #27 is about. n8n's loader also requires
  * the whole package in one try/catch: if requiring ANY single declared node or
  * credential file throws (because it, or anything it transitively imports, hits
- * a corrupted `axios`/`zod`/`libphonenumber-js`), the ENTIRE package fails to
+ * a corrupted `zod`/`libphonenumber-js`), the ENTIRE package fails to
  * register and an unrelated node type shows as "Unrecognized node type" with a
  * deep, opaque `MODULE_NOT_FOUND` as the only clue.
  *
@@ -33,14 +33,24 @@ declare const require: {
  * scripts are disabled. It simply makes the failure diagnosable directly from
  * n8n's logs, immediately, instead of leaving a raw stack trace.
  *
- * The check fully `require()`s each dependency (not just `require.resolve()`s its
- * path) on purpose: `require.resolve()` confirms only that a package's own entry
- * file exists, without executing it, so it cannot see corruption in that
- * package's OWN transitive dependencies. Fully requiring `axios` transitively
- * requires `form-data`, so a truncated nested file anywhere under one of these
- * five packages (not just the five entry files) is caught here too.
+ * Note: `axios` was itself removed as a dependency of this package (v5.8.0) —
+ * it dragged in the deepest, highest-risk transitive chain (`form-data`,
+ * `follow-redirects`, `proxy-from-env`), which was the original trigger of
+ * issue #27. HTTP now goes through n8n's own `this.helpers.httpRequest`, which
+ * ships with every n8n install and needs no nested copy under this package, so
+ * the deepest part of this corruption vector is gone at the source.
+ *
+ * The check fully `require()`s each remaining dependency (not just
+ * `require.resolve()`s its path) on purpose: `require.resolve()` confirms only
+ * that a package's own entry file exists, without executing it, so it cannot see
+ * corruption in that package's OWN transitive dependencies. Fully requiring each
+ * dep pulls in its whole graph, so a truncated nested file anywhere under one of
+ * these four packages (not just the four entry files) is caught here too. The
+ * remaining four deps have shallower trees than axios did, but the mechanism is
+ * kept unchanged as defense in depth — it costs nothing extra and catches at
+ * least as much as `require.resolve()` would.
  */
-const REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js', 'keyv', 'keyv-file'] as const;
+const REQUIRED_DEPENDENCIES = ['zod', 'libphonenumber-js', 'keyv', 'keyv-file'] as const;
 
 const missing: string[] = [];
 
