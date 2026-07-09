@@ -132,7 +132,7 @@ followed by `Unrecognized node type: n8n-nodes-crawl4ai-plus.crawl4aiPlus`.
 
 ```bash
 cd <path-to-.n8n>/nodes/node_modules/n8n-nodes-crawl4ai-plus
-npm install --no-save --legacy-peer-deps axios zod libphonenumber-js
+npm install --no-save --legacy-peer-deps axios zod libphonenumber-js keyv keyv-file
 ```
 
 Pin exact versions if you want to match what was originally installed — check this package's own `node_modules/.package-lock.json` for the resolved versions, or pass `axios@<version>` etc. explicitly. Then restart n8n.
