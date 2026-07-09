@@ -124,7 +124,7 @@ export async function getCrawl4aiClient(
   }
 
   // Create and return client instance
-  return createCrawlerInstance(credentials);
+  return createCrawlerInstance(credentials, executeFunctions.helpers);
 }
 
 /**

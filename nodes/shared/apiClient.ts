@@ -1,42 +1,73 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import type { IHttpRequestOptions } from 'n8n-workflow';
 import { Crawl4aiApiCredentials, FullCrawlConfig, CrawlResult, CrawlJobRequest, JobStatusResponse, MonitorHealth, LlmJobRequest } from './interfaces';
+
+/**
+ * Minimal structural type for the n8n request helper this client depends on.
+ * Kept intentionally narrow (not the full IExecuteFunctions) so the client can
+ * be constructed with a lightweight stub in ad-hoc manual verification.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HttpRequestHelper = { httpRequest(options: IHttpRequestOptions): Promise<any> };
 
 /**
  * Creates a client for communicating with the Crawl4AI API
  */
 export class Crawl4aiClient {
-  private apiClient: AxiosInstance;
   private readonly credentials: Crawl4aiApiCredentials;
+  private readonly baseUrl: string;
 
-  constructor(credentials: Crawl4aiApiCredentials) {
+  constructor(credentials: Crawl4aiApiCredentials, private readonly helpers: HttpRequestHelper) {
     this.credentials = credentials;
-    this.apiClient = this.createApiClient();
+    this.baseUrl = credentials.dockerUrl || 'http://localhost:11235';
   }
 
   /**
-   * Create and configure an Axios instance for API communication
+   * Perform an HTTP request via n8n's request helper.
+   *
+   * n8n's httpRequest is a thin axios wrapper: on success it returns the
+   * unwrapped response body (equivalent to axios's response.data), and on
+   * failure it throws the raw AxiosError unchanged. Unlike the old axios
+   * instance, it applies NO timeout of its own — so a default of 120000ms is
+   * applied here to preserve the previous instance-level default; callers that
+   * need a longer bound pass an explicit timeout.
    */
-  private createApiClient(): AxiosInstance {
-    const baseURL = this.credentials.dockerUrl || 'http://localhost:11235';
+  private async request(
+    method: 'GET' | 'POST',
+    url: string,
+    body?: unknown,
+    options: { timeout?: number; encoding?: 'stream' } = {},
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    const requestOptions: IHttpRequestOptions = {
+      baseURL: this.baseUrl,
+      url,
+      method,
+      json: true,
+      timeout: options.timeout ?? 120000,
+    };
 
-    const client = axios.create({
-      baseURL,
-      timeout: 120000, // 120 seconds default timeout
-    });
-
-    // Add authentication headers if needed
-    if (this.credentials.authenticationType) {
-      if (this.credentials.authenticationType === 'token' && this.credentials.apiToken) {
-        client.defaults.headers.common['Authorization'] = `Bearer ${this.credentials.apiToken}`;
-      } else if (this.credentials.authenticationType === 'basic' && this.credentials.username && this.credentials.password) {
-        client.defaults.auth = {
-          username: this.credentials.username,
-          password: this.credentials.password
-        };
-      }
+    if (body !== undefined) {
+      requestOptions.body = body;
+    }
+    if (options.encoding) {
+      requestOptions.encoding = options.encoding;
     }
 
-    return client;
+    // Apply authentication per-request.
+    if (this.credentials.authenticationType === 'token' && this.credentials.apiToken) {
+      requestOptions.headers = { Authorization: `Bearer ${this.credentials.apiToken}` };
+    } else if (
+      this.credentials.authenticationType === 'basic' &&
+      this.credentials.username &&
+      this.credentials.password
+    ) {
+      requestOptions.auth = {
+        username: this.credentials.username,
+        password: this.credentials.password,
+      };
+    }
+
+    return this.helpers.httpRequest(requestOptions);
   }
 
   /**
@@ -50,12 +81,21 @@ export class Crawl4aiClient {
   }
 
   /**
+   * Duck-typed guard for an axios-shaped error. n8n's httpRequest propagates the
+   * raw AxiosError unchanged, so we can detect it structurally without importing
+   * axios itself.
+   */
+  private isAxiosLikeError(error: unknown): error is { isAxiosError: true; code?: string; message?: string; response?: { status: number; data?: unknown; statusText?: string } } {
+    return typeof error === 'object' && error !== null && (error as { isAxiosError?: unknown }).isAxiosError === true;
+  }
+
+  /**
    * Parse API error response and return actionable error message
    */
   private parseApiError(error: unknown): string {
-    if (axios.isAxiosError(error)) {
+    if (this.isAxiosLikeError(error)) {
       if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-        return `Cannot connect to Crawl4AI API at ${this.apiClient.defaults.baseURL}. Check that the Docker container is running and the URL is correct.`;
+        return `Cannot connect to Crawl4AI API at ${this.baseUrl}. Check that the Docker container is running and the URL is correct.`;
       }
 
       if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
@@ -106,7 +146,7 @@ export class Crawl4aiClient {
    */
   async crawlUrl(url: string, config: FullCrawlConfig): Promise<CrawlResult> {
     try {
-      const response = await this.apiClient.post('/crawl', {
+      const result = await this.request('POST', '/crawl', {
         urls: [url],
         browser_config: this.formatBrowserConfig(config),
         crawler_config: this.formatCrawlerConfig(config),
@@ -114,19 +154,19 @@ export class Crawl4aiClient {
         timeout: this.getTimeout(config),
       });
 
-      if (response.data && Array.isArray(response.data.results) && response.data.results.length > 0) {
-        const result = response.data.results[0] as CrawlResult;
+      if (result && Array.isArray(result.results) && result.results.length > 0) {
+        const crawlResult = result.results[0] as CrawlResult;
         // Promote wrapper-level server metrics onto the result so formatters can surface them
-        if (response.data.server_processing_time_s != null && result.crawl_time == null) {
-          result.crawl_time = response.data.server_processing_time_s as number;
+        if (result.server_processing_time_s != null && crawlResult.crawl_time == null) {
+          crawlResult.crawl_time = result.server_processing_time_s as number;
         }
-        if (response.data.server_memory_delta_mb != null && result.server_memory_delta_mb == null) {
-          result.server_memory_delta_mb = response.data.server_memory_delta_mb as number;
+        if (result.server_memory_delta_mb != null && crawlResult.server_memory_delta_mb == null) {
+          crawlResult.server_memory_delta_mb = result.server_memory_delta_mb as number;
         }
-        if (response.data.server_peak_memory_mb != null && result.server_peak_memory_mb == null) {
-          result.server_peak_memory_mb = response.data.server_peak_memory_mb as number;
+        if (result.server_peak_memory_mb != null && crawlResult.server_peak_memory_mb == null) {
+          crawlResult.server_peak_memory_mb = result.server_peak_memory_mb as number;
         }
-        return result;
+        return crawlResult;
       }
 
       return {
@@ -135,7 +175,7 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API. The API responded but did not return any crawl results.',
       };
     } catch (error) {
-      if (!axios.isAxiosError(error)) throw error;
+      if (!this.isAxiosLikeError(error)) throw error;
       return {
         url,
         success: false,
@@ -149,7 +189,7 @@ export class Crawl4aiClient {
    */
   async crawlMultipleUrls(urls: string[], config: FullCrawlConfig): Promise<CrawlResult[]> {
     try {
-      const response = await this.apiClient.post('/crawl', {
+      const response = await this.request('POST', '/crawl', {
         urls,
         browser_config: this.formatBrowserConfig(config),
         crawler_config: this.formatCrawlerConfig(config),
@@ -157,19 +197,19 @@ export class Crawl4aiClient {
         timeout: this.getTimeout(config),
       });
 
-      if (response.data && Array.isArray(response.data.results)) {
-        const results = response.data.results as CrawlResult[];
+      if (response && Array.isArray(response.results)) {
+        const results = response.results as CrawlResult[];
         // Promote batch-level server metrics onto every result so all URLs see consistent data
         if (results.length > 0) {
           for (const result of results) {
-            if (response.data.server_processing_time_s != null && result.crawl_time == null) {
-              result.crawl_time = response.data.server_processing_time_s as number;
+            if (response.server_processing_time_s != null && result.crawl_time == null) {
+              result.crawl_time = response.server_processing_time_s as number;
             }
-            if (response.data.server_memory_delta_mb != null && result.server_memory_delta_mb == null) {
-              result.server_memory_delta_mb = response.data.server_memory_delta_mb as number;
+            if (response.server_memory_delta_mb != null && result.server_memory_delta_mb == null) {
+              result.server_memory_delta_mb = response.server_memory_delta_mb as number;
             }
-            if (response.data.server_peak_memory_mb != null && result.server_peak_memory_mb == null) {
-              result.server_peak_memory_mb = response.data.server_peak_memory_mb as number;
+            if (response.server_peak_memory_mb != null && result.server_peak_memory_mb == null) {
+              result.server_peak_memory_mb = response.server_peak_memory_mb as number;
             }
           }
         }
@@ -182,7 +222,7 @@ export class Crawl4aiClient {
         error_message: 'No results returned from Crawl4AI API. The API responded but did not return any crawl results.',
       }));
     } catch (error) {
-      if (!axios.isAxiosError(error)) throw error;
+      if (!this.isAxiosLikeError(error)) throw error;
       const errorMessage = this.parseApiError(error);
       return urls.map(url => ({
         url,
@@ -198,24 +238,24 @@ export class Crawl4aiClient {
   async crawlStream(urls: string[], config: FullCrawlConfig): Promise<{ results: CrawlResult[]; parseErrors: number }> {
     const readline = await import('readline');
 
-    let response: AxiosResponse;
+    let stream: NodeJS.ReadableStream;
     try {
-      response = await this.apiClient.post('/crawl/stream', {
+      stream = await this.request('POST', '/crawl/stream', {
         urls,
         browser_config: this.formatBrowserConfig(config),
         crawler_config: this.formatCrawlerConfig(config),
       }, {
-        responseType: 'stream',
+        encoding: 'stream',
         timeout: 300000, // 5 minutes for streaming
       });
     } catch (error) {
-      if (!axios.isAxiosError(error)) throw error;
+      if (!this.isAxiosLikeError(error)) throw error;
       throw new Error(this.parseApiError(error));
     }
 
     return new Promise<{ results: CrawlResult[]; parseErrors: number }>((resolve, reject) => {
       const results: CrawlResult[] = [];
-      const rl = readline.createInterface({ input: response.data, crlfDelay: Infinity });
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
       let parseErrors = 0;
       rl.on('line', (line: string) => {
@@ -233,7 +273,7 @@ export class Crawl4aiClient {
 
       rl.on('close', () => resolve({ results, parseErrors }));
       rl.on('error', (err: Error) => reject(err));
-      response.data.on('error', (err: Error) => reject(err));
+      stream.on('error', (err: Error) => reject(err));
     });
   }
 
@@ -242,8 +282,8 @@ export class Crawl4aiClient {
    */
   async submitCrawlJob(request: CrawlJobRequest): Promise<string> {
     try {
-      const response = await this.apiClient.post('/crawl/job', request);
-      const taskId = response.data?.task_id || response.data?.id;
+      const result = await this.request('POST', '/crawl/job', request);
+      const taskId = result?.task_id || result?.id;
       if (!taskId) {
         throw new Error('No task_id returned from /crawl/job endpoint.');
       }
@@ -258,8 +298,8 @@ export class Crawl4aiClient {
    */
   async getJobStatus(taskId: string): Promise<JobStatusResponse> {
     try {
-      const response = await this.apiClient.get(`/job/${taskId}`);
-      return response.data as JobStatusResponse;
+      const result = await this.request('GET', `/job/${taskId}`);
+      return result as JobStatusResponse;
     } catch (error) {
       throw new Error(this.parseApiError(error));
     }
@@ -270,8 +310,8 @@ export class Crawl4aiClient {
    */
   async getMonitorHealth(): Promise<MonitorHealth> {
     try {
-      const response = await this.apiClient.get('/monitor/health');
-      return response.data as MonitorHealth;
+      const result = await this.request('GET', '/monitor/health');
+      return result as MonitorHealth;
     } catch (error) {
       throw new Error(this.parseApiError(error));
     }
@@ -282,8 +322,8 @@ export class Crawl4aiClient {
    */
   async getEndpointStats(): Promise<Record<string, unknown>> {
     try {
-      const response = await this.apiClient.get('/monitor/endpoints/stats');
-      return response.data as Record<string, unknown>;
+      const result = await this.request('GET', '/monitor/endpoints/stats');
+      return result as Record<string, unknown>;
     } catch (error) {
       throw new Error(this.parseApiError(error));
     }
@@ -294,8 +334,8 @@ export class Crawl4aiClient {
    */
   async submitLlmJob(request: LlmJobRequest): Promise<string> {
     try {
-      const response = await this.apiClient.post('/llm/job', request);
-      const taskId = response.data?.task_id || response.data?.id;
+      const result = await this.request('POST', '/llm/job', request);
+      const taskId = result?.task_id || result?.id;
       if (!taskId) {
         throw new Error('No task_id returned from /llm/job endpoint.');
       }
@@ -329,7 +369,7 @@ export class Crawl4aiClient {
         ? { ...formattedCrawlerConfig, params: { ...(formattedCrawlerConfig.params as Record<string, unknown>), base_url: baseUrl } }
         : { ...formattedCrawlerConfig, base_url: baseUrl };
 
-      const response = await this.apiClient.post('/crawl', {
+      const result = await this.request('POST', '/crawl', {
         urls: [rawUrl],
         browser_config: this.formatBrowserConfig(config),
         crawler_config: crawlerConfigWithBase,
@@ -337,8 +377,8 @@ export class Crawl4aiClient {
         timeout: this.getTimeout(config),
       });
 
-      if (response.data && Array.isArray(response.data.results) && response.data.results.length > 0) {
-        return response.data.results[0];
+      if (result && Array.isArray(result.results) && result.results.length > 0) {
+        return result.results[0];
       }
 
       return {
@@ -347,7 +387,7 @@ export class Crawl4aiClient {
         error_message: 'No result returned from Crawl4AI API. The API responded but did not return any crawl results.',
       };
     } catch (error) {
-      if (!axios.isAxiosError(error)) throw error;
+      if (!this.isAxiosLikeError(error)) throw error;
       return {
         url: baseUrl,
         success: false,
@@ -534,22 +574,15 @@ export class Crawl4aiClient {
    */
   async generateRegexPattern(payload: Record<string, unknown>): Promise<unknown> {
     try {
-      const response = await this.apiClient.post('/generate_pattern', payload);
-      return response.data;
+      const result = await this.request('POST', '/generate_pattern', payload);
+      return result;
     } catch (error: unknown) {
       const errorMessage = this.parseApiError(error);
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+      if (this.isAxiosLikeError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
         throw new Error(`${errorMessage} Check your LLM credentials in the node settings.`);
       }
       throw new Error(errorMessage);
     }
-  }
-
-  /**
-   * Close the client and free resources
-   */
-  async close(): Promise<void> {
-    // No specific cleanup needed for Axios client
   }
 }
 
@@ -557,7 +590,8 @@ export class Crawl4aiClient {
  * Create an instance of the Crawl4AI client
  */
 export async function createCrawlerInstance(
-  credentials: Crawl4aiApiCredentials
+  credentials: Crawl4aiApiCredentials,
+  helpers: HttpRequestHelper,
 ): Promise<Crawl4aiClient> {
-  return new Crawl4aiClient(credentials);
+  return new Crawl4aiClient(credentials, helpers);
 }

@@ -9,25 +9,33 @@
  * this package's nested runtime dependencies truncated — the package directory
  * exists but its entry-point file is missing. That corruption otherwise stays
  * hidden until n8n later tries to load this package, surfacing as an opaque,
- * deep `Cannot find module '.../node_modules/axios/dist/node/axios.cjs'` and a
- * confusing `Unrecognized node type` error.
+ * deep `Cannot find module '.../node_modules/.../<entry>.js'` and a confusing
+ * `Unrecognized node type` error.
  *
- * This script fully loads (require()s, not just resolves) each runtime
+ * Note: `axios` was itself removed as a dependency of this package (v5.8.0) — it
+ * dragged in the deepest, highest-risk transitive chain (form-data,
+ * follow-redirects, proxy-from-env), which was the original trigger of issue
+ * #27. HTTP now goes through n8n's own this.helpers.httpRequest, which ships
+ * with every n8n install and needs no nested copy under this package, so the
+ * deepest part of this corruption vector is gone at the source.
+ *
+ * This script fully loads (require()s, not just resolves) each remaining runtime
  * dependency immediately at install time, so the failure is caught early with a
  * clear, actionable message rather than deferred to n8n startup. Requiring —
  * rather than only resolving — matters because `require.resolve()` verifies only
  * that a module's own entry file exists; it never executes the module, so it
  * cannot detect corruption in that module's OWN transitive dependencies. Fully
- * requiring `axios` transitively requires `form-data` (and the rest of its
- * graph), so a truncated nested file anywhere under one of these five packages
- * throws here and is caught, not just corruption of the five entry files.
+ * requiring each dep pulls in its whole graph, so a truncated nested file
+ * anywhere under one of these four packages throws here and is caught, not just
+ * corruption of the four entry files. The remaining four deps have shallower
+ * trees than axios did, but the mechanism is kept unchanged as defense in depth.
  *
  * Plain CommonJS with no build step and no dependency on `dist/` or any
  * devDependency — it must run from a freshly-extracted npm tarball via
  * `node scripts/verify-install.js`.
  */
 
-var REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js', 'keyv', 'keyv-file'];
+var REQUIRED_DEPENDENCIES = ['zod', 'libphonenumber-js', 'keyv', 'keyv-file'];
 
 var failed = [];
 

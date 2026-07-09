@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.8.0] - 2026-07-09
+
+### Fixed
+- Removed `axios` as a dependency entirely, root-causing the corruption vector behind #27. HTTP now runs through n8n's own `this.helpers.httpRequest` — which ships with every n8n install and needs no nested copy under this package — instead of a bundled `axios`. `axios` dragged in the deepest, highest-risk transitive chain (`form-data`, `follow-redirects`), the exact tree the install-race truncation in #27 hit, so eliminating it removes that vector at the source rather than only detecting corruption in it after the fact (as the 5.6.6/5.7.0 integrity checks did). Error handling, timeouts, streaming (`/crawl/stream`), and Bearer/Basic auth are preserved; axios-shaped errors are now detected by duck-typing (`httpRequest` still throws raw `AxiosError` objects), so no behaviour changes for callers.
+- The install-integrity guard's `REQUIRED_DEPENDENCIES` list narrowed to `['zod', 'libphonenumber-js', 'keyv', 'keyv-file']` (`axios` dropped, four remain) in both `scripts/verify-install.js` and `nodes/shared/verifyNestedDependencies.ts`. The full-`require()`-not-`require.resolve()` mechanism is unchanged, kept as defense in depth for the four remaining deps.
+
+### Changed
+- Relaxed the `n8n-workflow` peerDependency from `>=1.60.0` to `*`. Peer dependencies are checked against the host's already-resolved version and are never installed, so a version floor did no protective work here and only risked unnecessary friction on future n8n major versions.
+
 ## [5.7.0] - 2026-07-09
 
 ### Fixed
