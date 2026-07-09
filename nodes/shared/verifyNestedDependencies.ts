@@ -1,5 +1,6 @@
 declare const require: {
 	resolve(id: string): string;
+	(id: string): unknown;
 };
 
 /**
@@ -31,6 +32,13 @@ declare const require: {
  * `--ignore-scripts` path — there is no way to intercept mid-install when
  * scripts are disabled. It simply makes the failure diagnosable directly from
  * n8n's logs, immediately, instead of leaving a raw stack trace.
+ *
+ * The check fully `require()`s each dependency (not just `require.resolve()`s its
+ * path) on purpose: `require.resolve()` confirms only that a package's own entry
+ * file exists, without executing it, so it cannot see corruption in that
+ * package's OWN transitive dependencies. Fully requiring `axios` transitively
+ * requires `form-data`, so a truncated nested file anywhere under one of these
+ * five packages (not just the five entry files) is caught here too.
  */
 const REQUIRED_DEPENDENCIES = ['axios', 'zod', 'libphonenumber-js', 'keyv', 'keyv-file'] as const;
 
@@ -38,10 +46,11 @@ const missing: string[] = [];
 
 for (const name of REQUIRED_DEPENDENCIES) {
 	try {
-		require.resolve(name);
+		require(name);
 	} catch {
-		// require.resolve throws MODULE_NOT_FOUND when the dependency is missing
-		// or its entry-point file is truncated. Collect it for one clear message.
+		// require() throws when the dependency — or anything in its own transitive
+		// dependency graph — is missing or its entry-point file is truncated.
+		// Collect it for one clear message.
 		missing.push(name);
 	}
 }

@@ -12,9 +12,15 @@
  * deep `Cannot find module '.../node_modules/axios/dist/node/axios.cjs'` and a
  * confusing `Unrecognized node type` error.
  *
- * This script verifies each runtime dependency resolves immediately at install
- * time, so the failure is caught early with a clear, actionable message rather
- * than deferred to n8n startup.
+ * This script fully loads (require()s, not just resolves) each runtime
+ * dependency immediately at install time, so the failure is caught early with a
+ * clear, actionable message rather than deferred to n8n startup. Requiring —
+ * rather than only resolving — matters because `require.resolve()` verifies only
+ * that a module's own entry file exists; it never executes the module, so it
+ * cannot detect corruption in that module's OWN transitive dependencies. Fully
+ * requiring `axios` transitively requires `form-data` (and the rest of its
+ * graph), so a truncated nested file anywhere under one of these five packages
+ * throws here and is caught, not just corruption of the five entry files.
  *
  * Plain CommonJS with no build step and no dependency on `dist/` or any
  * devDependency — it must run from a freshly-extracted npm tarball via
@@ -28,11 +34,12 @@ var failed = [];
 for (var i = 0; i < REQUIRED_DEPENDENCIES.length; i++) {
 	var name = REQUIRED_DEPENDENCIES[i];
 	try {
-		require.resolve(name);
+		require(name);
 	} catch (err) {
-		// require.resolve throws MODULE_NOT_FOUND when the dependency is missing
-		// or corrupted. Catch it here so this script never crashes with a raw
-		// stack trace — fold it into the single clear message printed below.
+		// require() throws when the dependency (or anything in its own transitive
+		// dependency graph) is missing or has a truncated entry file. Catch it here
+		// so this script never crashes with a raw stack trace — fold it into the
+		// single clear message printed below.
 		failed.push(name);
 	}
 }

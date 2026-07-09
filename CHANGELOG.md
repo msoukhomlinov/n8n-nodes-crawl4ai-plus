@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.7.0] - 2026-07-09
+
+### Fixed
+- Closed a gap in the 5.6.6 integrity checks: installing via n8n's in-app "Install a community node" UI could still fail with a raw, opaque `ENOENT: no such file or directory, open '.../node_modules/axios/node_modules/form-data/lib/form_data.js'` and "The specified package could not be loaded", instead of the clear diagnostic 5.6.6 was meant to produce. Both 5.6.6 checks used `require.resolve(name)` on the five direct runtime dependencies (`axios`, `zod`, `libphonenumber-js`, `keyv`, `keyv-file`), but `require.resolve()` only verifies that a package's OWN entry file exists — it never executes the package, so it cannot detect corruption in that package's own transitive dependencies. `axios` internally `require`s `form-data` (a transitive dependency, not one of the five), so the same install-race truncation that #27 is about hit `form-data` under `axios` and slipped straight past a resolve-only check.
+- Both `scripts/verify-install.js` (postinstall) and `nodes/shared/verifyNestedDependencies.ts` (load-time guard) now fully `require()` each of the five dependencies instead of merely resolving their paths. Requiring `axios` transitively requires and executes `form-data` (and the rest of each dependency's graph), so a missing or truncated nested file anywhere in those trees throws immediately and is folded into the same clear "nested dependency install is corrupted — reinstall this package's deps" message, rather than surfacing as an opaque `ENOENT`/`MODULE_NOT_FOUND` deep inside `node_modules`. Corruption is now caught anywhere under the five packages, not just in their five top-level entry files.
+
 ## [5.6.6] - 2026-07-09
 
 ### Added
