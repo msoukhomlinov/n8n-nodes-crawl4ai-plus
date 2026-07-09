@@ -26,17 +26,22 @@ export type RuntimeZod = typeof ZodNamespace;
  * class identity fails that check, the schema degrades to raw JSON Schema, and
  * tools surface as "object schema missing properties" with no error logged.
  *
- * Resolution order:
- *   1. filesystem anchor (ANCHOR_CANDIDATES) — works on hoisted npm/yarn installs
- *      where require.resolve() from this file can walk into n8n's node_modules.
- *   2. requireFromCachedTree — positive anchor for pnpm-strict-isolated n8n
- *      installs (v2.29.x+), where this package lives outside n8n's own
- *      node_modules tree and no filesystem require.resolve() from here can reach
- *      it at all. Finds an already-cached module belonging to an n8n-OWNED
- *      package (which community nodes never bundle) and createRequire()s the
- *      dependency from THAT module — tying the resolved copy to n8n's real
- *      dependency graph by package identity, independent of pnpm's flat
- *      virtual-store realpaths.
+ * Resolution order (DynamicStructuredTool):
+ *   1. requireFromCachedTree — positive anchor, tried FIRST. Finds an
+ *      already-cached module belonging to an n8n-OWNED package (which
+ *      community nodes never bundle) and createRequire()s the dependency from
+ *      THAT module — tying the resolved copy to n8n's real dependency graph
+ *      by package identity, independent of pnpm's flat virtual-store
+ *      realpaths. Tried before the filesystem anchor deliberately: if npm
+ *      auto-installs this package's declared @langchain/core peerDependency
+ *      as a private copy, the filesystem anchor below would resolve THAT
+ *      copy instead of n8n's.
+ *   2. filesystem anchor (ANCHOR_CANDIDATES) — fallback for hoisted npm/yarn
+ *      installs where require.resolve() from this file can walk into n8n's
+ *      node_modules, tried only once tier 1 is unavailable.
+ *
+ * zod resolution uses only the n8n-owned-tree anchor (no filesystem fallback
+ * — see the comment on ZOD_AUTHORITATIVE_PATTERN below for why).
  *
  * Both tiers run lazily, inside the Proxy traps below: n8n requires node files
  * for registration before any workflow executes, i.e. before its own
@@ -118,6 +123,13 @@ function getFilesystemAnchorRequire(): { runtimeReq: NodeRequire | null; diagnos
 	for (const anchor of ANCHOR_CANDIDATES) {
 		try {
 			const anchorPath = require.resolve(anchor) as string;
+			// Belt-and-braces: reject a match nested inside this package's own
+			// node_modules (e.g. npm auto-installing our declared @langchain/core
+			// peerDependency as a private copy) — never a safe identity anchor.
+			if (anchorPath.includes(OWN_PACKAGE_NAME)) {
+				tried.push(`${anchor}: resolved inside this package's own tree, rejected`);
+				continue;
+			}
 			return {
 				runtimeReq: createRequire(anchorPath),
 				diagnostic: `resolved via filesystem anchor: ${anchor}`,
@@ -163,7 +175,30 @@ function isZodNamespace(mod: unknown): mod is RuntimeZod {
 function resolveDynamicStructuredTool(): DynamicStructuredToolCtor | undefined {
 	if (_RuntimeDynamicStructuredTool) return _RuntimeDynamicStructuredTool;
 
-	// 1. filesystem anchor — hoisted npm/yarn installs.
+	// 1. positive n8n-owned-tree anchor — tried FIRST. A hit here is guaranteed
+	//    to be n8n's own @langchain/core copy (community nodes never bundle
+	//    @n8n/n8n-nodes-langchain). Trying this before the filesystem anchor
+	//    matters: if npm auto-installs our declared @langchain/core
+	//    peerDependency as a separate copy alongside this community node, the
+	//    filesystem anchor would resolve THAT copy — a different class
+	//    identity than n8n's own, which downstream instanceof StructuredTool /
+	//    metadata handling can silently miss.
+	try {
+		const ctor = extractDynamicStructuredTool(
+			requireFromCachedTree(LANGCHAIN_TREE_PATTERNS, '@langchain/core/tools'),
+		);
+		if (ctor) {
+			_RuntimeDynamicStructuredTool = ctor;
+			langchainLoadError = null;
+			langchainResolutionDiagnostic = 'resolved via n8n-owned-tree anchor';
+			return ctor;
+		}
+	} catch (e) {
+		langchainLoadError = e instanceof Error ? e.message : String(e);
+	}
+
+	// 2. filesystem anchor — hoisted npm/yarn installs, tried only once the
+	//    n8n-owned anchor above is unavailable.
 	if (_filesystemAnchorReq) {
 		try {
 			const ctor = extractDynamicStructuredTool(_filesystemAnchorReq('@langchain/core/tools'));
@@ -176,21 +211,6 @@ function resolveDynamicStructuredTool(): DynamicStructuredToolCtor | undefined {
 		} catch (e) {
 			langchainLoadError = e instanceof Error ? e.message : String(e);
 		}
-	}
-
-	// 2. positive n8n-owned-tree anchor — pnpm-strict-isolated installs.
-	try {
-		const ctor = extractDynamicStructuredTool(
-			requireFromCachedTree(LANGCHAIN_TREE_PATTERNS, '@langchain/core/tools'),
-		);
-		if (ctor) {
-			_RuntimeDynamicStructuredTool = ctor;
-			langchainLoadError = null;
-			langchainResolutionDiagnostic = 'resolved via n8n-owned-tree anchor (pnpm-isolated install)';
-			return ctor;
-		}
-	} catch (e) {
-		langchainLoadError = e instanceof Error ? e.message : String(e);
 	}
 
 	// Fail clean — Proxy throws with the diagnostics above.
