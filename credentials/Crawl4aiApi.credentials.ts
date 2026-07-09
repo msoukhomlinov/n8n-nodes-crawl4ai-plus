@@ -1,3 +1,4 @@
+import '../nodes/shared/verifyNestedDependencies';
 import { ICredentialTestRequest, ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class Crawl4aiApi implements ICredentialType {
