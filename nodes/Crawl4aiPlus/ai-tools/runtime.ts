@@ -117,15 +117,30 @@ function requireFromCachedTree(patterns: readonly string[], id: string): unknown
 	return undefined;
 }
 
+/** Matches a path segment inside a pnpm virtual store (.pnpm), any depth. */
+const PNPM_VIRTUAL_STORE_PATTERN = /[\\/]\.pnpm[\\/]/;
+
 /** Filesystem anchor probe for hoisted npm/yarn installs. */
 function getFilesystemAnchorRequire(): { runtimeReq: NodeRequire | null; diagnostic: string | null } {
 	const tried: string[] = [];
 	for (const anchor of ANCHOR_CANDIDATES) {
 		try {
 			const anchorPath = require.resolve(anchor) as string;
-			// Belt-and-braces: reject a match nested inside this package's own
-			// node_modules (e.g. npm auto-installing our declared @langchain/core
-			// peerDependency as a private copy) — never a safe identity anchor.
+			// Under pnpm, require.resolve() dereferences the node_modules symlink
+			// and returns the REAL path inside .pnpm's content-addressable virtual
+			// store, e.g. `.../.pnpm/@langchain+core@X/node_modules/@langchain/core/...`
+			// — a path that never contains this package's name, even when the
+			// resolved copy IS this package's own isolated peerDependency (pnpm's
+			// whole premise is per-package isolation, which is why issue #25 exists
+			// at all). A successful resolve here under pnpm can therefore ONLY be
+			// our own private copy, never a shared/n8n-owned tree — reject it.
+			if (PNPM_VIRTUAL_STORE_PATTERN.test(anchorPath)) {
+				tried.push(`${anchor}: resolved through pnpm virtual store (.pnpm), rejected`);
+				continue;
+			}
+			// Belt-and-braces for non-pnpm managers: reject a match nested inside
+			// this package's own node_modules (e.g. npm auto-installing our
+			// declared @langchain/core peerDependency as a private copy).
 			if (anchorPath.includes(OWN_PACKAGE_NAME)) {
 				tried.push(`${anchor}: resolved inside this package's own tree, rejected`);
 				continue;
