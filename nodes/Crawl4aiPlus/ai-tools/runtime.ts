@@ -63,17 +63,16 @@ const LANGCHAIN_TREE_PATTERNS = ['@n8n/n8n-nodes-langchain'] as const;
  * `normalizeToolSchema` performs the `instanceof ZodType` check, so its own
  * zod resolution IS the identity that matters. A hit here is safe to memoize
  * permanently.
+ *
+ * Deliberately NO fallback to n8n-workflow/n8n-core: this zod is used to
+ * build the tool's schema (in schema-generator.ts) once per supplyData()
+ * call, not re-resolved afterward — so a non-authoritative hit doesn't just
+ * risk a stale cache, it bakes a wrong-identity ZodType into that call's
+ * schema outright, with no later chance to correct it. Failing clean (the
+ * Proxy throws) surfaces the problem immediately instead of silently
+ * shipping a schema that fails `instanceof ZodType` downstream.
  */
 const ZOD_AUTHORITATIVE_PATTERN = ['@n8n/n8n-nodes-langchain'] as const;
-
-/**
- * Fallback zod anchors, tried only if the authoritative one isn't cached yet.
- * n8n's pnpm workspace does not guarantee every package resolves the same
- * zod version (e.g. n8n-workflow can pin an older zod than the langchain
- * package does) — a hit here is NOT identity-safe and must never be
- * memoized, so a later call can still upgrade to the authoritative copy.
- */
-const ZOD_FALLBACK_PATTERNS = ['n8n-workflow', 'n8n-core'] as const;
 
 const { createRequire } = require('module') as {
 	createRequire: (filename: string) => NodeRequire;
@@ -215,23 +214,9 @@ function resolveRuntimeZod(): RuntimeZod | undefined {
 		zodLoadError = e instanceof Error ? e.message : String(e);
 	}
 
-	// 2. Fallback anchors — may carry a different zod version than the
-	//    authoritative package resolves, so NEVER memoize: every call retries
-	//    tier 1 first, so a later call can still upgrade once
-	//    @n8n/n8n-nodes-langchain is resident in require.cache.
-	try {
-		const mod = requireFromCachedTree(ZOD_FALLBACK_PATTERNS, 'zod');
-		if (isZodNamespace(mod)) {
-			zodLoadError = null;
-			zodResolutionDiagnostic =
-				'resolved via fallback anchor (n8n-workflow/n8n-core) — unverified identity, not memoized';
-			return mod;
-		}
-	} catch (e) {
-		zodLoadError = e instanceof Error ? e.message : String(e);
-	}
-
-	// Fail clean — Proxy throws with the diagnostics above.
+	// Fail clean — Proxy throws with the diagnostics above. No fallback anchor:
+	// a non-authoritative zod would be baked into this call's tool schema with
+	// no later chance to correct it (see comment on ZOD_AUTHORITATIVE_PATTERN).
 	return undefined;
 }
 
