@@ -1,5 +1,10 @@
 # Changelog
 
+## [5.6.5] - 2026-07-09
+
+### Added
+- Documented queue-mode / shared-volume nested-dependency corruption (`axios`, `zod`, `libphonenumber-js`) in README Troubleshooting section, with repair steps (#27)
+
 ## [5.6.4] - 2026-07-09
 
 ### Fixed
