@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.6.4] - 2026-07-09
+
+### Fixed
+- AI Tools node could not resolve LangChain's `DynamicStructuredTool` or `zod` at execution time on pnpm-strict-isolated n8n installs (v2.29.x+) — `zod` is a production `dependency` here so there was no registration-time crash, but `ai-tools/runtime.ts` resolved both only via filesystem `require.resolve()` against `ANCHOR_CANDIDATES`, which cannot reach n8n's own module tree from a pnpm-isolated community-node location, so the deferred `Proxy` threw as soon as a connected AI tool ran. (#25)
+- Added a positive n8n-owned-tree anchor (`requireFromCachedTree`) that finds an already-cached module belonging to an n8n-owned package (`@n8n/n8n-nodes-langchain` first, then `@langchain/classic` for `DynamicStructuredTool`; `@n8n/n8n-nodes-langchain`, `n8n-workflow`, `n8n-core` for `zod`) and resolves the dependency from that module's location — ties the resolved copy to n8n's real dependency graph by package identity and preserves `instanceof ZodType` so `normalizeToolSchema` works even when another AI-tools community node bundling its own `zod` is installed alongside.
+
 ## [5.6.3] - 2026-05-14
 
 ### Fixed
