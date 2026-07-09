@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-crawl4ai-plus",
-  "version": "5.6.5",
+  "version": "5.6.6",
   "description": "n8n nodes for Crawl4AI v0.8.5 web crawler and data extraction with enhanced features",
   "keywords": [
     "n8n",
@@ -24,7 +24,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "scripts"
   ],
   "scripts": {
     "build": "n8n-node build",
@@ -33,6 +34,7 @@
     "format": "prettier --write \"nodes/**/*.ts\" \"credentials/**/*.ts\"",
     "lint": "n8n-node lint",
     "lint:fix": "n8n-node lint --fix",
+    "postinstall": "node scripts/verify-install.js",
     "preinstall": "npx only-allow pnpm",
     "prepublishOnly": "pnpm run build && pnpm run lint"
   },

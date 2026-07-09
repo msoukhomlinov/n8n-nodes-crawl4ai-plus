@@ -1,3 +1,4 @@
+import '../shared/verifyNestedDependencies';
 import { NodeOperationError } from 'n8n-workflow';
 import type {
 	NodeConnectionType, IDataObject, IExecuteFunctions,

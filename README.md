@@ -137,6 +137,8 @@ npm install --no-save --legacy-peer-deps axios zod libphonenumber-js
 
 Pin exact versions if you want to match what was originally installed — check this package's own `node_modules/.package-lock.json` for the resolved versions, or pass `axios@<version>` etc. explicitly. Then restart n8n.
 
+As of v5.6.6, two integrity checks surface this corruption with a clear message (including the repair command above) rather than the opaque error above. A `postinstall` check runs `require.resolve()` on each of these dependencies and fails the install immediately if any is missing — this covers manual `npm`/`pnpm` installs, CI, and Docker image bakes. In addition, a load-time guard imported first by every node and credential in this package surfaces the same clear error immediately in n8n's own startup logs even when n8n's installer runs with `--ignore-scripts` (as the in-app "Install a community node" UI does, so `postinstall` never runs). The corruption is then diagnosable directly from n8n's logs without needing to run anything manually first.
+
 See [#27](https://github.com/msoukhomlinov/n8n-nodes-crawl4ai-plus/issues/27) for the original report and environment details.
 
 ---

@@ -1,3 +1,4 @@
+import '../shared/verifyNestedDependencies';
 import {
 	IExecuteFunctions,
 	INodeExecutionData,
